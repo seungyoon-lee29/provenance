@@ -6,7 +6,7 @@
 
 ## 현재 적용 결정
 
-2026-07-14 사용자 결정에 따라 외부 데이터·뉴스·AI 공급자 구독비는 **USD 0/월**로 고정하고 모든 유료 도입을 보류한다. 기존 Alpaca Basic·KIS 모의투자·Gemini 무료 key는 개인 개발, 사용자 자신의 연결과 비민감 처리에만 사용하며 비로그인 공용 feed로 전환하지 않는다. Gemini는 파생물 생성과 외부 모델 처리가 모두 허용된 Evidence에만 사용하고, 파생물 생성 권리가 없으면 로컬 규칙도 실행하지 않는다. 공개 화면은 SEC EDGAR, Open DART, 미국 재무부, ECB와 승인 범위가 확인된 KRX EOD 같은 무료 정본만 활성화한다. 무료로 표시권을 충족할 수 없는 미국 실시간 시세·지수·옵션·뉴스와 한국 실시간 시세는 `API 필요` 또는 `표시 권한 없음`을 반환한다.
+2026-07-14 사용자 결정에 따라 외부 데이터·뉴스·AI 공급자 구독비는 **USD 0/월**로 고정하고 모든 유료 도입을 보류한다. Alpaca Basic의 IEX·주식 이력·indicative option·Paper Trading과 KIS의 개인 시세·차트·계좌·모의투자 capability를 개인 개발과 사용자 자신의 연결에서 적극 사용하되 비로그인 공용 feed로 전환하지 않는다. Gemini 무료 key는 시장·뉴스·공시·차트·Actual/Paper Portfolio와 주문 문맥을 포함한 모든 지원 자료 유형에 사용할 수 있다. 자료 유형만으로 차단하지 않지만 Viewer Context, 원천의 외부 모델 처리·파생물 License Scope, 최소화와 비밀 redaction은 독립적으로 적용한다. 공개 화면은 SEC EDGAR, Open DART, 미국 재무부, ECB와 승인 범위가 확인된 KRX EOD 같은 무료 정본만 활성화한다. 무료로 표시권을 충족할 수 없는 미국 실시간 시세·지수·옵션·뉴스와 한국 실시간 시세는 `API 필요` 또는 `표시 권한 없음`을 반환한다.
 
 아래 가격과 계약 조합은 유료 전환을 다시 결정할 때 참고할 보류 자료다. 현재 구현·배포의 활성 provider 목록이나 구매 계획이 아니다.
 
@@ -30,7 +30,7 @@
 | Alpaca Trading API | 개인 개발자는 Basic `USD 0/월`, Algo Trader Plus `USD 99/월` | 개인 API 데이터의 재배포는 허용되지 않음 | 공개 앱은 Broker API/사업 계약을 별도 협의해야 함. [플랜](https://docs.alpaca.markets/us/docs/about-market-data-api), [재배포 안내](https://alpaca.markets/support/redistribute-alpaca-api) |
 | Twelve Data Business | Basic은 내부 비표시 시험, Venture부터 외부 표시 | Venture는 client-facing 외부 표시, Enterprise는 외부 distribution을 명시 | 익명 웹과 backend→browser 전달이 기본 display인지 redistribution인지 서면 확인한다. 미국 주식 외부 제공에는 별도 Rights Add-On이 필요할 수 있고 미국 외 가격 데이터도 추가 승인이 필요하다. [가격](https://twelvedata.com/pricing-business), [상업 이용](https://support.twelvedata.com/en/articles/5332349-commercial-and-personal-usage), [미국 주식 권리](https://support.twelvedata.com/en/articles/9935903-us-equities-market-data) |
 | News API | Developer `USD 0`, Business `USD 449/월` | Developer는 localhost 개발 전용이고 staging도 금지, Business는 프로덕션 가능 | 기사 전문은 제공하지 않으며 제3자 저작권을 부여하지 않는다. 번역·요약 권리는 원출처 또는 뉴스 공급자와 별도 확인해야 함. [가격](https://newsapi.org/pricing), [약관](https://newsapi.org/terms) |
-| KIS Open API | 본인 계좌의 실전·모의 REST/WebSocket | 개인 시세는 본인 자산 투자 목적만 가능하고 제3자 제공 불가 | 제휴법인도 화면 표출 전에 KRX·코스콤 시세 계약이 필요하다. [이용 대상](https://apiportal.koreainvestment.com/about-open-api), [모의/실전 엔드포인트](https://apiportal.koreainvestment.com/apiservice-summary) |
+| KIS Open API | 사용자 결정상 구독비 `USD 0`의 개인 실전·모의 REST/WebSocket; 공식 가격표는 미확인 | 개인 시세는 본인 자산 투자 목적만 가능하고 제3자 제공 불가 | 시세·차트·계좌·모의투자를 개인 연결에 사용한다. 제휴법인도 화면 표출 전에 KRX·코스콤 시세 계약이 필요하다. [이용 대상](https://apiportal.koreainvestment.com/about-open-api), [API 카탈로그](https://apiportal.koreainvestment.com/apiservice-category) |
 | KRX Open API | 인증키와 API별 활용 승인 필요 | 승인된 신청 목적 안에서만 사용 | 일별 통계 중심이며 공개 실시간 feed가 아니다. 외부 베타는 신청서에 이용자·화면·과금 여부를 적고 서면 승인을 받아야 한다. [신청 절차](https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO003.jsp), [서비스 목록](https://openapi.krx.co.kr/contents/OPP/INFO/service/OPPINFO004.cmd), [약관](https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO002.jsp) |
 | FRED API | 무료 키 발급 가능 | 시리즈 소유자 권리가 각각 다름 | 현행 약관은 FRED 콘텐츠의 캐시·보관과 AI/ML 사용을 제한한다. 프로덕션 정본으로 일괄 사용하지 말고 원기관 API를 우선한다. [현행 FRED 약관](https://fred.stlouisfed.org/legal/terms/), [API key](https://fred.stlouisfed.org/docs/api/api_key.html) |
 
@@ -40,18 +40,18 @@
 
 ### 1. 개발·비공개 테스트
 
-공급자 구독 예산: **USD 0/월**. 인프라와 Gemini 사용료는 이 문서의 범위 밖이다.
+공급자 구독 예산: **USD 0/월**. 현재 활성 AI 경로도 사용자가 제공한 Gemini 무료 tier만 사용하며 paid Gemini 전환은 보류한다. 자체 호스팅 인프라 비용은 이 문서의 공급자 구독 예산 범위 밖이다.
 
 | 자산 | 권장 원천 | 표시 방식과 제한 |
 | --- | --- | --- |
 | 미국 주식·ETF | 기존 Alpaca Basic | 실제 IEX 실시간 값으로 표시하되 `IEX` 배지 사용. 미국 전체 SIP로 표현하지 않고 외부 사용자에게 재배포하지 않음 |
 | 미국 지수 | 권리가 확인된 feed가 없으면 연결하지 않음 | SPY·QQQ 같은 ETF는 `지수 대용`이 아니라 별도 ETF로 표시. 실제 지수 패널은 `API 필요` |
 | 미국 옵션 | Alpaca Basic indicative feed | `indicative` 배지 필수. OPRA 실시간으로 표현하지 않음 |
-| 한국 주식 | KIS 모의투자 + 승인된 KRX Open API | KIS는 개발자 본인 계좌·시세만, KRX는 일별 통계만 `EOD`로 표시 |
+| 한국 주식 | KIS 개인 시세·차트·계좌·모의투자 + 승인된 KRX Open API | KIS는 개발자 본인 범위에서 endpoint별 지연 배지, KRX는 일별 통계만 `EOD`로 표시 |
 | 금리 | 미국 재무부 일별 수익률 | API key 없이 원기관 데이터를 수집하고 `일별`로 표시. [미국 재무부 금리](https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView?type=daily_treasury_yield_curve) |
 | FX | ECB 유로 참조환율 | 무료 재사용 정책을 따르고 `참조환율·일별`로 표시. 거래 가능한 실시간 bid/ask가 아님. [ECB 재사용 정책](https://www.ecb.europa.eu/stats/ecb_statistics/governance_and_quality_framework/html/usage_policy.en.html) |
 | 원자재 | Alpha Vantage 무료 또는 Twelve Data 시험 | Alpha Vantage 무료는 25회/일이며 개인·비상업 평가만. 공개 상업 이용은 영업 계약 필요. [문서](https://www.alphavantage.co/documentation/), [약관](https://www.alphavantage.co/terms_of_service/) |
-| 미국 뉴스 | News API Developer 또는 Alpaca News | 로컬 개발만. News API Developer는 24시간 지연·100회/일이고 staging/production도 금지. 기사 전문을 수집하지 않음. [News API 가격·제약](https://newsapi.org/pricing), [Alpaca 뉴스](https://docs.alpaca.markets/us/docs/historical-news-data) |
+| 미국 뉴스 | News API Developer 또는 entitlement probe가 성공한 개인 Alpaca News | 로컬·개인 개발만. News API Developer는 24시간 지연·100회/일이고 staging/production도 금지. Alpaca News도 재배포하지 않고 기사 전문을 공용 저장하지 않음. [News API 가격·제약](https://newsapi.org/pricing), [Alpaca 뉴스](https://docs.alpaca.markets/us/docs/historical-news-data) |
 
 ### 2. 제한 베타(유료 전환 시)
 
@@ -112,11 +112,10 @@ CME 선물은 더 비싸다. 2026년 공식 fee list에는 거래소별 실시�
 
 비밀 값은 채팅에 보내지 말고 발급 후 로컬 secret 파일 또는 운영 Secret Manager에 넣는다.
 
-- [ ] KRX Data Marketplace 법인/개인 계정을 만들고 필요한 일별 주식·ETF·지수 Open API별 활용 신청을 한다. 신청 목적에는 로컬 개발과 향후 외부 베타를 구분한다. [인증키·활용 신청](https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO003.jsp)
-- [ ] Open DART 인증키를 발급한다. 공시 데이터는 시장 시세 계약과 별개다. [Open DART](https://opendart.fss.or.kr/intro/main.do)
+- [x] KRX Open API와 Open DART 변수 이름을 로컬 `.env.local`에 구성했다. 값·유효성과 KRX API별 활용·공개 목적 승인은 아직 contract test 전이므로 별도 상태로 관리한다. [KRX 인증키·활용 신청](https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO003.jsp), [Open DART](https://opendart.fss.or.kr/intro/main.do)
 - [ ] 링크형 공급자 비교가 필요할 때만 News API Developer key를 로컬 뉴스 UI 평가용으로 발급한다. 외부 staging에 넣지 않고 Business를 미리 결제하지 않는다. [키 발급](https://newsapi.org/register)
 
-이미 있는 Alpaca Paper와 KIS 모의투자 key는 새로 발급할 필요가 없다. 둘 다 공용 시장 feed가 아니라 각자의 개발/Paper Trading과 본인 계좌 연결에만 사용한다.
+이미 있는 Alpaca, KIS, Gemini, Open DART와 KRX 변수 이름은 새로 입력할 필요가 없다. Alpaca·KIS는 개인 개발, 본인 시세·차트·계좌와 Paper Trading에 사용하고 공용 시장 feed로 전환하지 않는다. 실제 값, 인증 성공과 entitlement는 opt-in contract에서 확인한다.
 
 ## 유료 전환 때만 다시 여는 항목
 

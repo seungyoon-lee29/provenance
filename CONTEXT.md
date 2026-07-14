@@ -180,6 +180,74 @@ _Avoid_: AI 자료, 참고 데이터
 Evidence 원문 대신 전달하는 불투명한 참조. 해석할 때마다 Viewer Context, 요청 목적, Data Freshness와 License Scope를 다시 확인하며 Provider Credential이나 원문을 포함하지 않는다.
 _Avoid_: 원문 ID, 데이터 URL
 
+**AI Material Reference**:
+FinancialInformation, ActualPortfolio 또는 PaperTrading이 자신의 자료를 직접 노출하지 않고 발급하는 purpose-bound 불투명 참조. ResearchAssistant는 클라이언트 raw portfolio·order payload를 받지 않고 각 source module의 server-only resolver로만 해석한다.
+_Avoid_: Evidence Reference, 포트폴리오 JSON
+
+**AI Material Envelope**:
+Viewer Context, AI Processing Consent와 License Scope를 통과한 AI Material Reference에서 AI task에 필요한 최소 필드만 모은 서버 내부 입력. 모든 지원 자료 유형을 담을 수 있지만 Provider Credential, session/auth token, 원문 계좌번호, 주문 실행 비밀과 직접 식별자는 포함하지 않는다.
+_Avoid_: AI 원문 묶음, 비민감 데이터
+
+**AI Processing Consent**:
+User Workspace가 선택한 AI provider·model tier, 무료 tier data-use 고지와 약관 버전, 동의 시각·출처와 철회 epoch를 기록한 처리 동의. 자료 유형을 금지하는 분류가 아니라 외부 처리 선택과 철회를 실행 시점에 검증하는 경계다.
+_Avoid_: Gemini 설정, AI 허용 여부
+
+**Alert Rule**:
+사용자가 정한 조건, 근거 데이터와 freshness 요구, cooldown, 채널과 만료 정책을 가진 알림 규칙. 조건이 실제 Market Observation 또는 Evidence에서 확인될 때만 발화하며 숫자나 사건을 추정하지 않는다.
+_Avoid_: 알림 설정, 자동 신호
+
+**Alert Occurrence**:
+하나의 Alert Rule condition revision이 이전 false 상태에서 실제 Evidence로 true가 된 전이를 나타내는 durable 사실. rule별 직렬 상태 전이와 source observation identity를 사용해 stream·poll 중복과 늦은 관측이 같은 전이를 다시 만들지 못하게 한다.
+_Avoid_: 알림 이벤트, 발송 건
+
+**Alert Observation**:
+FinancialInformation 또는 Portfolio module이 Alert Rule의 purpose-bound reference를 Viewer Context로 다시 해석해 제공하는 typed 조건 입력. 비교값, 기준 시각, freshness, License Scope와 source identity를 포함하며 NotificationCenter가 raw 공급자 payload나 opaque reference 내부를 직접 읽지 않게 한다.
+_Avoid_: 알림 가격, Evidence 원문
+
+**Account Security Event**:
+이메일 확인, magic link, 로그인 또는 credential 변경처럼 Alert Rule과 무관하게 외부 계정 알림을 일으키는 안정적이고 idempotent한 원인. 요청 목적, 익명 요청의 request security epoch 또는 인증 사건의 auth epoch, 만료와 최소화된 purpose-bound actor pseudonym/risk decision만 보존하고 raw IP·전체 user-agent·원문 email을 넣거나 가짜 Alert Occurrence로 표현하지 않는다.
+_Avoid_: 보안 알림, Alert Occurrence
+
+**Delivery Cause**:
+외부 전달의 원인이 되는 Alert Occurrence 또는 Account Security Event의 tagged identity. Delivery Intent의 중복 제거와 감사 정본이며 원인 종류를 숨기기 위해 synthetic occurrence를 만들지 않는다.
+_Avoid_: notificationId, 발송 이벤트
+
+**Notification Record**:
+Alert Occurrence 또는 Account Security Event가 만든 User Workspace별 durable 인앱 기록. 있는 경우 FinancialInformation·ActualPortfolio 같은 source module이 발급한 purpose-bound reference를 trigger/as-of 시각, deep link와 읽음·해제 상태와 함께 보존한다. reference 없는 계정 사건도 허용하며 외부 채널 전달 실패나 해지로 삭제되지 않지만 category retention, License Scope 만료와 administrative erasure를 따른다.
+_Avoid_: 푸시 알림, 이메일 알림
+
+**Alert Channel Availability**:
+deployment provider readiness, User Workspace의 consent·verified address, 현재 device/install의 permission·subscription, category quota·circuit을 별도 축으로 보존하고 요청 문맥에서 `ready`, `configuration_required`, `unsupported`, `permission_denied`, `quota_blocked` 중 하나로 합성한 capability. 다른 device의 Web Push 상태를 전역 상태로 덮어쓰지 않고 개별 Delivery Fact와 혼합하지 않는다.
+_Avoid_: 알림 상태, Provider Degradation
+
+**Workspace Channel Endpoint Reference**:
+User Workspace의 외부 목적지를 나타내는 `WorkspaceFinancialEmailEndpoint | WorkspaceSecurityEmailEndpoint | WorkspaceWebPushEndpoint` purpose-tagged 불투명 참조. financial email variant는 membership·financial-consent epoch·verified-address revision, security email variant는 membership/account-state·security-notice epoch·verified-address revision, Web Push variant는 device-binding auth epoch·consent version과 credential/key version에 각각 묶인다. security variant는 financial opt-in/opt-out과 독립적이다. 원문 target은 전용 암호화 테이블 밖으로 복사하지 않고 outbox·로그에는 reference와 keyed fingerprint만 사용한다.
+_Avoid_: 이메일 주소, push endpoint
+
+**Pending Account Email Target**:
+아직 User Workspace나 verified address가 없는 이메일 확인·복구 요청을 위해 Account Security Event, pending identity, purpose와 request security epoch에 묶어 짧게 보존하는 암호화 대상 참조. financial alert에는 사용할 수 없고 원문 주소는 outbox·로그에 복사하지 않는다.
+_Avoid_: 임시 이메일, Workspace Channel Endpoint Reference
+
+**Delivery Action Material Reference**:
+비동기 email template에 필요한 원문 action secret을 hash-only verifier와 별도로 delivery 전용 envelope vault에 암호화해 가리키는 불투명 참조. `AccountChallengeMaterial | UnsubscribeMaterial` tagged variant이며 전자는 Account Security Event·purpose·request/auth epoch·expiry, 후자는 workspace·endpoint·topic·consent lineage·Delivery Intent에 묶인다. 허용된 renderer만 해석하고 provider 수락·확정 실패·expiry 뒤 원문 material을 삭제한다.
+_Avoid_: magic link token, 인증 코드, unsubscribe token
+
+**Delivery Target Reference**:
+외부 전달 목적지를 나타내는 `WorkspaceFinancialEmailEndpoint | WorkspaceSecurityEmailEndpoint | WorkspaceWebPushEndpoint | PendingAccountEmailTarget` tagged reference. dispatch는 cause·purpose와 target variant의 허용 조합을 검증하며 익명 보안 메일 때문에 가짜 workspace나 verified address를 만들지 않는다.
+_Avoid_: targetReference, 이메일 주소
+
+**Delivery Authorization Context**:
+Identity가 발급하는 purpose-tagged `FinancialEmailDeliveryContext | SecurityNoticeDeliveryContext`. 전자는 User Workspace membership, financial-consent epoch, verified-address revision과 purpose를 확인하고 consent/address 변경, membership 종료와 administrative deletion에 폐기된다. 후자는 allowlisted Account Security Event purpose·expiry, workspace membership/account active, security-notice epoch와 verified-address revision을 확인하며 financial consent와 transient login session에는 의존하지 않는다. 보통 logout만으로 security notice를 막지 않지만 address/security revision 변경과 deletion fence에는 즉시 폐기된다. Web Push는 별도의 device-binding auth epoch를 사용하고 Pending Account Email은 request security epoch를 사용한다.
+_Avoid_: Viewer Context, 로그인 세션
+
+**Delivery Intent**:
+Delivery Cause를 Web Push 또는 email로 전달하기 위해 durable outbox에 기록한 idempotent 작업. `(causeId, channel, destinationFingerprint)`로 유일하며 Delivery Target Reference, 적용 가능한 채널 동의, 서로 독립적인 `sourceReference?`와 `deliveryActionMaterialReference?`, 목적별 License Scope snapshot/version, 최초 template revision·payload hash, 만료와 retry policy를 immutable하게 고정하고 외부 호출 전에 저장한다. financial email은 source·unsubscribe material·WorkspaceFinancialEmailEndpoint, financial Web Push는 source·WorkspaceWebPushEndpoint, MVP account challenge는 `channel=email`과 account action material·PendingAccountEmailTarget만 허용한다. allowlisted `authenticated_security_notice`는 `AccountSecurityEvent + channel=email + WorkspaceSecurityEmailEndpoint`에 한해 두 reference 없이 허용하며, 다른 누락·variant·purpose·target 조합은 거절한다.
+_Avoid_: 발송 요청, 알림 queue
+
+**Delivery Fact**:
+외부 전달의 queued, provider accepted, delivery delayed, delivered, bounced, complained, provider suppressed, policy/rate/quota suppressed, seen, failed와 expired 시각을 각각 관측 근거와 append-only로 기록한 사실. 앞선 상태를 추정하거나 provider 수락·open/click telemetry를 사용자 열람으로 승격하지 않는다.
+_Avoid_: 발송 상태, 성공 여부
+
 **Information Outcome**:
 정보 요청의 결과를 `available`, `unavailable`, `failed`로 구분하는 공통 상태. 실제 값은 `available`에만 존재하고, `unavailable`은 `API 필요`, `데이터 없음`, `표시 권한 없음`을, `failed`는 공급자 장애, 제한 초과 또는 잘못된 응답을 나타낸다. 오래된 캐시를 사용할 수 있으면 `available`과 `오래됨` Data Freshness 및 장애 경고를 함께 제공한다.
 _Avoid_: 빈 데이터, 임시 값

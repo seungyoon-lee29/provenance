@@ -12,6 +12,9 @@
 - Paper Trading은 완전 구현하고 Live Trading 주문 전송은 초기 산출물에서 비활성화한다.
 - 사용자별 Provider Credential은 암호화해 저장한다.
 - 현재 단계의 외부 데이터·뉴스·AI 공급자 구독 예산은 USD 0이며 유료 공급자와 표시·재배포 계약은 보류한다. 무료 API도 License Scope가 허용하는 화면과 사용자에게만 사용한다.
+- Gemini는 시장·뉴스·공시·차트·Actual/Paper Portfolio와 주문 문맥을 포함한 모든 지원 자료 유형에 사용할 수 있다. 자료 유형만으로 차단하지 않으며 Viewer Context, 원천 License Scope, 최소화와 비밀 redaction은 독립적으로 적용한다.
+- KIS Open API는 사용자 결정에 따라 구독비 USD 0의 `free_personal` 공급자로 취급하고 개인 목적에 유용한 시세·차트·계좌·모의투자 capability를 활성 후보로 둔다. Alpaca Basic의 무료 IEX·주식 이력·indicative option·Paper Trading도 개인 범위에서 사용한다. 어느 개인 key도 비로그인 공용 feed나 다른 사용자 cache로 재배포하지 않는다.
+- 로컬 `.env.local`에는 Gemini, Alpaca, KIS, Open DART와 KRX Open API 변수 이름이 구성돼 있다. 값·유효성·API별 승인 상태는 별도 contract test 전에는 확정하지 않는다.
 - 주요 스킬: research, prototype, domain-modeling, codebase-design, to-spec, to-tickets, tdd, implement, code-review, diagnosing-bugs.
 
 ## Decisions so far
@@ -21,12 +24,13 @@
 - 사용 가능한 Market Observation은 세 가지 Data Freshness 상태와 출처·기준 시각을 제공하고, API 필요·데이터 없음·공급자 실패는 Information Outcome으로 구분한다.
 - Provider Credential은 서버 환경변수 또는 AES-256-GCM 암호화 저장소에만 둔다.
 - 비로그인 공개 조회와 이메일·Google·GitHub 회원 로그인을 지원한다.
-- [공급자 지원 범위 조사](./issues/01-research-provider-capabilities.md): 무료 공공 정본을 먼저 연결하고 Alpaca IEX·KRX EOD·사용자별 KIS·Gemini 무료 티어는 허용 범위 안에서만 사용하며, 유료 시세·옵션·뉴스 feed는 보류한다.
+- [공급자 지원 범위 조사](./issues/01-research-provider-capabilities.md): 무료 공공 정본을 먼저 연결하고 Alpaca Basic과 유용한 KIS 개인 capability를 권리 범위 안에서 사용한다. Gemini는 모든 지원 자료 유형에 적용하며 유료 시세·옵션·뉴스 feed는 보류한다.
 - [고밀도 터미널 Workspace 프로토타입](./issues/02-prototype-terminal-workspace.md): 워크스테이션 그리드를 기본으로 하고 종목 리서치 근거 패널과 하단 Paper Blotter를 결합하며, 모든 위젯·패널 조절과 모바일 단일 열 축소를 지원한다.
-- [데이터·Identity 모듈 설계](./issues/03-design-data-identity-modules.md): FinancialInformation, ResearchAssistant, Identity, ProviderConnections를 TerminalView가 조합하며, Evidence Reference와 Information Outcome으로 출처·권리·실패를 일관되게 처리하고 Provider Credential 원문 접근을 차단한다.
+- [데이터·Identity 모듈 설계](./issues/03-design-data-identity-modules.md): FinancialInformation, ResearchAssistant, Identity, ProviderConnections와 NotificationCenter를 TerminalView가 조합한다. source-owned AI/Alert resolver, Evidence Reference와 Information Outcome으로 출처·권리·실패를 일관되게 처리하고 Provider Credential 원문 접근을 차단한다.
 - [포트폴리오와 거래 모델 결정](./issues/04-design-portfolio-trading-model.md): ActualPortfolio와 PaperTrading을 별도 원장·module로 격리하고, 실제 계좌는 읽기 전용으로 동기화하며, Paper 주문만 명시적인 예약·불확실성·대조 경계를 거쳐 전송한다.
 - [테스트 seam과 성능 예산 결정](./issues/05-define-testing-seams.md): `free_only` 실행 모드, public Interface 중심의 독립 oracle, network-off 결정론적 CI와 opt-in sandbox contract, freshness·HTTP·browser·worker의 수치 합격 예산을 확정했다.
-- 다음 frontier는 [무료 알림 전달과 운영 이메일 경로 조사](./issues/06-research-free-alert-delivery.md)다.
+- [무료 알림 전달과 운영 이메일 경로 조사](./issues/06-research-free-alert-delivery.md): 인앱 Notification Record를 정본으로 두고 표준 Web Push, Resend Free 운영 email과 Mailpit local/CI 경로, consent·quota·retry·delivery fact를 확정했다.
+- 다음 frontier는 [승인 가능한 MVP 스펙 작성](./issues/07-write-approved-mvp-spec.md)이다.
 
 ## Out of scope
 

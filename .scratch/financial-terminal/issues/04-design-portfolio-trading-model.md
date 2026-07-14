@@ -188,7 +188,7 @@ Paper Blotter는 account별 주문 접수, fill, cancel, reject, expiry와 uncer
 - `PortfolioWorkQueue`: remote but owned. sync, broker paper submit와 reconciliation job을 전달한다.
 - PostgreSQL journal/projection과 Redis lock/cache: local-substitutable internal seam. production adapter와 PGLite/in-memory test adapter를 둔다.
 - 계산, journal reducer, Internal simulator, cost basis, TWR/XIRR, allocation: in-process. public interface를 통해 검증하며 불필요한 port를 만들지 않는다.
-- 가격, FX, 배당과 corporate action은 FinancialInformation의 server-only EvidenceResolver를 목적별로 좁혀 사용한다.
+- 가격, FX, 배당과 corporate action은 FinancialInformation이 ActualPortfolio/PaperTrading에만 주입하는 server-only `PortfolioEvidenceResolver`로 purpose-bound typed calculation input을 받는다. ResearchAssistant 전용 EvidenceResolver를 재사용하거나 raw Evidence getter를 만들지 않는다.
 - broker adapter는 ProviderConnections의 ProviderAuthorization이 발급한 read 또는 paper 전용 AuthorizedTransport만 받는다.
 - queue에는 Viewer Context, Provider Credential, AuthorizedTransport, raw broker payload를 넣지 않는다. JobContextReference만 저장하고 실행 시 Identity가 권한 epoch와 capability를 다시 확인한다.
 

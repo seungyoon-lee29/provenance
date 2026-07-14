@@ -6,21 +6,21 @@
 
 ## 결론
 
-현재 제품 결정은 외부 데이터·뉴스·AI 공급자 구독비 **USD 0/월**이다. 아래 공개 프로덕션 유료 조합은 향후 전환 후보로만 보존하며 지금은 활성화하지 않는다. SEC EDGAR, Open DART, 미국 재무부, ECB와 승인된 KRX EOD 같은 무료 정본을 우선하고, 기존 Alpaca·KIS·Gemini 무료 자격증명은 개인 개발·Paper Trading·비민감 AI처럼 License Scope가 허용한 경로에만 쓴다. 무료로 권리를 충족할 수 없는 공개 미국 시세·지수·옵션·뉴스와 한국 실시간 시세는 숫자를 만들지 않고 `API 필요` 또는 `표시 권한 없음`으로 둔다.
+현재 제품 결정은 외부 데이터·뉴스·AI 공급자 구독비 **USD 0/월**이다. 아래 공개 프로덕션 유료 조합은 향후 전환 후보로만 보존하며 지금은 활성화하지 않는다. SEC EDGAR, Open DART, 미국 재무부, ECB와 승인된 KRX EOD 같은 무료 정본을 우선한다. Alpaca Basic과 KIS는 개인 개발·개인 Workspace·Paper Trading에서 유용한 무료 capability를 최대한 사용하고, Gemini 무료 tier는 Viewer Context·원천 License Scope·최소화/redaction을 통과한 모든 지원 자료 유형에 사용한다. 무료로 권리를 충족할 수 없는 공개 미국 시세·지수·옵션·뉴스와 한국 실시간 시세는 숫자를 만들지 않고 `API 필요` 또는 `표시 권한 없음`으로 둔다.
 
 초기 제품에는 다음 조합이 가장 현실적이다.
 
 | 기능 | 내부 프로토타입 / Paper Trading | 공개 프로덕션 후보(현재 보류) |
 | --- | --- | --- |
 | 미국 주식·ETF | Alpaca Basic의 실시간 IEX + 15분 지난 SIP 이력 | Massive 또는 Twelve Data의 **Business** 계약, 또는 Alpaca Broker API 계약 |
-| 미국 지수·옵션 | Massive/Alpaca 무료·개인 플랜으로 개발 | 지수 제공자·OPRA 권리를 포함한 Business 계약 |
+| 미국 지수·옵션 | 실제 지수는 비활성, Alpaca Basic indicative option으로 개발 | 지수 제공자·OPRA 권리를 포함한 Business 계약 |
 | 금리 | 미국 재무부 XML/CSV + FRED | 동일하되 원천 시리즈별 권리와 FRED 고지 준수 |
 | 원자재·FX | Alpha Vantage/Twelve Data 소수 심볼, ECB 참조환율 | Twelve Data/Massive Business; 선물은 CME 권리 포함 여부 확인 |
-| 한국 주식 | KRX 일별 Open API + 사용자 자신의 KIS Open API | 실시간·지연 시세 공개 표시는 KRX/코스콤 또는 승인된 벤더 계약 |
+| 한국 주식 | KRX 일별 Open API + 사용자 자신의 KIS 시세·차트·계좌·모의투자 API | 실시간·지연 시세 공개 표시는 KRX/코스콤 또는 승인된 벤더 계약 |
 | 미국·한국 공시 | SEC EDGAR + Open DART | 그대로 사용하되 속도 제한, 출처, 원문 링크 유지 |
-| 뉴스 | Alpaca/Benzinga 또는 News API 개발 플랜으로 평가 | Benzinga/News API 유료 라이선스; 기사 전문은 별도 권리 없이는 저장·재게시 금지 |
+| 뉴스 | News API 개발 플랜, entitlement probe가 성공한 개인 Alpaca News로 평가 | Benzinga/News API 유료 라이선스; 기사 전문은 별도 권리 없이는 저장·재게시 금지 |
 | 재무·실적 | SEC XBRL + DART를 정본으로 사용, Alpha Vantage는 정규화 보조 | 정본 보존 + 정규화 공급자 상업 계약 |
-| AI | Gemini Developer API 무료 티어로 비민감 샘플 평가 | 유료 티어 + 서버 측 Auth key/Secret Manager; 무료 티어에 고객 데이터를 보내지 않음 |
+| AI | Gemini Developer API 무료 티어로 모든 지원 자료 유형 처리; 개인 자료는 최소화·redaction과 무료-tier data-use 고지 적용 | 유료 티어 보류; 운영 전 모델·quota·약관을 재검증 |
 | 주문 | 앱 자체 Paper Trading을 기본값으로 유지 | Live Trading 송신은 계속 비활성화하고 Alpaca/IBKR/KIS 어댑터·계좌 조회까지만 구현 |
 
 가장 중요한 전제는 **API 접근권과 최종 사용자에게 데이터를 표시·재배포할 권리가 다르다**는 점이다. Alpaca는 API 데이터 재배포를 허용하지 않는다고 명시하며, Twelve Data 개인 플랜도 제3자 표시·재배포를 허용하지 않는다. KRX 실시간·지연 시세를 수익사업이나 재배포 프로그램에 쓰려면 별도 계약이 필요하다. 따라서 개발용 개인 키로 공개 터미널을 운영하면 안 된다. [Alpaca 재배포 안내](https://alpaca.markets/support/redistribute-alpaca-api), [Twelve Data 상업/개인 이용](https://support.twelvedata.com/en/articles/5332349-commercial-and-personal-usage), [KRX 데이터 수신방법](https://openapi.krx.co.kr/contents/OPP/DATA/OPPDATA003.jsp)
@@ -101,7 +101,8 @@ Massive가 가장 직접적인 후보다. 10,000개 이상의 지수를 REST, We
 - 인증: 한국투자증권 계좌와 서비스 신청 후 실전·모의 App Key/App Secret을 따로 발급한다. REST는 access token, WebSocket은 접속키를 사용한다.
 - 범위: 국내·해외 주식, ETF/ETN, 채권, 국내·해외 선물옵션의 시세·주문·잔고. REST와 WebSocket 공식 샘플이 있다.
 - 한도: 2026-04-20 안내 기준 REST 실전은 계좌당 초당 18건, 모의는 초당 1건, token 발급은 초당 1건이다. WebSocket은 앱키당 1세션, 전체 상품 합산 41건 등록이다.
-- 실무 판단: **연결한 사용자 자신의 계좌 화면과 주문 어댑터**에는 적합하다. 서비스 전체 사용자에게 한국 시세를 재배포하는 공용 feed로 간주하지 말고 제휴·시세 이용 권리를 별도로 확인한다. [KIS 포털](https://apiportal.koreainvestment.com/intro), [공식 샘플 저장소](https://github.com/koreainvestment/open-trading-api), [호출 유량 안내](https://apiportal.koreainvestment.com/community/10000000-0000-0011-0000-000000000001/post/d0d1a83f-6f8d-4437-9700-6d26702fd989)
+- 비용 분류: 사용자 결정에 따라 구독비 `USD 0`의 `free_personal`로 취급한다. 공식 공개 가격표로 모든 API의 비용을 독립 검증한 것은 아니며 거래 수수료·거래소 비용과 API 접근비는 구분한다.
+- 실무 판단: **연결한 사용자 자신의 시세·차트·순위·재무/일정·뉴스 제목·계좌·손익·모의투자**에 폭넓게 사용한다. 엔드포인트별 실전/모의 지원과 feed 지연은 capability manifest와 smoke 결과를 기준으로 표시한다. 개인 시세는 본인 투자 목적에 한정되고 제3자 제공이 금지되므로 서비스 전체 사용자에게 재배포하는 공용 feed나 공유 cache로 간주하지 않는다. 다중 사용자 BYOK도 KIS 서면 확인 전에는 개인 범위를 넘기지 않는다. [KIS 이용 대상](https://apiportal.koreainvestment.com/about-open-api), [KIS API 카탈로그](https://apiportal.koreainvestment.com/apiservice-category), [공식 샘플 저장소](https://github.com/koreainvestment/open-trading-api), [호출 유량 안내](https://apiportal.koreainvestment.com/community/10000000-0000-0011-0000-000000000001/post/d0d1a83f-6f8d-4437-9700-6d26702fd989)
 
 ### 7. SEC EDGAR
 
@@ -122,7 +123,7 @@ Massive가 가장 직접적인 후보다. 10,000개 이상의 지수를 REST, We
 
 #### Alpaca News / Benzinga
 
-Alpaca는 Benzinga 원천의 과거 뉴스 REST와 실시간 뉴스 WebSocket(`v1beta1/news`)을 제공한다. 주식 심볼 연결이 쉬워 개인 프로토타입에 유리하지만 Alpaca 데이터 재배포 금지와 Benzinga 콘텐츠 권리가 함께 적용될 수 있다. 프로덕션에서는 Benzinga와 직접 라이선스를 협의하는 편이 명확하다. Benzinga는 REST와 실시간 WebSocket/TCP를 제공하고 시작 단계에서 licensing 팀 접촉을 요구한다. [Alpaca 과거 뉴스](https://docs.alpaca.markets/us/docs/historical-news-data), [Alpaca 실시간 뉴스](https://docs.alpaca.markets/us/docs/streaming-real-time-news), [Benzinga WebSocket](https://docs.benzinga.com/ws-reference/overview), [Benzinga 시작 안내](https://docs.benzinga.com/introduction/introduction)
+Alpaca는 Benzinga 원천의 2015년 이후 과거 뉴스 REST와 실시간 뉴스 WebSocket(`v1beta1/news`)을 제공한다. 다만 공식 Basic 플랜 표에서 뉴스 entitlement를 명확히 확인할 수 없으므로 startup/runtime capability probe가 성공한 개인 계정에서만 로컬·개인 Workspace에 활성화한다. 주식 심볼 연결이 쉬워 개인 프로토타입에 유리하지만 Alpaca 데이터 재배포 금지와 Benzinga 콘텐츠 권리가 함께 적용될 수 있다. 프로덕션에서는 Benzinga와 직접 라이선스를 협의하는 편이 명확하다. [Alpaca 과거 뉴스](https://docs.alpaca.markets/us/docs/historical-news-data), [Alpaca 실시간 뉴스](https://docs.alpaca.markets/us/docs/streaming-real-time-news), [Benzinga WebSocket](https://docs.benzinga.com/ws-reference/overview), [Benzinga 시작 안내](https://docs.benzinga.com/introduction/introduction)
 
 #### News API
 
@@ -136,7 +137,7 @@ Alpaca는 Benzinga 원천의 과거 뉴스 REST와 실시간 뉴스 WebSocket(`v
 
 ### 10. 옵션
 
-- Alpaca Basic: 옵션 계약/체인과 indicative feed, REST 및 WebSocket을 제공한다. 유료 플랜은 OPRA 실시간·최근 15분 제한 해제를 제공한다. Paper Trading 옵션도 가능하다.
+- Alpaca Basic: 옵션 계약/체인과 indicative quote feed, REST 및 WebSocket을 제공한다. OPRA-derived trade와 이력의 최신 15분은 제한되고 공식 이력은 2024-02 이후다. 유료 플랜은 OPRA 실시간·최근 15분 제한 해제를 제공한다. Paper Trading 옵션도 가능하다.
 - Massive: OPRA 직결 전 시장 옵션 trades/quotes/aggregates, 체인, Greeks/IV/OI, REST/WebSocket/Flat Files를 제공한다. 개인 실시간 플랜은 OPRA의 non-professional 분류를 요구하고 사업자는 Business 계약이 필요하다.
 - 실무 판단: 개발은 Alpaca indicative 또는 15분 지연, 공개 실시간 옵션판은 OPRA 권리를 포함한 Massive/Alpaca 사업 계약 후 활성화한다. 옵션 가격에는 반드시 `indicative`, `15분 지연`, `OPRA 실시간` 배지를 표시한다. [Alpaca 옵션 데이터 플랜](https://docs.alpaca.markets/us/docs/about-market-data-api), [Alpaca 옵션 WebSocket](https://docs.alpaca.markets/us/docs/real-time-option-data), [Massive 옵션 REST](https://massive.com/docs/rest/options/overview), [Massive 옵션 WebSocket](https://massive.com/docs/websocket/options/overview), [OPRA pro/non-pro 분류](https://massive.com/knowledge-base/article/what-are-pro-and-non-pro-classifications-for-massives-options-date)
 
@@ -152,7 +153,7 @@ Alpha Vantage는 회사 overview, 손익/대차대조표/현금흐름, earnings,
 - 무료 티어: 모델별 제한 안에서 무료지만 입력/출력이 Google 제품 개선에 사용될 수 있다.
 - 유료 티어: 더 높은 production limit을 제공하며 입력/출력을 제품 개선에 사용하지 않는다고 가격표에 명시한다. 실제 한도는 model·project·usage tier별로 AI Studio에서 확인한다.
 - 2026 보안 변화: 새 키는 서비스 계정에 묶인 Auth key가 기본이며, unrestricted standard key는 거부되고 2026년 9월 standard key 전체 종료가 예정돼 있다.
-- 실무 판단: 현재는 무료 티어를 외부 모델 처리·파생물 생성이 모두 허용된 비민감 공시 Evidence에만 선택적으로 사용한다. 파생물 생성 자체가 금지되면 Gemini와 로컬 규칙을 모두 호출하지 않고 `license_restricted`를 반환한다. 파생물 생성은 허용되지만 외부 모델 처리 불가, quota·key 부재 또는 timeout이면 지원하는 task에만 로컬 규칙으로 폴백하고, 로컬 규칙도 지원하지 않으면 내용을 만들지 않고 `api_required` 또는 `no_data`를 반환한다. 계좌번호·주문 토큰·API secret·개인정보는 프롬프트에 넣지 않는다. 유료 티어는 보류하며 모델 결과에는 근거 공시 링크와 생성 시각을 붙이고 투자 조언으로 단정하지 않는다. [Gemini 가격](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [API key 보안](https://ai.google.dev/gemini-api/docs/api-key)
+- 실무 판단: 무료 티어를 시장·뉴스·SEC/DART 공시·실적·옵션·ETF·환율·금리·원자재·차트, Actual/Paper Portfolio와 주문 문맥을 포함한 모든 지원 자료 유형의 기본 AI adapter로 사용한다. 자료 유형만으로 차단하지 않되 Viewer Context와 원천의 외부 모델 처리·파생물 권리를 확인하고 최소화된 AI Material Envelope만 전송한다. Provider Credential, session/auth token, 원문 계좌번호, 주문 실행 비밀과 직접 식별자는 제외한다. 파생물 생성이 금지되면 Gemini와 로컬 규칙 모두 `license_restricted`, 외부 처리만 금지되면 지원 local rule 또는 `license_restricted`, key 부재는 local rule 또는 `api_required`, quota·timeout·5xx는 local rule과 Provider Degradation 또는 원인별 `failed`, Evidence 부재만 `no_data`다. 유료 티어는 보류하며 결과에는 Evidence Reference, 모델·정책 버전과 생성 시각을 붙이고 투자 조언으로 단정하지 않는다. [Gemini 가격](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [API key 보안](https://ai.google.dev/gemini-api/docs/api-key)
 
 ## Broker Connection 평가
 
@@ -161,7 +162,7 @@ Alpha Vantage는 회사 overview, 손익/대차대조표/현금흐름, earnings,
 - Paper Trading은 전 세계 이메일 가입이 가능하고 무료 실시간 IEX를 쓰며, live와 별도 key·도메인(`paper-api`)을 사용한다. 주문은 실제 거래소로 라우팅되지 않고 시장충격·queue position·규제비용·배당 등을 시뮬레이션하지 않는다.
 - 본인 계좌 자동화는 key/secret, 다중 사용자 연결은 OAuth 2.0 Connect API가 맞다. live trading을 다른 사용자에게 제공하려면 Alpaca 승인과 상업 앱 공개가 필요하다.
 - REST 주문/계좌와 WebSocket trade updates를 제공한다. OAuth `state`, 정확한 redirect URI, 최소 scope를 사용하고 refresh/access token은 서버에서 암호화 보관한다.
-- 적합성: 미국 주식 Paper Trading 첫 연동에 가장 단순하다. [Paper Trading](https://docs.alpaca.markets/us/docs/paper-trading), [Connect API](https://docs.alpaca.markets/us/docs/about-connect-api), [OAuth 연동](https://docs.alpaca.markets/us/docs/using-oauth2-and-trading-api), [주문 WebSocket](https://docs.alpaca.markets/us/docs/websocket-streaming)
+- 적합성: 미국 주식 Paper Trading 첫 연동과 개인 Workspace의 IEX 실시간·주식 이력·indicative option 검증에 가장 단순하다. News는 entitlement probe 뒤 개인 범위에서만 쓴다. [Market Data 플랜](https://docs.alpaca.markets/us/docs/about-market-data-api), [Paper Trading](https://docs.alpaca.markets/us/docs/paper-trading), [Connect API](https://docs.alpaca.markets/us/docs/about-connect-api), [OAuth 연동](https://docs.alpaca.markets/us/docs/using-oauth2-and-trading-api), [주문 WebSocket](https://docs.alpaca.markets/us/docs/websocket-streaming)
 
 ### Interactive Brokers
 
@@ -173,7 +174,7 @@ Alpha Vantage는 회사 overview, 손익/대차대조표/현금흐름, earnings,
 
 ### 한국투자증권
 
-KIS는 한국 거주 사용자의 국내·해외 자산 계좌 조회와 주문에 가장 직접적이다. 실전/모의 app key를 물리적으로 분리하고, REST token·WebSocket approval key·계좌번호를 사용자별 암호화 저장한다. 계좌당 낮은 호출 한도 때문에 polling보다 WebSocket을 우선하고, token을 호출마다 새로 발급하지 않는다. 공용 시세 공급자와 사용자별 Broker Connection을 같은 자격증명으로 합치지 않는다. 공식 샘플은 `kis_devlp.yaml`에 개인정보 입력이 필요하다고 명시하므로 이를 저장소에 복사하지 말고 운영 secret store로 대체한다. [KIS 공식 저장소](https://github.com/koreainvestment/open-trading-api), [KIS 포털](https://apiportal.koreainvestment.com/intro)
+KIS는 한국 거주 사용자의 국내·해외 시세·차트·계좌와 모의투자에 가장 직접적이다. 사용자 결정상 구독비 USD 0의 `free_personal`로 분류해 공식 capability catalog의 유용한 조회 기능을 적극 사용하되 각 endpoint의 실전/모의 지원과 지연은 runtime manifest로 확인한다. 실전/모의 app key를 물리적으로 분리하고, REST token·WebSocket approval key·계좌번호를 사용자별 암호화 저장한다. 계좌당 낮은 호출 한도 때문에 polling보다 WebSocket을 우선하고, token을 호출마다 새로 발급하지 않는다. 공용 시세 공급자와 사용자별 Broker Connection을 같은 자격증명으로 합치지 않는다. 공식 샘플은 `kis_devlp.yaml`에 개인정보 입력이 필요하다고 명시하므로 이를 저장소에 복사하지 말고 운영 secret store로 대체한다. [KIS 공식 저장소](https://github.com/koreainvestment/open-trading-api), [KIS API 카탈로그](https://apiportal.koreainvestment.com/apiservice-category)
 
 ## 프로덕션 보안·운영 체크리스트
 
@@ -189,8 +190,8 @@ KIS는 한국 거주 사용자의 국내·해외 자산 계좌 조회와 주문�
 ## 권장 도입 순서
 
 1. SEC EDGAR, Open DART, 미국 재무부, ECB처럼 권리가 명확한 공공 정본을 먼저 연결한다.
-2. Alpaca Paper Trading + Basic IEX로 미국 주식 UX와 주문 상태 모델을 검증한다.
-3. KRX 일별 Open API로 한국 종목·EOD를 넣고, KIS 모의 계좌는 사용자별 Broker Connection으로 분리한다.
-4. Gemini 무료 티어를 비민감 공시 요약에 선택적으로 사용한다. 파생물 생성 권리가 없으면 `표시 권한 없음`, 파생물은 허용되지만 외부 모델 처리나 key·quota 조건이 맞지 않으면 지원 가능한 로컬 규칙 또는 `API 필요/데이터 없음`으로 처리한다. 요약은 항상 정본 링크를 포함한다.
+2. Alpaca Basic IEX·주식 이력·indicative option과 Paper Trading으로 미국 주식 UX와 주문 상태 모델을 검증한다. News는 entitlement probe가 성공한 개인 연결에서만 활성화한다.
+3. KRX 일별 Open API로 한국 종목·EOD를 넣고, KIS 개인 시세·차트·계좌·모의투자는 사용자별 연결로 분리한다.
+4. Gemini 무료 티어를 모든 지원 자료 유형에 사용한다. Viewer Context·최소화/redaction·원천 License Scope를 통과시키고 실패 원인별 local fallback/Information Outcome을 반환하며 결과는 항상 Evidence Reference를 포함한다.
 5. 유료 데이터 도입 결정 전까지 Massive/Twelve Data, KRX/코스콤과 뉴스 공급자 adapter를 활성화하지 않는다.
 6. 향후 계약된 feed만 실시간으로 활성화하고 옵션·선물·Live Trading은 별도의 안전성 및 규제 검토 뒤 진행한다.
