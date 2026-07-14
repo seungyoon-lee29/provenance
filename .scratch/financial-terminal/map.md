@@ -21,6 +21,7 @@
 - Provider Credential은 서버 환경변수 또는 AES-256-GCM 암호화 저장소에만 둔다.
 - 비로그인 공개 조회와 이메일·Google·GitHub 회원 로그인을 지원한다.
 - [공급자 지원 범위 조사](./issues/01-research-provider-capabilities.md): 공공 정본을 먼저 연결하고, 개발은 Alpaca IEX·KRX EOD·사용자별 KIS로 검증하며, 공개 실시간 시세·옵션·뉴스는 표시/재배포 계약이 확인된 feed만 활성화한다.
+- [고밀도 터미널 Workspace 프로토타입](./issues/02-prototype-terminal-workspace.md): 워크스테이션 그리드를 기본으로 하고 종목 리서치 근거 패널과 하단 Paper Blotter를 결합하며, 모든 위젯·패널 조절과 모바일 단일 열 축소를 지원한다.
 
 ## Not yet specified
 
