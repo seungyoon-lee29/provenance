@@ -16,6 +16,142 @@ _Avoid_: 실제 모드, 일반 주문
 Paper Trading 주문의 접수, 체결, 취소와 거절 이력을 시간순으로 보여주는 기록. Live Trading 주문은 포함하지 않는다.
 _Avoid_: 주문 내역, 거래 로그
 
+**Actual Portfolio**:
+로그인 사용자의 실제 자산을 나타내는 포트폴리오. Broker Position과 Manual Position을 화면에서 합산할 수 있지만 각 보유는 원천 계좌와 출처를 유지하며 Paper Portfolio를 포함하지 않는다.
+_Avoid_: 내 포트폴리오, 실계좌
+
+**Paper Portfolio**:
+Paper Trading의 현금, 보유 종목, 주문과 체결로만 구성되는 독립된 모의 자산. Actual Portfolio의 평가금액, 손익이나 비중에는 포함되지 않는다.
+_Avoid_: 모의 자산, 가상 실계좌
+
+**Internal Paper Account**:
+터미널 자체 체결 규칙으로 운영되는 기본 Paper Trading 계좌. 외부 브로커 샌드박스의 주문이나 잔고를 포함하지 않는다.
+_Avoid_: 기본 계좌, 가상 브로커
+
+**Broker Paper Account**:
+Alpaca Paper나 KIS 모의투자처럼 Broker Connection의 샌드박스에서 주문과 체결 상태를 관리하는 Paper Trading 계좌. Internal Paper Account와 원장 및 주문을 공유하지 않는다.
+_Avoid_: 모의 계좌, 브로커 계좌
+
+**Paper Order**:
+하나의 Internal Paper Account 또는 Broker Paper Account에 제출되는 안정적인 client order identity를 가진 Paper Trading 지시. 작성할 때 선택한 대상 계좌와 환경은 제출 이후 변경되지 않는다.
+_Avoid_: 주문, 가상 주문
+
+**Paper Reservation**:
+접수됐지만 아직 완전히 체결되지 않은 Paper Order를 위해 사용 가능한 현금 또는 매도 가능 수량에서 분리한 금액·수량. submission 거절, 확인된 취소, 만료 또는 최종 체결 뒤 남은 부분만 해제하며 취소 요청 거절에는 유지한다.
+_Avoid_: 체결 금액, 주문 증거금
+
+**Submission Uncertainty**:
+Broker Paper Account가 Paper Order의 접수나 거절을 아직 확인하지 못한 상태. 실패로 단정하거나 같은 주문을 재전송하지 않고 client order identity로 결과를 대조한다.
+_Avoid_: 주문 실패, 재시도 대기
+
+**Simulated Fill**:
+Paper Order 제출 이후 관측한 실제 Market Observation과 공개된 슬리피지·수수료 가정으로 Internal Paper Account가 만든 체결 결과. 실제 거래소나 브로커 체결을 의미하지 않는다.
+_Avoid_: 체결, 예상 체결
+
+**Broker Position**:
+Broker Connection을 통해 외부 증권사 계좌에서 동기화한 실제 보유 상태. 원천 증권사 계좌가 기준이며 사용자가 직접 수정하지 않는다.
+_Avoid_: 연동 보유종목, 가져온 종목
+
+**Broker Snapshot**:
+외부 증권사가 특정 기준 시각에 보고한 계좌의 보유 종목과 현금 상태. 현재 상태의 근거이며 그 자체가 과거 Portfolio Activity를 대체하지 않는다.
+_Avoid_: 계좌 원장, 실시간 잔고
+
+**Broker Sync Status**:
+Broker Connection 동기화의 진행, 마지막 성공, 최신 아님, 실패 또는 재인증 필요 상태와 기준 시각. 마지막 Snapshot을 현재 값처럼 오인하지 않도록 표시한다.
+_Avoid_: Data Freshness, 연결 여부
+
+**Disconnected Broker Account**:
+Broker Connection의 Provider Credential이 폐기된 뒤 사용자가 보존하기로 한 정규화 이력. 마지막 동기화 시점에 고정되며 현재 브로커 상태로 취급하지 않는다.
+_Avoid_: 연결된 계좌, 삭제된 계좌
+
+**Manual Position**:
+Broker Connection이 아닌 사용자의 직접 입력으로 관리되는 실제 보유 상태. Broker Position을 덮어쓰거나 보정하는 용도로 사용하지 않는다.
+_Avoid_: 임시 보유, 수정 보유
+
+**Opening Position**:
+이전 Portfolio Activity가 없을 때 알려진 기준일의 종목, 수량, 평균단가와 통화를 하나의 synthetic aggregate lot으로 기록한 시작 상태. 기준일 이전의 거래 시점, 실제 tax lot이나 성과를 추정하지 않는다.
+_Avoid_: 최초 매수, 과거 거래 복원
+
+**Portfolio Activity**:
+특정 포트폴리오 계좌의 증권 또는 현금을 변화시키는 매수·매도, 배당, 수수료, 세금, 입출금, 환전이나 기업행동 기록. 원천, 계좌와 발생 시각을 유지한다.
+_Avoid_: 거래 내역, 변경 로그
+
+**Portfolio Transfer**:
+같은 소유자의 계좌 사이에서 현금이나 증권을 이동하는 연결된 두 개의 Portfolio Activity. 조회하는 Portfolio Scope 안에서는 외부 입출금이나 매매가 아니며 현물의 원가 출처를 유지한다.
+_Avoid_: 입출금, 매수·매도
+
+**Corporate Action Adjustment**:
+공식 공시 또는 브로커 근거가 있는 분할, 병합, 종목코드 변경, 합병, 분사, 상장폐지나 현금 대가를 반영하는 Portfolio Activity. 기존 이력을 덮어쓰지 않고 변경 전후 상태와 Evidence를 보존한다.
+_Avoid_: 수동 보정, 종목 수정
+
+**Performance Coverage**:
+고정된 Portfolio Scope의 시작·종료와 모든 외부 현금흐름 경계에서 Portfolio Activity, 평가 가격과 환율 근거가 충분한 기간. 범위 밖의 수익률은 추정하지 않고 데이터 없음으로 취급한다.
+_Avoid_: 조회 기간, 보유 기간
+
+**Portfolio Scope**:
+평가와 성과 계산에 포함하는 계좌·자산 집합과 그 membership timeline. 연결 해제나 계좌 추가로 범위가 바뀌면 같은 성과 시계열로 조용히 이어 붙이지 않는다.
+_Avoid_: 계좌 필터, 조회 대상
+
+**Reporting Currency**:
+여러 통화의 포트폴리오 금액과 성과를 함께 표시할 때 사용자가 선택하는 표시 통화이며 기본값은 KRW다. 원래 거래 통화와 원가는 변경하지 않는다.
+_Avoid_: 기준 환율, 계좌 통화
+
+**FX Contribution**:
+증권과 현금을 포함한 원통화 가치에 환율 변화가 미쳐 Reporting Currency 기준 성과에 생긴 부분. 자산 가격 성과와 교호항을 조정해 전체 성과와 일치시키며 세무상 환차손익을 의미하지 않는다.
+_Avoid_: 환차익, 환율 수익률
+
+**Portfolio Return**:
+외부 입출금의 영향을 제거한 시간가중수익률로 나타내는 대표 포트폴리오 성과. Performance Coverage 안에서만 계산하며 FX Contribution을 구분한다.
+_Avoid_: 총 수익률, 계좌 수익률
+
+**Personal Return**:
+사용자의 입출금 시점과 금액을 반영한 금액가중수익률. 전체 현금흐름이 있는 Performance Coverage에서만 계산한다.
+_Avoid_: 실제 수익률, 내 수익률
+
+**Portfolio P&L**:
+실현·미실현손익, 배당, 수수료, 세금과 FX translation을 중복 없이 조정한 손익. 원통화와 Reporting Currency 결과를 구분하며 외부 입출금은 포함하지 않는다.
+_Avoid_: 계좌 증감액, 총 입출금
+
+**Source Cost Basis**:
+외부 증권사가 평균단가 또는 tax lot으로 보고한 원가 정보. source observation은 보존하고 current projection은 명시적인 correction으로만 갱신하며 터미널의 자체 계산으로 덮어쓰지 않는다.
+_Avoid_: 분석 원가, 세무 원가
+
+**Source Realized P&L**:
+외부 증권사가 gross 또는 net 기준, 포함된 수수료·세금과 계산 기간을 함께 보고한 실현손익. 동일 항목을 Portfolio Activity에서 다시 차감하지 않는다.
+_Avoid_: Source Cost Basis, 분석 손익
+
+**Analytic Cost Basis**:
+수동 Portfolio Activity에 사용자가 선택한 FIFO 또는 이동평균 방식을 적용한 분석용 원가. 세무 신고 자료가 아니며 Source Cost Basis와 다르면 두 값을 구분해 표시한다.
+_Avoid_: 취득가액, 세금 원가
+
+**Declared Dividend**:
+회사가 실제 발표해 금액, 통화와 일정의 출처를 확인할 수 있는 배당. 지급 전에는 확정 예정으로, 지급 후에는 실제 Portfolio Activity와 대조한다.
+_Avoid_: 예상 배당, 배당 전망
+
+**Dividend Entitlement**:
+Declared Dividend의 ex-date·record-date 규칙과 당시 계좌별 보유 이력으로 판단한 받을 권리. declaration의 정정·취소와 별도로 추적하며 보유 이력이 부족하면 금액을 추정하지 않는다.
+_Avoid_: 현재 보유 배당, 예상 배당
+
+**Estimated Dividend**:
+실제 지급 이력 또는 정식 공급자 전망을 근거로 계산한 미발표 배당 추정치. 계산 방법, 기준일과 데이터 범위를 밝히며 Declared Dividend와 합쳐 확정 금액처럼 표시하지 않는다.
+_Avoid_: 확정 배당, 보장 배당
+
+**Target Allocation**:
+사용자가 종목 또는 ETF별로 정한 목표 비중과 허용 편차. 설정된 경우에만 리밸런싱 필요 여부를 판단한다.
+_Avoid_: 추천 비중, 적정 비중
+
+**Exposure Guardrail**:
+섹터, 국가 또는 통화 노출에 사용자가 정한 최소·최대 허용 범위. Target Allocation을 대신해 자동으로 주문 수량을 결정하지 않는다.
+_Avoid_: 목표 비중, 투자 제한
+
+**Rebalancing Proposal**:
+Target Allocation, Exposure Guardrail과 사용 가능한 실제 시세·환율을 근거로 계산한 매수·매도 제안. 주문이 아니며 사용자의 별도 확인 없이 Paper Trading이나 Live Trading으로 전달되지 않는다.
+_Avoid_: 리밸런싱 주문, 자동 매매
+
+**Reconciliation Issue**:
+원천 증권사 계좌의 보유·현금 상태와 터미널이 마지막으로 반영한 상태 사이의 확인이 필요한 불일치. Broker Position의 값을 임의로 덮어쓰지 않는다.
+_Avoid_: 동기화 오류, 수동 보정
+
 **Broker Connection**:
 Provider Connection 중 외부 증권사의 계좌, 보유 종목과 주문 기능을 연결하는 사용자별 연결 정보.
 _Avoid_: 브로커 계정, 증권사 로그인
@@ -31,6 +167,10 @@ _Avoid_: API 권한, 데이터 플랜
 **Market Observation**:
 특정 시점과 출처에서 관측된 가격, 거래량, 금리, 환율 또는 지표 값. 항상 Data Freshness와 License Scope를 함께 제공한다.
 _Avoid_: 시세 숫자, 현재가 데이터
+
+**Price Basis**:
+가격 Market Observation이 원시 가격, 분할 조정 가격 또는 배당을 포함한 총수익 조정 가격 중 무엇인지 나타내는 근거. position·cash·basis 원장은 Corporate Action Adjustment를 별도로 적용하고, Price Basis는 일관된 시계열 입력을 선택해 중복 수익을 막는다.
+_Avoid_: 수정주가, 종가 종류
 
 **Evidence**:
 출처, 기준 시각, License Scope를 추적할 수 있는 Market Observation, 뉴스 원문 또는 공시. AI 번역, 요약과 분석은 사용한 Evidence를 인용한다.

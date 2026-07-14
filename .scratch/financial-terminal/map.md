@@ -23,10 +23,10 @@
 - [공급자 지원 범위 조사](./issues/01-research-provider-capabilities.md): 공공 정본을 먼저 연결하고, 개발은 Alpaca IEX·KRX EOD·사용자별 KIS로 검증하며, 공개 실시간 시세·옵션·뉴스는 표시/재배포 계약이 확인된 feed만 활성화한다.
 - [고밀도 터미널 Workspace 프로토타입](./issues/02-prototype-terminal-workspace.md): 워크스테이션 그리드를 기본으로 하고 종목 리서치 근거 패널과 하단 Paper Blotter를 결합하며, 모든 위젯·패널 조절과 모바일 단일 열 축소를 지원한다.
 - [데이터·Identity 모듈 설계](./issues/03-design-data-identity-modules.md): FinancialInformation, ResearchAssistant, Identity, ProviderConnections를 TerminalView가 조합하며, Evidence Reference와 Information Outcome으로 출처·권리·실패를 일관되게 처리하고 Provider Credential 원문 접근을 차단한다.
+- [포트폴리오와 거래 모델 결정](./issues/04-design-portfolio-trading-model.md): ActualPortfolio와 PaperTrading을 별도 원장·module로 격리하고, 실제 계좌는 읽기 전용으로 동기화하며, Paper 주문만 명시적인 예약·불확실성·대조 경계를 거쳐 전송한다.
 
 ## Not yet specified
 
-- 브로커 샌드박스 자격증명으로 검증 가능한 계좌·주문 범위
 - 알림 전달 채널과 운영 이메일 제공자
 
 ## Out of scope
