@@ -51,3 +51,7 @@
 ## 검증 결론
 
 관련 설계는 [무료 알림 전달 조사](../research/free-alert-delivery.md), [공급자 환경변수 계약](../configuration/provider-credentials.md), [CONTEXT](../../CONTEXT.md), 티켓 03~06과 테스트 seam에 동기화했다. 실제 Resend/Web Push/provider smoke는 일반 PR이 아니라 secret과 egress를 명시적으로 허용한 scheduled contract에서만 실행한다.
+
+## 티켓 07 후속 변경
+
+2026-07-15 승인 MVP spec이 이메일 로그인 요구를 통합하면서 위 Medium/Low 목록의 “MVP account challenge는 PendingAccountEmailTarget만 허용” 결론을 대체했다. 새 account 확인과 아직 verified address가 없는 recovery는 PendingAccountEmailTarget을 유지하고, 검증된 기존 계정의 sign-in/recovery는 WorkspaceSecurityEmailEndpoint와 별도 AccountChallengeDeliveryContext를 사용한다. 두 variant는 purpose·epoch·expiry·deletion fence를 transient Viewer Context 없이 다시 검사하며 서로 교환할 수 없다. 정본은 [티켓 07 검수](./2026-07-15-ticket-07-spec.md)와 [승인 MVP spec](../../.scratch/financial-terminal/spec.md)이다.

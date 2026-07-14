@@ -7,7 +7,7 @@
 ## Notes
 
 - 한국어를 기본 언어로 사용한다.
-- 공개 시장 정보는 로그인 없이 실제 데이터로 제공한다.
+- License Scope가 공개 표시를 허용한 시장 정보는 로그인 없이 실제 데이터로 제공하고, 그 밖의 요청은 숫자를 만들지 않고 Information Outcome을 표시한다.
 - 모든 Market Observation은 Data Freshness, 출처와 기준 시각을 포함한다.
 - Paper Trading은 완전 구현하고 Live Trading 주문 전송은 초기 산출물에서 비활성화한다.
 - 사용자별 Provider Credential은 암호화해 저장한다.
@@ -30,7 +30,8 @@
 - [포트폴리오와 거래 모델 결정](./issues/04-design-portfolio-trading-model.md): ActualPortfolio와 PaperTrading을 별도 원장·module로 격리하고, 실제 계좌는 읽기 전용으로 동기화하며, Paper 주문만 명시적인 예약·불확실성·대조 경계를 거쳐 전송한다.
 - [테스트 seam과 성능 예산 결정](./issues/05-define-testing-seams.md): `free_only` 실행 모드, public Interface 중심의 독립 oracle, network-off 결정론적 CI와 opt-in sandbox contract, freshness·HTTP·browser·worker의 수치 합격 예산을 확정했다.
 - [무료 알림 전달과 운영 이메일 경로 조사](./issues/06-research-free-alert-delivery.md): 인앱 Notification Record를 정본으로 두고 표준 Web Push, Resend Free 운영 email과 Mailpit local/CI 경로, consent·quota·retry·delivery fact를 확정했다.
-- 다음 frontier는 [승인 가능한 MVP 스펙 작성](./issues/07-write-approved-mvp-spec.md)이다.
+- [승인 가능한 MVP 스펙 작성](./issues/07-write-approved-mvp-spec.md): [승인 MVP spec](./spec.md)에 사용자 흐름, module/interface, 정보·권리·보안, Actual/Paper, 알림, 성능·테스트·배포 gate와 F0~F11 구현 ownership을 통합했다.
+- 현재 open frontier는 없다. 다음 작업은 승인 spec의 F0~F11을 의존성 순서의 implementation ticket으로 먼저 분해한 뒤 claim하는 것이다.
 
 ## Out of scope
 
