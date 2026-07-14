@@ -16,3 +16,6 @@
 - 작업마다 의존성, 파일 ownership, interface contract와 검증 기준을 명시한다.
 - 병렬 review의 관점 분리, 심각도 보정과 finding 중복 제거 규칙을 정의한다.
 - 팀 통신, 공유 contract 변경 알림과 종료 절차를 정의한다.
+- 위험도와 실제 병렬 가능성에 따라 팀 사용 여부와 reviewer 수를 조절한다.
+- 공유 worktree의 branch 전환, Git 책임과 파일 ownership 안전 규칙을 정의한다.
+- review finding의 필수 해결·연기 기준과 통합 검증 순서를 정의한다.
