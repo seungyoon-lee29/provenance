@@ -17,11 +17,12 @@
 
 - Paper Trading은 기본이자 완전 구현 범위이며 Live Trading 전송은 비활성화한다.
 - TypeScript 모듈형 모놀리스, PostgreSQL, Redis, 비동기 워커를 사용한다.
-- Market Observation은 다섯 가지 Data Freshness 상태와 출처·기준 시각을 제공한다.
+- 사용 가능한 Market Observation은 세 가지 Data Freshness 상태와 출처·기준 시각을 제공하고, API 필요·데이터 없음·공급자 실패는 Information Outcome으로 구분한다.
 - Provider Credential은 서버 환경변수 또는 AES-256-GCM 암호화 저장소에만 둔다.
 - 비로그인 공개 조회와 이메일·Google·GitHub 회원 로그인을 지원한다.
 - [공급자 지원 범위 조사](./issues/01-research-provider-capabilities.md): 공공 정본을 먼저 연결하고, 개발은 Alpaca IEX·KRX EOD·사용자별 KIS로 검증하며, 공개 실시간 시세·옵션·뉴스는 표시/재배포 계약이 확인된 feed만 활성화한다.
 - [고밀도 터미널 Workspace 프로토타입](./issues/02-prototype-terminal-workspace.md): 워크스테이션 그리드를 기본으로 하고 종목 리서치 근거 패널과 하단 Paper Blotter를 결합하며, 모든 위젯·패널 조절과 모바일 단일 열 축소를 지원한다.
+- [데이터·Identity 모듈 설계](./issues/03-design-data-identity-modules.md): FinancialInformation, ResearchAssistant, Identity, ProviderConnections를 TerminalView가 조합하며, Evidence Reference와 Information Outcome으로 출처·권리·실패를 일관되게 처리하고 Provider Credential 원문 접근을 차단한다.
 
 ## Not yet specified
 
