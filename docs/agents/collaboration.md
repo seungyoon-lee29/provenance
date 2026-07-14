@@ -9,6 +9,14 @@
 - 아키텍처, 보안, 데이터 손실, 외부 시스템 변경처럼 위험도가 높은 결정과 사용자 승인이 필요한 조치는 메인 에이전트가 직접 판단한다.
 - 멀티에이전트는 독립적으로 진행할 작업이 둘 이상이거나 서로 다른 검수 관점이 결과 품질을 실질적으로 높일 때만 사용한다. 단순하고 결과가 결정적인 작업은 메인 에이전트가 직접 수행한다.
 
+## 추론 강도
+
+- 프로젝트 기본 추론 강도는 `High`다. MVP spec처럼 공급자 권리, 인증, 포트폴리오, 주문, 알림과 성능 기준을 통합하는 작업에 사용한다.
+- `XHigh`는 인증·비밀 관리·데이터 권리·거래 안전·포트폴리오 회계·삭제/복구·동시성/idempotency처럼 오류 비용이 크거나 되돌리기 어려운 결정, 또는 두 번 이상 실패한 복합 디버깅에만 사용한다.
+- 합의된 interface contract 안의 기능 구현, 테스트 작성과 일반 리팩터링은 `Medium` 또는 `High`를 사용한다. UI 스타일, 문서 동기화와 기계적 변경은 `Medium`, 포맷팅과 단순 이름 변경만 `Low`를 허용한다.
+- 전체 작업을 항상 `XHigh`로 실행하지 않는다. 추론 강도를 높일 때는 새 추상화를 만드는 대신 확인할 위험, invariant와 검증 oracle을 먼저 적는다.
+- 금융 수치, 권한, 실제/모의 구분, 데이터 상태와 외부 전달 경계에는 `Low`를 사용하지 않는다.
+
 ## 작업 위임
 
 메인 에이전트는 서브에이전트에게 다음 정보를 제공한다.
@@ -21,6 +29,8 @@
 - 알려진 의존성, 위험과 제약
 
 병렬 작업은 서로 독립적이고 같은 파일이나 자원을 동시에 수정하지 않을 때만 사용한다. 작업이 겹치거나 선행 결과가 필요한 경우에는 순차적으로 배정한다.
+
+작업 시작 전 메인 에이전트는 frontier ticket을 claim하고 `git status --short --branch`로 기존 변경을 확인한다. dirty worktree가 있으면 사용자 또는 다른 에이전트의 변경으로 간주해 보존하고, 겹치는 파일을 안전하게 소유할 수 없으면 위임하지 않는다.
 
 ## 단계별 팀 운영
 
@@ -44,7 +54,7 @@
 
 ### 구현 단계
 
-- `parallel-feature-development`를 사용해 module, vertical slice 또는 directory 단위로 작업을 나눈다.
+- 독립적인 vertical slice가 둘 이상이고 파일 ownership이 겹치지 않을 때만 `parallel-feature-development`를 사용해 module, vertical slice 또는 directory 단위로 나눈다. 첫 end-to-end tracer나 공유 contract가 아직 움직이는 단계는 메인 에이전트 또는 1~2명이 순차적으로 완주한다.
 - 한 파일에는 언제나 한 명의 owner만 둔다. 공유 contract와 barrel/index 파일은 메인 에이전트 또는 지정된 한 명이 소유하며 다른 에이전트는 변경 요청만 보낸다.
 - 각 implementer는 합의된 interface contract를 읽기 전용으로 사용한다. 계약 변경은 owner와 메인 에이전트의 승인을 받고 영향받는 에이전트에게 알린 뒤 적용한다.
 - 공유 worktree에서는 branch를 전환하지 않고 같은 branch에서 엄격한 파일 ownership을 적용한다. sub-branch는 에이전트마다 별도 Git worktree가 있을 때만 사용하며 메인 에이전트가 통합한다.
@@ -66,6 +76,14 @@
 - interface나 선행 산출물이 준비되면 의존하는 에이전트에게 즉시 알리고, routine 상태를 반복 보고해 방해하지 않는다.
 - 에이전트가 완료되거나 유휴 상태가 되면 새 독립 작업을 배정하거나 종료한다. 종료 전에는 결과와 검증 근거가 저장됐는지 확인한다.
 - 에이전트가 중단되거나 완료하지 못하면 blocker, 부분 결과, 변경한 파일, 실행한 검증과 안전한 다음 단계를 보고한다.
+
+## 비밀과 외부 실행 가드
+
+- `.env.local`, `.env`, `.secrets/`, Provider Credential, broker account 식별자와 action token 원문은 읽기·출력·복사 범위를 최소화하고 Git에 stage하지 않는다. 상태 확인은 가능한 한 assignment 이름, configured 여부와 redacted fingerprint만 사용한다.
+- 메인 에이전트는 commit 전에 staged file allowlist, `git diff --cached --check`, secret pattern scan과 `.env.local`/`.secrets` 미추적 상태를 확인한다.
+- 일반 PR과 로컬 기본 실행은 실제 provider secret과 외부 egress 없이 scripted adapter를 사용한다. 실제 provider/browser/email smoke는 문서화된 opt-in contract flag와 allowlisted endpoint가 있을 때만 실행한다.
+- broker order mutation은 별도 opt-in flag, Paper 환경, 고정 최대 수량/금액과 cleanup 절차가 모두 있을 때만 허용한다. Live Trading route는 별도 사용자 승인과 새 ADR 전까지 존재하거나 호출되어서는 안 된다.
+- 외부 메시지 발송, 운영 배포, 실제 주문, 과금이 가능한 API와 제3자 상태 변경은 사용자가 둔 범위와 명시적 실행 gate를 넘어 추론으로 승인하지 않는다.
 
 ## 서브에이전트의 책임
 
@@ -105,6 +123,8 @@
 - `Medium` finding은 해결하거나 연기 사유, 영향과 후속 티켓을 기록한다.
 - `Low` finding은 기능과 안전에 영향이 없으면 선택적으로 backlog에 남길 수 있다.
 
+기본 검수 흐름은 관점이 분리된 통합 review 1회와 수정 뒤 affected scope만 보는 targeted re-review 1회다. 잔여 Critical/High, 새 직접 근거 또는 안전 경계 변경이 있을 때만 추가 re-review를 연다. 같은 전체 범위를 근거 없이 반복 검수하지 않는다. 추가 Medium이 나오면 메인 에이전트가 현재 티켓에서 해결할지 영향·연기 사유·후속 티켓으로 분리할지 기록한다.
+
 ## 완료와 최종 보고
 
-메인 에이전트는 승인된 결과를 통합하고 충돌과 누락을 확인한 뒤 전체 완료 여부를 최종 판단한다. 통합은 변경 파일 검수, 관련 테스트, 전체 검증, 최종 diff 검토, 명시적 stage와 commit 순서로 수행한다. 사용자에게는 완료된 내용, 검증 결과, 남은 위험 또는 후속 작업을 하나의 일관된 최종 응답으로 보고한다.
+메인 에이전트는 승인된 결과를 통합하고 충돌과 누락을 확인한 뒤 전체 완료 여부를 최종 판단한다. 통합은 변경 파일 검수, 관련 테스트, 전체 검증, 최종 diff 검토, 명시적 stage와 commit 순서로 수행한다. 가능한 한 티켓 하나를 커밋 하나로 마감하고 clean worktree를 확인한 뒤 다음 frontier를 같은 세션에서 계속할 수 있다. 사용자에게는 완료된 내용, 검증 결과, 남은 위험 또는 후속 작업을 하나의 일관된 최종 응답으로 보고한다.

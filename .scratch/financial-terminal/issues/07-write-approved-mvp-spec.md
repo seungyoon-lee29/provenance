@@ -2,7 +2,12 @@
 
 Type: spec
 Status: open
-Blocked by: 01, 02, 03, 04, 05, 06
+Triage: ready-for-agent
+Depends on: 01, 02, 03, 04, 05, 06
+Blocked by: None
+Owner: unclaimed
+Claimed at: -
+Last heartbeat: -
 
 ## Question
 

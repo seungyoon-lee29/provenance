@@ -2,7 +2,8 @@
 
 Type: research
 Status: resolved
-Blocked by: 05
+Depends on: 05
+Blocked by: None
 
 ## Question
 

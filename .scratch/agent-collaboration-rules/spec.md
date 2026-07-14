@@ -19,3 +19,8 @@
 - 위험도와 실제 병렬 가능성에 따라 팀 사용 여부와 reviewer 수를 조절한다.
 - 공유 worktree의 branch 전환, Git 책임과 파일 ownership 안전 규칙을 정의한다.
 - review finding의 필수 해결·연기 기준과 통합 검증 순서를 정의한다.
+- 작업 유형과 위험에 따른 `Low | Medium | High | XHigh` 추론 강도 기준을 정의한다.
+- ticket dependency와 현재 blocker, claim owner·lease·heartbeat를 구분한다.
+- 비밀 파일, provider smoke, broker mutation과 Live Trading의 실행 gate를 정의한다.
+- 기본 review와 targeted re-review의 종료 조건을 정의한다.
+- 세션 경계가 아니라 검증된 티켓별 커밋을 작업 checkpoint로 사용한다.

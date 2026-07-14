@@ -2,7 +2,8 @@
 
 Type: grilling
 Status: resolved
-Blocked by: 01
+Depends on: 01
+Blocked by: None
 
 ## Question
 

@@ -2,7 +2,8 @@
 
 Type: docs
 Status: resolved
-Blocked by: 02
+Depends on: 02
+Blocked by: None
 
 ## Question
 
