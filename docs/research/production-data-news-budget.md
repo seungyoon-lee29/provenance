@@ -4,7 +4,13 @@
 - 대상: 비로그인 사용자가 있는 한국어 금융 터미널의 시장 데이터와 미국 뉴스
 - 역할: [`provider-options.md`](./provider-options.md)의 후보 조사를 대체하지 않고, 단계별 계약과 월 예산 결정을 보충한다.
 
-## 결론
+## 현재 적용 결정
+
+2026-07-14 사용자 결정에 따라 외부 데이터·뉴스·AI 공급자 구독비는 **USD 0/월**로 고정하고 모든 유료 도입을 보류한다. 기존 Alpaca Basic·KIS 모의투자·Gemini 무료 key는 개인 개발, 사용자 자신의 연결과 비민감 처리에만 사용하며 비로그인 공용 feed로 전환하지 않는다. Gemini는 파생물 생성과 외부 모델 처리가 모두 허용된 Evidence에만 사용하고, 파생물 생성 권리가 없으면 로컬 규칙도 실행하지 않는다. 공개 화면은 SEC EDGAR, Open DART, 미국 재무부, ECB와 승인 범위가 확인된 KRX EOD 같은 무료 정본만 활성화한다. 무료로 표시권을 충족할 수 없는 미국 실시간 시세·지수·옵션·뉴스와 한국 실시간 시세는 `API 필요` 또는 `표시 권한 없음`을 반환한다.
+
+아래 가격과 계약 조합은 유료 전환을 다시 결정할 때 참고할 보류 자료다. 현재 구현·배포의 활성 provider 목록이나 구매 계획이 아니다.
+
+## 유료 전환 시 결론
 
 초기 공개 운영에는 **Twelve Data Business Venture + Benzinga 직접 뉴스·한국어 번역 계약 + 공공 원천 데이터**를 권한다. News API Business는 링크형 뉴스 발견의 비용 절감 대안일 뿐, 원문·이미지·한국어 번역 요구를 충족하지 못한다. 다음 기능은 각각의 주문서에서 명시적으로 허용돼야 한다.
 
@@ -47,7 +53,7 @@
 | 원자재 | Alpha Vantage 무료 또는 Twelve Data 시험 | Alpha Vantage 무료는 25회/일이며 개인·비상업 평가만. 공개 상업 이용은 영업 계약 필요. [문서](https://www.alphavantage.co/documentation/), [약관](https://www.alphavantage.co/terms_of_service/) |
 | 미국 뉴스 | News API Developer 또는 Alpaca News | 로컬 개발만. News API Developer는 24시간 지연·100회/일이고 staging/production도 금지. 기사 전문을 수집하지 않음. [News API 가격·제약](https://newsapi.org/pricing), [Alpaca 뉴스](https://docs.alpaca.markets/us/docs/historical-news-data) |
 
-### 2. 제한 베타
+### 2. 제한 베타(유료 전환 시)
 
 초대 사용자라도 제3자에게 보이면 `외부 표시`다. 개인 플랜을 쓰지 않는다.
 
@@ -63,7 +69,7 @@
 
 확정 가능한 플랫폼 비용은 **USD 149~499/월 + 세금**이다. 링크형 News API를 선택하면 **USD 598~948/월**이지만, 어느 경우에도 Twelve Data US Equities/Redistribution Rights Add-On, 한국 실시간 시세, 실제 지수·옵션과 Benzinga 번역 뉴스 계약은 포함되지 않는다. 따라서 이 숫자만 승인하고 외부 베타를 열면 안 된다.
 
-### 3. 공개 프로덕션
+### 3. 공개 프로덕션(유료 전환 시)
 
 #### 권장: 표시 전용의 작은 공개 서비스
 
@@ -102,24 +108,23 @@ OPRA와 직접 Vendor 계약을 하는 경로는 초기 제품에 권하지 않�
 
 CME 선물은 더 비싸다. 2026년 공식 fee list에는 거래소별 실시간 distribution `USD 29,280/년`, delayed distribution `USD 21,840/년`, historical distribution `USD 35,220/년`, Public Website `USD 487/월/site`가 공개돼 있다. Public Website 방식은 실시간 스트림이 아니라 매시 스냅샷을 최소 10분 지연해 게시하는 제한형이고 machine-readable download와 AI/ML 입력도 제한된다. 4개 거래소의 delayed distribution + website만 단순 합산해도 `USD 110,736/년`, Massive의 4개 사업 feed까지 더하면 `USD 158,688/년`부터이므로 수요가 검증될 때까지 선물 패널은 `API 필요`로 둔다. [CME 2026 fee list](https://www.cmegroup.com/market-data/files/june-2026-market-data-fee-list.pdf), [Schedule 5](https://www.cmegroup.com/market-data/files/schedule-5-to-the-ila-june-2026.pdf)
 
-## 지금 사용자가 할 일
+## 무료 단계에서 사용자가 할 일
 
 비밀 값은 채팅에 보내지 말고 발급 후 로컬 secret 파일 또는 운영 Secret Manager에 넣는다.
 
-- [ ] 공개 시세·뉴스 계약의 주체가 될 운영 법인 또는 사업자를 정한다. 코스콤 Open API 운영 절차는 법인 고객을 전제로 한다. [코스콤 가입·계약 절차](https://koscom.gitbook.io/open-api/how-to-use/procedure)
 - [ ] KRX Data Marketplace 법인/개인 계정을 만들고 필요한 일별 주식·ETF·지수 Open API별 활용 신청을 한다. 신청 목적에는 로컬 개발과 향후 외부 베타를 구분한다. [인증키·활용 신청](https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO003.jsp)
 - [ ] Open DART 인증키를 발급한다. 공시 데이터는 시장 시세 계약과 별개다. [Open DART](https://opendart.fss.or.kr/intro/main.do)
-- [ ] Benzinga에 무료 평가 key와 `Stock News API + Korean Translation Engine`의 베타·프로덕션 견적을 요청한다. 평가 key는 상업 표시 권리가 아니다. [API 시작 안내](https://docs.benzinga.com/introduction/introduction)
 - [ ] 링크형 공급자 비교가 필요할 때만 News API Developer key를 로컬 뉴스 UI 평가용으로 발급한다. 외부 staging에 넣지 않고 Business를 미리 결제하지 않는다. [키 발급](https://newsapi.org/register)
-- [ ] Twelve Data Business 계정을 만들고 Basic으로 스키마를 시험한다. 외부 베타 직전에 Venture의 예상 동시 심볼·REST credit·WebSocket credit 견적을 확정한다. [Business 계정·가격](https://twelvedata.com/pricing-business)
-- [ ] Twelve Data에 `익명 웹 display, backend→browser 전달, US Equities/Redistribution Rights Add-On, 비통합 feed의 정확한 출처, 캐시·보존, dofollow attribution`을 한 번에 적어 서면 승인과 견적을 받는다. [권리 안내](https://support.twelvedata.com/en/articles/9935903-us-equities-market-data), [attribution 안내](https://support.twelvedata.com/en/articles/12647398-attribution-guidelines-for-using-twelve-data)
-- [ ] 운영 법인 명의로 Benzinga에 `web/mobile display, 원문 범위, 한국어 번역, AI 요약·감성, 관련 티커, 보존 기간, 캐시, 모델 전송, 파생물 소유권, 사용자 수, 지역`을 적어 견적을 요청한다. 공개 가격은 없으므로 숫자를 임의 추정하지 않는다. [라이선스 문의 안내](https://docs.benzinga.com/introduction/introduction)
-- [ ] 운영 법인 명의로 코스콤에 `KOSPI/KOSDAQ/ETF/ETN, 비로그인 체결가, 로그인 개인 조회, 실시간/EOD, 기술지표·포트폴리오 평가의 비조회형 이용, 캐시·보존, 개발환경`을 적어 견적을 요청한다. [계약 절차](https://koscom.gitbook.io/open-api/how-to-use/procedure)
-- [ ] NXT까지 첫 출시 범위에 넣을지 결정한다. 넣으면 NEXTRADE에 별도 견적을 요청한다. [NXT 계약 절차](https://portal.nextrade.co.kr/mdclient/member/cntrct/procedure.do?menuId=ducprocess)
-- [ ] 실제 미국 지수와 옵션을 베타에 넣을지 결정한다. 넣는 경우 Twelve Data와 Massive 양쪽에 동일한 심볼·동시접속·표시 범위로 견적을 받아 비교한다. [Massive 사업 상품](https://massive.com/business-options)
-- [ ] CME 선물을 첫 출시에서 제외할지 결정한다. 포함한다면 Massive 공급자 비용과 CME 거래소·Public Website·non-display 비용을 분리한 견적을 받는다. [CME fee list](https://www.cmegroup.com/market-data/files/june-2026-market-data-fee-list.pdf)
 
 이미 있는 Alpaca Paper와 KIS 모의투자 key는 새로 발급할 필요가 없다. 둘 다 공용 시장 feed가 아니라 각자의 개발/Paper Trading과 본인 계좌 연결에만 사용한다.
+
+## 유료 전환 때만 다시 여는 항목
+
+- 공개 계약 주체가 될 운영 법인 또는 사업자 결정
+- Twelve Data의 익명 웹 display·US Equities/Redistribution Rights Add-On 견적
+- Benzinga 뉴스·한국어 번역·AI 파생물 권리 견적
+- 코스콤·KRX·NXT 실시간 표시와 비조회형 이용 계약
+- 실제 미국 지수·OPRA 옵션·CME 선물 범위와 예산 결정
 
 ## 계약 전 활성화하면 안 되는 기능
 

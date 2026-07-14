@@ -6,9 +6,11 @@
 
 ## 결론
 
+현재 제품 결정은 외부 데이터·뉴스·AI 공급자 구독비 **USD 0/월**이다. 아래 공개 프로덕션 유료 조합은 향후 전환 후보로만 보존하며 지금은 활성화하지 않는다. SEC EDGAR, Open DART, 미국 재무부, ECB와 승인된 KRX EOD 같은 무료 정본을 우선하고, 기존 Alpaca·KIS·Gemini 무료 자격증명은 개인 개발·Paper Trading·비민감 AI처럼 License Scope가 허용한 경로에만 쓴다. 무료로 권리를 충족할 수 없는 공개 미국 시세·지수·옵션·뉴스와 한국 실시간 시세는 숫자를 만들지 않고 `API 필요` 또는 `표시 권한 없음`으로 둔다.
+
 초기 제품에는 다음 조합이 가장 현실적이다.
 
-| 기능 | 내부 프로토타입 / Paper Trading | 공개 프로덕션 |
+| 기능 | 내부 프로토타입 / Paper Trading | 공개 프로덕션 후보(현재 보류) |
 | --- | --- | --- |
 | 미국 주식·ETF | Alpaca Basic의 실시간 IEX + 15분 지난 SIP 이력 | Massive 또는 Twelve Data의 **Business** 계약, 또는 Alpaca Broker API 계약 |
 | 미국 지수·옵션 | Massive/Alpaca 무료·개인 플랜으로 개발 | 지수 제공자·OPRA 권리를 포함한 Business 계약 |
@@ -150,7 +152,7 @@ Alpha Vantage는 회사 overview, 손익/대차대조표/현금흐름, earnings,
 - 무료 티어: 모델별 제한 안에서 무료지만 입력/출력이 Google 제품 개선에 사용될 수 있다.
 - 유료 티어: 더 높은 production limit을 제공하며 입력/출력을 제품 개선에 사용하지 않는다고 가격표에 명시한다. 실제 한도는 model·project·usage tier별로 AI Studio에서 확인한다.
 - 2026 보안 변화: 새 키는 서비스 계정에 묶인 Auth key가 기본이며, unrestricted standard key는 거부되고 2026년 9월 standard key 전체 종료가 예정돼 있다.
-- 실무 판단: 뉴스·공시 요약은 서버에서 유료 티어를 사용하고, 계좌번호·주문 토큰·API secret·불필요한 개인정보는 프롬프트에 넣지 않는다. 모델 결과에는 근거 공시/뉴스 링크와 생성 시각을 붙이고 투자 조언으로 단정하지 않는다. [Gemini 가격](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [API key 보안](https://ai.google.dev/gemini-api/docs/api-key)
+- 실무 판단: 현재는 무료 티어를 외부 모델 처리·파생물 생성이 모두 허용된 비민감 공시 Evidence에만 선택적으로 사용한다. 파생물 생성 자체가 금지되면 Gemini와 로컬 규칙을 모두 호출하지 않고 `license_restricted`를 반환한다. 파생물 생성은 허용되지만 외부 모델 처리 불가, quota·key 부재 또는 timeout이면 지원하는 task에만 로컬 규칙으로 폴백하고, 로컬 규칙도 지원하지 않으면 내용을 만들지 않고 `api_required` 또는 `no_data`를 반환한다. 계좌번호·주문 토큰·API secret·개인정보는 프롬프트에 넣지 않는다. 유료 티어는 보류하며 모델 결과에는 근거 공시 링크와 생성 시각을 붙이고 투자 조언으로 단정하지 않는다. [Gemini 가격](https://ai.google.dev/gemini-api/docs/pricing), [rate limits](https://ai.google.dev/gemini-api/docs/rate-limits), [API key 보안](https://ai.google.dev/gemini-api/docs/api-key)
 
 ## Broker Connection 평가
 
@@ -189,6 +191,6 @@ KIS는 한국 거주 사용자의 국내·해외 자산 계좌 조회와 주문�
 1. SEC EDGAR, Open DART, 미국 재무부, ECB처럼 권리가 명확한 공공 정본을 먼저 연결한다.
 2. Alpaca Paper Trading + Basic IEX로 미국 주식 UX와 주문 상태 모델을 검증한다.
 3. KRX 일별 Open API로 한국 종목·EOD를 넣고, KIS 모의 계좌는 사용자별 Broker Connection으로 분리한다.
-4. Gemini 유료 티어를 서버 측에 연결해 공시 요약을 추가한다. 요약은 항상 정본 링크를 포함한다.
-5. 공개 베타 전에 Massive/Twelve Data, KRX/코스콤, 뉴스 공급자와 display/redistribution 계약을 체결한다.
-6. 계약된 feed만 실시간으로 활성화하고 옵션·선물·Live Trading은 별도의 안전성 및 규제 검토 뒤 진행한다.
+4. Gemini 무료 티어를 비민감 공시 요약에 선택적으로 사용한다. 파생물 생성 권리가 없으면 `표시 권한 없음`, 파생물은 허용되지만 외부 모델 처리나 key·quota 조건이 맞지 않으면 지원 가능한 로컬 규칙 또는 `API 필요/데이터 없음`으로 처리한다. 요약은 항상 정본 링크를 포함한다.
+5. 유료 데이터 도입 결정 전까지 Massive/Twelve Data, KRX/코스콤과 뉴스 공급자 adapter를 활성화하지 않는다.
+6. 향후 계약된 feed만 실시간으로 활성화하고 옵션·선물·Live Trading은 별도의 안전성 및 규제 검토 뒤 진행한다.

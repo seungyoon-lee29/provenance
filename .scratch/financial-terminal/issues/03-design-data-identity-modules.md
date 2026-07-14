@@ -18,8 +18,8 @@ Blocked by: 01
    - `EvidenceResolver.resolve(reference, purpose, viewer)`는 ResearchAssistant에만 주입하는 server-only collaboration interface다. 화면 route와 공급자 adapter에는 export하지 않는다.
 2. `ResearchAssistant`
    - `run(task, evidenceReferences, viewer)`를 공개해 번역, 요약과 분석을 수행한다.
-   - Gemini와 로컬 규칙 엔진은 adapter다. Gemini를 사용할 수 없고 로컬 엔진이 해당 작업을 지원하지 않으면 내용을 만들지 않고 `API 필요`를 반환한다.
-   - Evidence를 해석할 때 처리자와 모델 tier를 포함한 목적을 전달한다. License Scope가 외부 모델 전송·처리 또는 파생물 생성을 허용하지 않으면 허용된 snippet만 사용하거나 `license_restricted`를 반환하며 AI를 호출하지 않는다.
+   - Gemini와 로컬 규칙 엔진은 adapter다. 파생물 생성은 허용되지만 외부 모델 처리, key·quota 또는 timeout 조건 때문에 Gemini를 사용할 수 없을 때만 지원 task의 로컬 규칙으로 폴백한다. 로컬 엔진이 해당 작업을 지원하지 않으면 내용을 만들지 않고 `API 필요` 또는 `데이터 없음`을 반환한다.
+   - Evidence를 해석할 때 처리자와 모델 tier를 포함한 목적을 전달한다. License Scope가 파생물 생성을 허용하지 않으면 Gemini와 로컬 규칙을 모두 호출하지 않고 허용된 원문 snippet만 사용하거나 value 없는 `license_restricted`를 반환한다. 외부 모델 처리만 금지된 경우에는 위의 로컬 폴백 규칙을 적용한다.
    - 모든 사실 주장은 Evidence Reference를 인용하고 파생 결과는 입력보다 넓은 License Scope를 가질 수 없다.
 3. `Identity`
    - presentation용 interface는 `resolve(sessionProof)`로 신뢰된 Viewer Context를 만든다.
@@ -33,6 +33,7 @@ Blocked by: 01
 5. `TerminalView`
    - 위 네 모듈을 조합하는 application module이다.
    - `open(request, sessionProof)`는 공개 캐시와 로컬 읽기만 기다린 `initial` 화면과 시장 갱신, 개인화, 뉴스, 공시, AI 결과를 전달하는 `updates` 스트림을 반환한다. 느린 한 패널이 다른 패널을 막지 않는다.
+   - `changeLayout(command, control, sessionProof)`는 로그인 User Workspace의 widget 위치·크기와 panel 폭을 revision·idempotency 조건으로 저장한다. guest layout은 browser local draft이며 로그인 후 사용자가 명시적으로 채택하기 전에는 사용자 설정에 병합하지 않는다.
    - `initial`의 각 패널은 `pending` 또는 `ready(InformationOutcome)`다. cache miss는 `pending`을 즉시 반환하고 독립적인 시장 refresh를 예약한다. 오래된 cache는 즉시 표시한 뒤 같은 방식으로 revalidate한다.
    - 각 update는 `panelKey`, `requestRevision`과 Information Outcome을 포함한다. 패널 사이의 순서는 독립적이며 TerminalView가 merge, dedupe, completion, retry와 최신 revision 교체를 소유한다. 새 요청이나 연결 종료는 superseded 작업을 취소한다.
    - Viewer Context의 인증 epoch가 바뀌면 기존 stream을 종료하고 다시 `open`한다. 개인화 작업은 결과를 내보내기 직전에 epoch와 권한을 재검사한다.
