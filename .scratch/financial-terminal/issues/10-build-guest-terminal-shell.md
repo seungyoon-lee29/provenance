@@ -1,13 +1,13 @@
 # 10 - F1 비로그인 터미널 shell 구축
 
 Type: implementation
-Status: open
+Status: resolved
 Triage: ready-for-agent
 Depends on: 09
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: /root
+Claimed at: 2026-07-15T16:59:50+09:00
+Last heartbeat: 2026-07-15T18:26:06+09:00
 
 ## Objective
 
@@ -48,3 +48,33 @@ Last heartbeat: -
 ## Traceability
 
 - [승인 spec](../spec.md) `UF-01`, `WS-01/04/06`, §4, §5.1~5.2, §11, F1, `AT-01`, `AT-12`.
+
+## Answer
+
+비로그인 사용자가 데스크톱 3열·하단 Blotter와 모바일 단일 열 Workspace에서 공개 정보 outcome을 확인하는 F1 shell을 구현했다. `available`만 값과 전체 provenance를 표시하고, API 필요·권리 제한·데이터 없음·typed 실패는 값 없이 한국어 상태와 정책·재시도 정보를 표시한다. SSR initial과 SSE updates는 같은 `TerminalLoad`를 one-time 인계하며 cache miss는 open 기준 2초 provider wait와 10초 normalized deadline을 지킨다. 개인 기능은 로그인 gate만 제공하고 side effect는 만들지 않는다.
+
+## Changed files
+
+- `src/app/**`, `src/modules/terminal-view/presentation/guest/**`: guest route, shell, outcome presenter, 동일 load SSE handoff와 deadline/dedupe lifecycle.
+- `fixtures/spec/f1/**`, `tests/guest-terminal-*.test.ts`, `tests/browser/**`, `tests/performance/**`: literal outcome, fixed-clock contract, browser/accessibility와 release-build performance oracle.
+- `playwright.config.ts`, `playwright.performance.config.ts`, `package.json`, `package-lock.json`, `next.config.ts`: network-off browser와 fixed-lane performance 실행 구성.
+- `.scratch/financial-terminal/design/**`, `.scratch/financial-terminal/qa/**`: 승인 콘셉트, 디자인 규칙, 최종 desktop/mobile 캡처와 fidelity 기록.
+
+## Validation
+
+- `npm run check:f1`: typecheck·lint, Vitest 14 files / 95 tests, public/server seam, Playwright desktop/mobile 10 passed / 중복 timing lane 2 skipped, performance 2 passed.
+- local release-build p95: desktop cold/warm `169.14/126.78 ms`, mobile `570.40/500.62 ms`; viewport별 40 cold / 100 warm, 5 warm-up, outlier 제거 없음.
+- axe critical/serious/color-contrast 0, desktop `1366x768` page overflow 0·columns `270/740/324`, mobile `360x800` page overflow 0·panel `x=8 width=344`·내부 scroll 5·최소 control 44 px.
+- production smoke: `SYNTHETIC TEST DATA`, `101.25`, `fixture-realtime` 노출 0, value 없는 `API 필요` outcome 확인.
+- 종료 시 local ports `3100/3101/3102` listener 0.
+
+## Review
+
+- spec과 standards 관점 병렬 review에서 실제 update 폐기, provenance, network-off flag, typed failure 설명, live announcement, deadline clock domain과 성능 증거 문제를 수정했다.
+- 최종 affected-scope re-review에서 Critical/High/Medium finding 0을 확인했다.
+
+## Residual risks
+
+- SSR→SSE `TerminalLoad` handoff는 현재 단일 Next process의 짧은 one-time registry다. 다중 instance 배포에서 durable reconnect/replay가 필요하면 F11 release integration 전에 Redis-backed broker 또는 sticky routing을 결정해야 한다.
+- 성능 값은 local release-build fixed-lane 증거이며 canonical 2 vCPU / 4 GiB pinned release runner 주장은 하지 않는다. F11에서 동일 표본을 전용 release runner로 재현해야 한다.
+- 실제 공개 provider contract와 실데이터 screenshot은 이 티켓 범위가 아니며 F11 opt-in gate에 남아 있다.

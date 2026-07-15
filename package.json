@@ -15,6 +15,8 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:browser": "playwright test",
+    "test:performance": "playwright test --config=playwright.performance.config.ts",
     "test:public-seam": "tsx tests/public-seam.example.ts",
     "test:server-seam": "tsx tests/server-seam.example.ts",
     "db:migrate": "tsx scripts/migrate.ts up",
@@ -23,6 +25,7 @@
     "verify:network-off": "tsx scripts/verify-network-off.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:public-seam && npm run test:server-seam",
+    "check:f1": "npm run check && npm run test:browser && npm run test:performance",
     "check:pr": "npm run compose:verify",
     "compose:verify": "sh scripts/verify-compose.sh",
     "compose:up": "docker compose --profile local up --build --wait",
@@ -38,6 +41,8 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
+    "@playwright/test": "^1.61.1",
     "@types/node": "^22.0.0",
     "@types/pg": "8.20.0",
     "@types/react": "19.2.17",

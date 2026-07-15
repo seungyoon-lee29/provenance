@@ -1,8 +1,32 @@
-export default function HomePage() {
-  return (
-    <main>
-      <h1>한국어 금융 터미널</h1>
-      <p>Foundation runtime is ready.</p>
-    </main>
+import { GuestTerminalShell } from "@/modules/terminal-view/presentation/guest/guest-terminal-shell";
+import { publicPanelKeys } from "@/modules/terminal-view/presentation/guest/contracts";
+import {
+  createGuestSessionProof,
+  createGuestTerminalRequest,
+} from "@/modules/terminal-view/presentation/guest/guest-terminal-view";
+import { registerGuestTerminalLoad } from "@/modules/terminal-view/presentation/guest/guest-load-registry";
+import {
+  createGuestTerminalFeature,
+  resolveGuestFeatureRuntime,
+} from "@/modules/terminal-view/presentation/guest/public-feature";
+
+export const dynamic = "force-dynamic";
+
+export default async function HomePage() {
+  const runtime = resolveGuestFeatureRuntime(
+    process.env.NODE_ENV,
+    process.env.F1_SCRIPTED_PROVIDER_DELAY_MS,
+    process.env.APP_ENVIRONMENT,
   );
+  const feature = createGuestTerminalFeature(runtime);
+  const requestId = crypto.randomUUID();
+  const load = feature.terminalView.open(
+    createGuestTerminalRequest(publicPanelKeys, `guest-${requestId}`),
+    createGuestSessionProof(requestId),
+  );
+  const snapshot = await load.initial;
+  registerGuestTerminalLoad(requestId, snapshot.requestRevision, load);
+  const updateUrl = `/api/guest-terminal/updates?requestId=${encodeURIComponent(requestId)}&revision=${encodeURIComponent(snapshot.requestRevision)}`;
+
+  return <GuestTerminalShell snapshot={snapshot} updateUrl={updateUrl} />;
 }

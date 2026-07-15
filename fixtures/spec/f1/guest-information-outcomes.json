@@ -1,0 +1,168 @@
+{
+  "marker": "SYNTHETIC TEST DATA",
+  "provider": "synthetic",
+  "isSynthetic": true,
+  "licenseScope": {
+    "audience": "internal_test_only",
+    "purposes": ["public_display"],
+    "validUntil": "2027-01-03T00:00:00.000Z"
+  },
+  "cases": [
+    {
+      "id": "available_realtime",
+      "panelKey": "market-overview",
+      "cache": "hit",
+      "outcome": {
+        "status": "available",
+        "value": { "label": "KOSPI Index", "displayValue": "101.25" },
+        "evidenceReference": "evidence:fixture:realtime",
+        "provider": "synthetic",
+        "feed": "fixture-realtime",
+        "venue": "XKRX",
+        "asOf": "2026-01-02T14:30:00.000Z",
+        "receivedAt": "2026-01-02T14:30:00.020Z",
+        "freshness": "realtime",
+        "licenseScope": {
+          "audience": "internal_test_only",
+          "purposes": ["public_display"],
+          "validUntil": "2027-01-03T00:00:00.000Z"
+        },
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "available_delayed",
+      "panelKey": "market-landscape",
+      "cache": "hit",
+      "outcome": {
+        "status": "available",
+        "value": { "label": "공개 시장 스냅샷", "displayValue": "202.50" },
+        "evidenceReference": "evidence:fixture:delayed",
+        "provider": "synthetic",
+        "feed": "fixture-delayed-15m",
+        "asOf": "2026-01-02T14:15:00.000Z",
+        "receivedAt": "2026-01-02T14:30:00.000Z",
+        "freshness": "delayed",
+        "licenseScope": {
+          "audience": "internal_test_only",
+          "purposes": ["public_display"],
+          "validUntil": "2027-01-03T00:00:00.000Z"
+        },
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "available_stale",
+      "panelKey": "data-quality",
+      "cache": "hit",
+      "outcome": {
+        "status": "available",
+        "value": { "label": "미국 10Y", "displayValue": "3.75%" },
+        "evidenceReference": "evidence:fixture:stale",
+        "provider": "synthetic",
+        "feed": "fixture-daily",
+        "asOf": "2026-01-01T21:00:00.000Z",
+        "receivedAt": "2026-01-02T14:30:00.000Z",
+        "freshness": "stale",
+        "licenseScope": {
+          "audience": "internal_test_only",
+          "purposes": ["public_display"],
+          "validUntil": "2027-01-03T00:00:00.000Z"
+        },
+        "policyVersion": "policy:f1-fixture",
+        "degradation": {
+          "code": "timeout",
+          "provider": "synthetic",
+          "feed": "fixture-daily",
+          "occurredAt": "2026-01-02T14:30:00.000Z",
+          "retryable": true,
+          "diagnosticReference": "diagnostic:fixture:stale"
+        }
+      }
+    },
+    {
+      "id": "api_required",
+      "panelKey": "index-sp500",
+      "cache": "hit",
+      "outcome": {
+        "status": "unavailable",
+        "reason": "api_required",
+        "requiredCapability": "public_market_display",
+        "configurationRoute": "/settings/providers",
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "api_required_after_refresh",
+      "panelKey": "watchlist",
+      "cache": "miss",
+      "settleAfterMs": 3000,
+      "outcome": {
+        "status": "unavailable",
+        "reason": "api_required",
+        "requiredCapability": "public_watchlist_display",
+        "configurationRoute": "/settings/providers",
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "license_restricted",
+      "panelKey": "headlines",
+      "cache": "hit",
+      "outcome": {
+        "status": "unavailable",
+        "reason": "license_restricted",
+        "source": "synthetic-rights-denied",
+        "purpose": "public_display",
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "no_data",
+      "panelKey": "filings",
+      "cache": "hit",
+      "outcome": {
+        "status": "unavailable",
+        "reason": "no_data",
+        "queryRange": "latest",
+        "asOf": "2026-01-02T14:30:00.000Z",
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "failed_retryable",
+      "panelKey": "index-usdkrw",
+      "cache": "miss",
+      "settleAfterMs": null,
+      "outcome": {
+        "status": "failed",
+        "degradation": {
+          "code": "timeout",
+          "provider": "synthetic",
+          "feed": "fixture-timeout",
+          "occurredAt": "2026-01-02T14:30:10.000Z",
+          "retryable": true,
+          "diagnosticReference": "diagnostic:fixture:timeout"
+        },
+        "policyVersion": "policy:f1-fixture"
+      }
+    },
+    {
+      "id": "failed_terminal",
+      "panelKey": "macro",
+      "cache": "hit",
+      "outcome": {
+        "status": "failed",
+        "degradation": {
+          "code": "invalid_response",
+          "provider": "synthetic",
+          "feed": "fixture-invalid",
+          "occurredAt": "2026-01-02T14:30:00.000Z",
+          "retryable": false,
+          "diagnosticReference": "diagnostic:fixture:invalid"
+        },
+        "policyVersion": "policy:f1-fixture"
+      }
+    }
+  ]
+}
