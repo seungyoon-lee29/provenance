@@ -46,3 +46,15 @@ example 기반 스위트가 실제로 도메인 불변식 위반을 잡는지 �
 
 - 예산 게이트: `docs/agents/collaboration.md` 예산 시퀀싱에 따라 토큰 여유 회복 시 착수. 그 전에는 needs-triage backlog로 둔다.
 - 관련 후속(ticket 12 F3 residual): `workspace-server.ts` `devWorkspaceProof()` self-guard, dual `SessionProof` 통합은 F11(ticket 20 store 통합)이 소유.
+
+## Dry-run 2026-07-16 (workflow 팬아웃 점검)
+
+`parallel()` 워크플로(run `wf_9919d221`)로 3개 불변식을 읽기전용 점검한 스냅샷 — 전부 성립(high), 위반 0:
+
+- **no-live-route**: fail-closed boot 가드(`runtime-policy.ts` `ENABLE_LIVE_TRADING`→throw), `manifest.ts` liveSubmit*=[], 주문 전송 라우트 0, 회귀 테스트(`runtime-policy.test.ts:38`).
+- **egress-off**: 유일 HTTP 클라이언트(`https-executor.ts`) dormant(app/composition에서 미생성), client `fetch` 전부 same-origin `/api`, `verify-network-off.ts` 컨테이너 경계 차단.
+- **actual-paper-isolation**: branded type 분리(`brands.ts:20-21`), 인터페이스 분리(ADR 0004), 혼용 코드 grep 0.
+
+**단서(이 티켓이 존재하는 이유)**: no-live·actual-paper가 성립하는 건 부분적으로 **F6~F10 미구현이라 위반할 코드가 아직 없어서**다(provisional). storage/route 격리는 해당 모듈이 지어질 때 재점검해야 하므로, 일회성 점검이 아니라 **standing property test**로 승격해야 한다.
+
+**적대 검증(pipeline run `wf_147d7f31`)에서 나온 정정**: actual-paper 불변식 문구 "shared calculation logic 없음"은 설계 보장보다 **과하다** — issue 04:7은 *순수 계산 규칙 구현의 재사용은 허용*하고, 금지하는 건 공유 **ledger/aggregate/storage/mode/order-interface**다. 따라서 standing property test는 후자(공유 저장·집계·mode·주문 인터페이스 없음)를 assert해야 하며, "shared calc 없음"을 걸면 설계가 의도적으로 허용한 것에 오탐이 난다. (이 항목만 verify confidence medium.)
