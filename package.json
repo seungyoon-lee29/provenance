@@ -26,6 +26,7 @@
     "verify:migrations": "tsx scripts/verify-migrations.ts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:public-seam && npm run test:server-seam",
     "check:f1": "npm run check && npm run test:browser && npm run test:performance",
+    "check:f2": "npm run check && npm run test:browser && npm run test:performance",
     "check:pr": "npm run compose:verify",
     "compose:verify": "sh scripts/verify-compose.sh",
     "compose:up": "docker compose --profile local up --build --wait",

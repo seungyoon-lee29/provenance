@@ -12,6 +12,8 @@ import type {
 import { GuestPanel, LoginGate } from "./guest-panel";
 import styles from "./guest-terminal-shell.module.css";
 import { useGuestPanelUpdates } from "./guest-update-client";
+import { ChartWorkspace } from "../chart/chart-workspace";
+import type { GuestChartProps } from "../chart/chart-server";
 
 const panelTitles: Readonly<Record<PublicPanelKey, string>> = {
   "index-sp500": "S&P 500",
@@ -70,9 +72,10 @@ function IndexCell({ state }: Readonly<{ state: GuestPanelState }>) {
   );
 }
 
-export function GuestTerminalShell({ snapshot, updateUrl }: Readonly<{
+export function GuestTerminalShell({ snapshot, updateUrl, chart }: Readonly<{
   snapshot: GuestTerminalSnapshot;
   updateUrl: string;
+  chart: GuestChartProps;
 }>) {
   const panels = useGuestPanelUpdates(snapshot, updateUrl);
   const byKey = useMemo(() => panelMap(panels), [panels]);
@@ -170,11 +173,7 @@ export function GuestTerminalShell({ snapshot, updateUrl }: Readonly<{
 
         <div className={`${styles.column} ${styles.centerColumn}`} aria-label="공개 정보 Workspace" tabIndex={0}>
           <GuestPanel title="시장 개요" state={get("market-landscape")} className={styles.landscape}>
-            <div className={styles.emptyPlot} aria-label="차트 상호작용은 F2에서 제공됩니다">
-              <span>PUBLIC MARKET SURFACE</span>
-              <strong>차트 상호작용 준비 중</strong>
-              <small>F2 tracer가 이 구조적 영역을 사용합니다.</small>
-            </div>
+            <ChartWorkspace initialFrame={chart.initialFrame} mode={chart.mode} />
           </GuestPanel>
           <div id="headlines">
             <GuestPanel title="주요 뉴스" state={get("headlines")} />

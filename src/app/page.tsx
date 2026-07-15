@@ -9,6 +9,7 @@ import {
   createGuestTerminalFeature,
   resolveGuestFeatureRuntime,
 } from "@/modules/terminal-view/presentation/guest/public-feature";
+import { resolveGuestChart } from "@/modules/terminal-view/presentation/chart/chart-server";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export default async function HomePage() {
   const snapshot = await load.initial;
   registerGuestTerminalLoad(requestId, snapshot.requestRevision, load);
   const updateUrl = `/api/guest-terminal/updates?requestId=${encodeURIComponent(requestId)}&revision=${encodeURIComponent(snapshot.requestRevision)}`;
+  const chart = await resolveGuestChart(runtime.mode);
 
-  return <GuestTerminalShell snapshot={snapshot} updateUrl={updateUrl} />;
+  return <GuestTerminalShell snapshot={snapshot} updateUrl={updateUrl} chart={chart} />;
 }

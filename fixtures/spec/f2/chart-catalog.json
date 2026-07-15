@@ -1,0 +1,21 @@
+{
+  "marker": "SYNTHETIC TEST DATA",
+  "provider": "synthetic",
+  "isSynthetic": true,
+  "licenseScope": {
+    "audience": "internal_test_only",
+    "purposes": ["chart_display"],
+    "validUntil": "2027-01-03T00:00:00.000Z"
+  },
+  "symbols": [
+    { "symbol": "AAPL", "base": 180, "scenario": "fresh" },
+    { "symbol": "MSFT", "base": 410, "scenario": "fresh" },
+    { "symbol": "005930.KS", "base": 72000, "scenario": "fresh" },
+    { "symbol": "STALE", "base": 100, "scenario": "soft_expired" },
+    { "symbol": "STALE_ERROR", "base": 100, "scenario": "stale_error" },
+    { "symbol": "SLOW", "base": 120, "scenario": "slow_miss" },
+    { "symbol": "TIMEOUT", "base": 120, "scenario": "never" },
+    { "symbol": "FUTURE", "base": 100, "scenario": "future" },
+    { "symbol": "BROKEN", "base": 100, "scenario": "malformed" }
+  ]
+}

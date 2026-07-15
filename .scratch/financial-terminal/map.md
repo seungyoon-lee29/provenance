@@ -34,10 +34,11 @@
 - [MVP 구현 티켓 분해](./issues/08-decompose-mvp-implementation.md): F0~F11을 dependency, single owned scope, interface contract와 acceptance oracle이 있는 issue 09~20으로 분해했다.
 - [F0 기반·공유 계약·vault 구축](./issues/09-build-foundation-contracts.md): Next.js·worker·PostgreSQL·Redis tracer, migration과 internal-network PR harness, shared contract, AES-256-GCM vault와 fail-closed authorized transport/runtime composition을 구현했다.
 - [F1 비로그인 터미널 shell 구축](./issues/10-build-guest-terminal-shell.md): 값이 허용된 공개 outcome만 provenance와 함께 표시하고, 값 없는 unavailable/failed 상태, 동일 load SSE update, 2초/10초 deadline, desktop/mobile·접근성·성능 gate를 갖춘 guest Workspace를 구현했다.
+- [F2 chart tracer 구축](./issues/11-build-chart-tracer.md): FinancialInformation chart port와 TerminalView chart adapter로 21개 range×interval(1M/1D→22, 1Y/1W→52) canonical window, OHLCV·Price Basis·Evidence·freshness bar, MA/Bollinger/RSI/MACD versioned oracle, revision/cancel/latest-only + 10초 deadline tracer, soft→오래됨·hard→값 없음·future/malformed→invalid_response 정책을 구현하고 guest 중앙 열 예약 seam에 mount했다.
 
 ## Implementation plan
 
-- **현재 frontier**: [11 - F2 chart tracer](./issues/11-build-chart-tracer.md)
+- **현재 frontier**: [12 - F3 Identity·Provider Connections core·layout](./issues/12-build-identity-provider-layout.md)
 - [10 - F1 비로그인 터미널 shell](./issues/10-build-guest-terminal-shell.md) → [11 - F2 chart tracer](./issues/11-build-chart-tracer.md) → [12 - F3 Identity·Provider Connections core·layout](./issues/12-build-identity-provider-layout.md)이 sequential contract spine을 완성한다.
 - P1: [13 - F4 정보 outcome·AI](./issues/13-build-data-outcomes-ai.md) 뒤 [14 - F5 알림·외부 전달](./issues/14-build-alert-delivery-tracer.md), 그리고 [15 - F6 Actual Portfolio baseline](./issues/15-build-actual-portfolio-baseline.md)을 독립 scope로 진행한다.
 - P2: F6 뒤 [16 - F7 포트폴리오 회계](./issues/16-build-portfolio-accounting.md)와 [17 - F8 Internal Paper Trading](./issues/17-build-internal-paper-trading.md)을 병렬화한다.
