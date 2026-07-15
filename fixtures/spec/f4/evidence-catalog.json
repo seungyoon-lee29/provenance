@@ -1,0 +1,89 @@
+{
+  "marker": "SYNTHETIC TEST DATA",
+  "provider": "synthetic",
+  "isSynthetic": true,
+  "now": "2026-01-02T14:30:00.000Z",
+  "licenseScope": {
+    "audience": "internal_test_only",
+    "purposes": ["ai_research", "public_display"],
+    "validUntil": "2027-01-03T00:00:00.000Z"
+  },
+  "cases": [
+    {
+      "id": "news_fresh",
+      "reference": "evidence:f4:news:AAA",
+      "purpose": "ai_research",
+      "scenario": {
+        "type": "evidence",
+        "feed": "fixture-news",
+        "policy": { "kind": "cadence", "cadenceMs": 900000, "softGraceMs": 300000, "hardMissedPublications": 96 },
+        "value": {
+          "kind": "news",
+          "headlines": [
+            { "title": "AAA reports quarterly results", "source": "synthetic-wire", "publishedAt": "2026-01-02T14:20:00.000Z", "link": "https://example.test/n/1", "snippet": "AAA posted revenue in line with guidance." }
+          ]
+        }
+      }
+    },
+    {
+      "id": "filing_stale",
+      "reference": "evidence:f4:filing:BBB",
+      "purpose": "ai_research",
+      "scenario": {
+        "type": "evidence",
+        "feed": "fixture-sec",
+        "policy": { "kind": "cadence", "cadenceMs": 120000, "softGraceMs": 180000, "hardMissedPublications": 720 },
+        "value": {
+          "kind": "filing",
+          "filings": [
+            { "form": "8-K", "source": "SEC EDGAR", "filedAt": "2026-01-02T14:20:00.000Z", "accession": "0000000000-26-000001", "link": "https://example.test/f/1" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "news_hard_expired",
+      "reference": "evidence:f4:news:OLD",
+      "purpose": "ai_research",
+      "scenario": {
+        "type": "evidence",
+        "feed": "fixture-news",
+        "policy": { "kind": "cadence", "cadenceMs": 900000, "softGraceMs": 300000, "hardMissedPublications": 2 },
+        "value": {
+          "kind": "news",
+          "headlines": [
+            { "title": "stale headline", "source": "synthetic-wire", "publishedAt": "2026-01-02T13:00:00.000Z", "link": "https://example.test/n/old" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "news_malformed_future",
+      "reference": "evidence:f4:news:FUT",
+      "purpose": "ai_research",
+      "scenario": {
+        "type": "evidence",
+        "feed": "fixture-news",
+        "policy": { "kind": "cadence", "cadenceMs": 900000, "softGraceMs": 300000, "hardMissedPublications": 96 },
+        "value": {
+          "kind": "news",
+          "headlines": [
+            { "title": "future headline", "source": "synthetic-wire", "publishedAt": "2026-01-02T14:35:00.000Z", "link": "https://example.test/n/fut" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "filing_license_restricted",
+      "reference": "evidence:f4:filing:LIC",
+      "purpose": "ai_research",
+      "scenario": { "type": "failure", "feed": "fixture-sec", "failure": { "kind": "denied", "denial": "entitlement" }, "source": "premium-filings", "purpose": "ai_research" }
+    },
+    {
+      "id": "news_no_data",
+      "reference": "evidence:f4:news:NONE",
+      "purpose": "ai_research",
+      "scenario": { "type": "no_data", "queryRange": "latest", "asOf": "2026-01-02T14:30:00.000Z" }
+    }
+  ]
+}

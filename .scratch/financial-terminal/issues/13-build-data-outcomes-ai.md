@@ -1,13 +1,13 @@
 # 13 - F4 정보 outcome·AI tracer 구축
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 11, 12
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: main-agent
+Claimed at: 2026-07-16T00:41:26+09:00
+Last heartbeat: 2026-07-16T01:10:48+09:00
 
 ## Objective
 
@@ -52,3 +52,28 @@ non-chart FinancialInformation과 ResearchAssistant가 실제값·stale·hard ex
 ## Traceability
 
 - [승인 spec](../spec.md) `UF-01/02/05`, §5, §6.1, §7, F4, `SEC-04/05/06/09`, `AT-01/04/11`; ADR `A03/A05`.
+
+## Progress — 도메인 완료 (B1–B4), presentation gate open
+
+Status는 `claimed` 유지. FinancialInformation(비-chart)·ResearchAssistant·erasure·deadline의 도메인/보안 로직을 vertical-slice TDD로 완주하고 두 핵심 acceptance oracle(AT-01·AT-04)을 blind test-authorship으로 검증했으나, **B5(presentation·browser: AT-01 DOM 절반=bullet 1, deadline read-경로 배선)가 남아 acceptance gate 미충족**. 진행 로그는 [progress/f4-plan.md](../progress/f4-plan.md).
+
+### Answer (B1–B4)
+- **B1 Market Observation(AT-01)**: `InformationOutcome<MarketObservation>` 정규화 — freshness(§5.1 residual+cadence soft/hard), error(401→reauth, 403 3분기[entitlement→license_restricted, credential→reauth, else→forbidden_upstream], 429 retryAfter, timeout/5xx, malformed/future→invalid_response+quarantine), scripted `MarketInformation.read`(값은 available에만 = 타입 강제).
+- **B2 news/filing Evidence**: 같은 머신 재사용 + `EvidenceResolver`(§6.1, purpose-bound, raw getter 없음, title/source/time/link/snippet만·전문/이미지 금지 §5.3).
+- **B3 ResearchAssistant(AT-04)**: `AiMaterialResolver`→`AiMaterialOutcome`, 최소화 envelope + prompt secret 가드(fail-closed), category policy(derivative/external-processing forbidden→Gemini·local 호출 0), scripted Gemini(호출 기록)+local rule fallback, **SEC-06 pre-dispatch consent-epoch 재검사로 egress 차단**, license-scope narrowing(입력보다 안 넓게).
+- **B4 erasure/deadline**: `PersonalCacheStore`(monotonic fence·shred·restore suppression, SEC-09) + F3 `ErasureParticipant` 호환 participant(financial+research receipt), `withDeadline`(data 10s/AI 20s).
+
+### Changed files (B1–B4)
+- `src/modules/financial-information/data/**`: `contracts.ts`, `observation-freshness.ts`, `outcome-classification.ts`, `scripted-market-information.ts`, `evidence-contracts.ts`, `evidence-normalization.ts`, `scripted-evidence-resolver.ts`, `personal-cache.ts`, `deadline.ts`.
+- `src/modules/research-assistant/**`: `contracts.ts`, `research-service.ts`, `scripted-research.ts`.
+- `fixtures/spec/f4/**`: `market-catalog.json`, `evidence-catalog.json`, `ai-material-catalog.json`.
+- tests: `tests/f4-{observation-freshness,market-information,evidence,research-assistant,research-acceptance,erasure-deadline}.test.ts`.
+
+### Validation (B1–B4)
+- `npm run check`: typecheck·lint clean, **Vitest 271 / 33 files**(신규 F4 ~80), public/server seam 통과. 회귀 0.
+- **blind test-authorship(새 규칙 High-tier)**: AT-01·AT-04 acceptance를 구현 미열람·spec만으로 별도 에이전트가 작성. AT-01 blind가 **순환 import→policyVersion undefined(타입 계약 위반)** 실버그를 잡음(내 correlated oracle이 놓친 필드) → 수정. AT-04 blind는 16/16 + 자체 mutation-check(assertion 3개 flip red→green)로 non-vacuous 확인.
+
+### Residual risks / 미완 (B5 + gap)
+- **B5 미착수**: 비-chart 패널·research 패널 presentation, **AT-01 DOM 일치(bullet 1)**, explicit-unavailable, deadline read-경로 배선. Playwright 필요 → gate open.
+- **SEC-04 transport**: 핵심은 F0 `provider-transport`가 완증(소비만). data/AI route registry 선언·실 adapter는 opt-in(`free_only`) → B5/후속.
+- blind가 표시한 gap: (1) SEC-05 "log" 절반 seam hook 없음(prompt egress만 관측), (2) cross-workspace material 거절 전용 fixture 없음, (3) redaction 케이스 prompt-loop vacuous(실보장은 callCount 0).

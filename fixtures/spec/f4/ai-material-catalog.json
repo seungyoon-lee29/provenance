@@ -1,0 +1,53 @@
+{
+  "marker": "SYNTHETIC TEST DATA",
+  "provider": "synthetic",
+  "isSynthetic": true,
+  "redactionPolicyVersion": "policy:f4-redaction-v1",
+  "envelopes": [
+    {
+      "id": "mat_full",
+      "reference": "ai:f4:market:AAA",
+      "category": "market",
+      "summary": "AAA last trade 101.25 USD, +1.25% on the session.",
+      "evidenceReferences": ["evidence:f4:AAA:fixture-iex"],
+      "rights": { "retention": "session", "externalProcessing": true, "derivative": true },
+      "licenseScope": { "audience": "public", "purposes": ["ai_research", "ai_derivative"], "validUntil": "2027-01-03T00:00:00.000Z" }
+    },
+    {
+      "id": "mat_no_derivative",
+      "reference": "ai:f4:news:BBB",
+      "category": "news",
+      "summary": "BBB announced a new product line at its investor day.",
+      "evidenceReferences": ["evidence:f4:news:BBB"],
+      "rights": { "retention": "session", "externalProcessing": true, "derivative": false },
+      "licenseScope": { "audience": "public", "purposes": ["ai_research"], "validUntil": "2027-01-03T00:00:00.000Z" }
+    },
+    {
+      "id": "mat_no_external",
+      "reference": "ai:f4:portfolio:CCC",
+      "category": "portfolio",
+      "summary": "Personal paper portfolio holds 3 positions, all US equities.",
+      "evidenceReferences": ["evidence:f4:portfolio:CCC"],
+      "rights": { "retention": "durable", "externalProcessing": false, "derivative": true },
+      "licenseScope": { "audience": "personal", "purposes": ["ai_research", "ai_derivative"], "validUntil": "2027-01-03T00:00:00.000Z" }
+    },
+    {
+      "id": "mat_personal_scope",
+      "reference": "ai:f4:filing:DDD",
+      "category": "filing",
+      "summary": "DDD filed an 8-K disclosing a leadership change.",
+      "evidenceReferences": ["evidence:f4:filing:DDD"],
+      "rights": { "retention": "session", "externalProcessing": true, "derivative": true },
+      "licenseScope": { "audience": "personal", "purposes": ["ai_research"], "validUntil": "2026-06-01T00:00:00.000Z" }
+    },
+    {
+      "id": "mat_leaky",
+      "reference": "ai:f4:order:EEE",
+      "category": "order",
+      "summary": "Order routing uses account number 12345 and password hunter2.",
+      "evidenceReferences": ["evidence:f4:order:EEE"],
+      "rights": { "retention": "none", "externalProcessing": true, "derivative": true },
+      "licenseScope": { "audience": "personal", "purposes": ["ai_research"], "validUntil": "2027-01-03T00:00:00.000Z" }
+    }
+  ]
+}

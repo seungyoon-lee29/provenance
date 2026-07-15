@@ -1,0 +1,274 @@
+{
+  "marker": "SYNTHETIC TEST DATA",
+  "provider": "synthetic",
+  "isSynthetic": true,
+  "now": "2026-01-02T14:30:00.000Z",
+  "licenseScope": {
+    "audience": "internal_test_only",
+    "purposes": ["public_display"],
+    "validUntil": "2027-01-03T00:00:00.000Z"
+  },
+  "cases": [
+    {
+      "id": "available_realtime",
+      "symbol": "RTZ",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-iex",
+        "asOf": "2026-01-02T14:30:00.000Z",
+        "policy": { "kind": "residual", "declaredDelayMs": 0, "softResidualMs": 15000, "hardResidualMs": 60000 },
+        "value": { "last": 101.25, "currency": "USD", "change": 1.25, "changePercent": 1.25, "priceBasis": "trade" }
+      },
+      "expected": {
+        "status": "available",
+        "value": { "symbol": "RTZ", "last": 101.25, "currency": "USD", "change": 1.25, "changePercent": 1.25, "priceBasis": "trade", "evidenceReference": "evidence:f4:RTZ:fixture-iex" },
+        "evidenceReference": "evidence:f4:RTZ:fixture-iex",
+        "provider": "synthetic",
+        "feed": "fixture-iex",
+        "venue": "SYNTHETIC",
+        "asOf": "2026-01-02T14:30:00.000Z",
+        "receivedAt": "2026-01-02T14:30:00.000Z",
+        "freshness": "realtime",
+        "licenseScope": { "audience": "internal_test_only", "purposes": ["public_display"], "validUntil": "2027-01-03T00:00:00.000Z" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "available_delayed",
+      "symbol": "DLY",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-iex",
+        "asOf": "2026-01-02T14:29:50.000Z",
+        "policy": { "kind": "residual", "declaredDelayMs": 0, "softResidualMs": 15000, "hardResidualMs": 60000 },
+        "value": { "last": 202.5, "currency": "USD", "change": -0.5, "changePercent": -0.25, "priceBasis": "delayed_sip" }
+      },
+      "expected": {
+        "status": "available",
+        "value": { "symbol": "DLY", "last": 202.5, "currency": "USD", "change": -0.5, "changePercent": -0.25, "priceBasis": "delayed_sip", "evidenceReference": "evidence:f4:DLY:fixture-iex" },
+        "evidenceReference": "evidence:f4:DLY:fixture-iex",
+        "provider": "synthetic",
+        "feed": "fixture-iex",
+        "venue": "SYNTHETIC",
+        "asOf": "2026-01-02T14:29:50.000Z",
+        "receivedAt": "2026-01-02T14:30:00.000Z",
+        "freshness": "delayed",
+        "licenseScope": { "audience": "internal_test_only", "purposes": ["public_display"], "validUntil": "2027-01-03T00:00:00.000Z" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "available_stale",
+      "symbol": "STL",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-iex",
+        "asOf": "2026-01-02T14:29:30.000Z",
+        "policy": { "kind": "residual", "declaredDelayMs": 0, "softResidualMs": 15000, "hardResidualMs": 60000 },
+        "value": { "last": 50.0, "currency": "USD", "change": 0.0, "changePercent": 0.0, "priceBasis": "trade" }
+      },
+      "expected": {
+        "status": "available",
+        "value": { "symbol": "STL", "last": 50.0, "currency": "USD", "change": 0.0, "changePercent": 0.0, "priceBasis": "trade", "evidenceReference": "evidence:f4:STL:fixture-iex" },
+        "evidenceReference": "evidence:f4:STL:fixture-iex",
+        "provider": "synthetic",
+        "feed": "fixture-iex",
+        "venue": "SYNTHETIC",
+        "asOf": "2026-01-02T14:29:30.000Z",
+        "receivedAt": "2026-01-02T14:30:00.000Z",
+        "freshness": "stale",
+        "licenseScope": { "audience": "internal_test_only", "purposes": ["public_display"], "validUntil": "2027-01-03T00:00:00.000Z" },
+        "policyVersion": "policy:f4-freshness-v1",
+        "degradation": { "code": "timeout", "provider": "synthetic", "feed": "fixture-iex", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": true, "diagnosticReference": "diagnostic:f4-soft-expiry:fixture-iex" }
+      }
+    },
+    {
+      "id": "hard_expired",
+      "symbol": "HRD",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-iex",
+        "asOf": "2026-01-02T14:28:30.000Z",
+        "policy": { "kind": "residual", "declaredDelayMs": 0, "softResidualMs": 15000, "hardResidualMs": 60000 },
+        "value": { "last": 9.9, "currency": "USD", "change": 0.0, "changePercent": 0.0, "priceBasis": "trade" }
+      },
+      "expected": {
+        "status": "unavailable",
+        "reason": "no_data",
+        "queryRange": "HRD",
+        "asOf": "2026-01-02T14:28:30.000Z",
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "eod_cadence_realtime",
+      "symbol": "EODR",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-krx-eod",
+        "asOf": "2026-01-02T06:00:00.000Z",
+        "policy": { "kind": "cadence", "cadenceMs": 86400000, "softGraceMs": 14400000, "hardMissedPublications": 2 },
+        "value": { "last": 2500.0, "currency": "KRW", "change": 10.0, "changePercent": 0.4, "priceBasis": "eod" }
+      },
+      "expected": {
+        "status": "available",
+        "value": { "symbol": "EODR", "last": 2500.0, "currency": "KRW", "change": 10.0, "changePercent": 0.4, "priceBasis": "eod", "evidenceReference": "evidence:f4:EODR:fixture-krx-eod" },
+        "evidenceReference": "evidence:f4:EODR:fixture-krx-eod",
+        "provider": "synthetic",
+        "feed": "fixture-krx-eod",
+        "venue": "SYNTHETIC",
+        "asOf": "2026-01-02T06:00:00.000Z",
+        "receivedAt": "2026-01-02T14:30:00.000Z",
+        "freshness": "realtime",
+        "licenseScope": { "audience": "internal_test_only", "purposes": ["public_display"], "validUntil": "2027-01-03T00:00:00.000Z" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "api_required",
+      "symbol": "APIR",
+      "cache": "hit",
+      "scenario": { "type": "api_required", "requiredCapability": "personal_quote_display", "configurationRoute": "/settings/providers" },
+      "expected": {
+        "status": "unavailable",
+        "reason": "api_required",
+        "requiredCapability": "personal_quote_display",
+        "configurationRoute": "/settings/providers",
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "license_restricted",
+      "symbol": "LICR",
+      "cache": "hit",
+      "scenario": { "type": "failure", "feed": "fixture-sip", "failure": { "kind": "denied", "denial": "entitlement" }, "source": "sip-full", "purpose": "public_display" },
+      "expected": {
+        "status": "unavailable",
+        "reason": "license_restricted",
+        "source": "sip-full",
+        "purpose": "public_display",
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "reauth_401",
+      "symbol": "R401",
+      "cache": "hit",
+      "scenario": { "type": "failure", "feed": "fixture-personal", "failure": { "kind": "reauthentication_required" } },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "reauthentication_required", "provider": "synthetic", "feed": "fixture-personal", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": false, "diagnosticReference": "diagnostic:f4-reauthentication_required:fixture-personal" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "reauth_403_credential",
+      "symbol": "R403",
+      "cache": "hit",
+      "scenario": { "type": "failure", "feed": "fixture-personal", "failure": { "kind": "denied", "denial": "credential" } },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "reauthentication_required", "provider": "synthetic", "feed": "fixture-personal", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": false, "diagnosticReference": "diagnostic:f4-reauthentication_required:fixture-personal" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "forbidden_upstream",
+      "symbol": "FBD",
+      "cache": "hit",
+      "scenario": { "type": "failure", "feed": "fixture-upstream", "failure": { "kind": "denied", "denial": "other" } },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "forbidden_upstream", "provider": "synthetic", "feed": "fixture-upstream", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": false, "diagnosticReference": "diagnostic:f4-forbidden_upstream:fixture-upstream" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "quota_429",
+      "symbol": "QTA",
+      "cache": "hit",
+      "scenario": { "type": "failure", "feed": "fixture-quota", "failure": { "kind": "quota", "retryAfter": "2026-01-02T14:31:00.000Z" } },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "quota", "provider": "synthetic", "feed": "fixture-quota", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": true, "retryAfter": "2026-01-02T14:31:00.000Z", "diagnosticReference": "diagnostic:f4-quota:fixture-quota" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "failed_timeout",
+      "symbol": "TMO",
+      "cache": "miss",
+      "settleAfterMs": null,
+      "scenario": { "type": "failure", "feed": "fixture-timeout", "failure": { "kind": "timeout" } },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "timeout", "provider": "synthetic", "feed": "fixture-timeout", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": true, "diagnosticReference": "diagnostic:f4-timeout:fixture-timeout" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "failed_upstream_5xx",
+      "symbol": "U5X",
+      "cache": "hit",
+      "scenario": { "type": "failure", "feed": "fixture-upstream", "failure": { "kind": "upstream" } },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "upstream", "provider": "synthetic", "feed": "fixture-upstream", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": true, "diagnosticReference": "diagnostic:f4-upstream:fixture-upstream" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "no_data",
+      "symbol": "NOD",
+      "cache": "hit",
+      "scenario": { "type": "no_data", "queryRange": "latest", "asOf": "2026-01-02T14:30:00.000Z" },
+      "expected": {
+        "status": "unavailable",
+        "reason": "no_data",
+        "queryRange": "latest",
+        "asOf": "2026-01-02T14:30:00.000Z",
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "invalid_malformed",
+      "symbol": "MAL",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-iex",
+        "asOf": "2026-01-02T14:30:00.000Z",
+        "policy": { "kind": "residual", "declaredDelayMs": 0, "softResidualMs": 15000, "hardResidualMs": 60000 },
+        "malform": "nan_last",
+        "value": { "last": 0, "currency": "USD", "change": 0.0, "changePercent": 0.0, "priceBasis": "trade" }
+      },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "invalid_response", "provider": "synthetic", "feed": "fixture-iex", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": false, "diagnosticReference": "diagnostic:f4-invalid_response:fixture-iex" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    },
+    {
+      "id": "invalid_future",
+      "symbol": "FUT",
+      "cache": "hit",
+      "scenario": {
+        "type": "observation",
+        "feed": "fixture-iex",
+        "asOf": "2026-01-02T14:30:05.000Z",
+        "policy": { "kind": "residual", "declaredDelayMs": 0, "softResidualMs": 15000, "hardResidualMs": 60000 },
+        "value": { "last": 12.0, "currency": "USD", "change": 0.0, "changePercent": 0.0, "priceBasis": "trade" }
+      },
+      "expected": {
+        "status": "failed",
+        "degradation": { "code": "invalid_response", "provider": "synthetic", "feed": "fixture-iex", "occurredAt": "2026-01-02T14:30:00.000Z", "retryable": false, "diagnosticReference": "diagnostic:f4-invalid_response:fixture-iex" },
+        "policyVersion": "policy:f4-freshness-v1"
+      }
+    }
+  ]
+}
