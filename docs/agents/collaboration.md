@@ -45,11 +45,15 @@
 
 팀은 필요한 관점을 모두 포함하는 가장 작은 규모로 구성한다. 일반적으로 단순 작업은 1~2명, 중간 작업은 2~3명, 여러 계층을 가로지르는 복잡한 작업은 3~4명을 사용하며, 이유 없이 5명 이상으로 늘리지 않는다.
 
+중첩 팀을 포함해 동시에 실행하는 서브에이전트 총합에도 상한을 둔다(기본 4~6, rate limit 여유가 없으면 더 낮춘다). 큰 팬아웃은 한 번에 20개+로 던지지 않고 4~6개 배치로 나눠 배치마다 진행 상태를 `.scratch/<effort>/progress/`에 기록한 뒤 다음 배치를 실행한다. 장시간 도구·프로세스에는 timeout과 종료 시 정리(cleanup) 절차를 함께 둔다. 이 조율 규칙은 전역 작업 방식 규칙을 상속하며, 충돌 시 사용자 지시가 우선한다.
+
+아래 하위 단계에서 이름으로 참조하는 스킬(`task-coordination-strategies`·`team-composition-patterns`·`multi-reviewer-patterns`·`parallel-feature-development`·`parallel-debugging`)은 예시 도구다. 규칙은 그 *행동*이며, 스킬이 없거나 이름이 바뀌면 동등한 방법으로 직접 수행한다.
+
 ### 설계 단계
 
 - `task-coordination-strategies`로 작업, 의존성, 차단 관계와 critical path를 정의한다.
 - `team-composition-patterns`로 중복되지 않는 역할과 최소 팀 규모를 선택한다.
-- 인증, Provider Credential, 거래, 데이터 권리 또는 핵심 아키텍처 경계를 바꾸는 고위험 결정은 architecture, security, performance 등 서로 다른 관점의 3인 review team으로 검수한다. 영향이 작고 되돌리기 쉬운 결정은 메인 에이전트 또는 1~2명의 reviewer로 충분하다. UI 결정이면 testing 또는 accessibility를 필요한 관점으로 교체할 수 있다.
+- 고위험 결정(인증·Provider Credential·거래·데이터 권리·핵심 아키텍처 경계)은 서로 다른 관점(architecture/security/performance, UI면 testing/accessibility로 교체)으로 리뷰한다. 영향이 작고 되돌리기 쉬운 결정은 메인 에이전트 또는 1~2명으로 충분하다. 검증 깊이·tier·적대적 decorrelation·격리 방법은 아래 "검증 깊이와 blast radius"를 따른다.
 - `multi-reviewer-patterns`로 파일·라인 근거가 있는 finding만 수집하고 중복을 제거한다. 같은 문제의 심각도가 다르면 더 높은 등급을 사용한다.
 
 ### 구현 단계
@@ -97,6 +101,28 @@
   - 실행한 테스트 또는 검증과 그 결과
   - 남은 위험, 미해결 사항과 추가 판단이 필요한 내용
 
+## 검증 깊이와 blast radius
+
+리뷰·검증의 목표는 "모든 결함을 잡는다"가 아니라 결함이 새어도 되돌릴 수 없는 피해가 없게 하는 것이다. 안전은 세 층으로 확보하며 리뷰(모델 판단)는 그중 한 조각일 뿐이다. 예산이 빠듯할수록 더 나은 리뷰어를 사는 대신 blast radius를 줄인다.
+
+- **Prevent(예방)**: 불법 상태를 타입으로 표현 불가능하게 만든다(`Money`는 branded type, `Real/Mock`·`Paper/Live`는 phantom type → `typecheck`가 강제). 변경은 작고 인터페이스가 좁은 deep module로 유지한다. 결함을 "리뷰가 잡을 것"에서 "존재할 수 없는 것"으로 옮긴다.
+- **Detect(탐지)**: 이번 변경과 독립적으로 작성된 oracle을 먼저 돌린다(`typecheck`·lint·`verify:*`·기존 테스트). 도메인 불변식은 `CONTEXT.md`/ADR에서 도출해 property test로 상시 검증한다(돈 보존, scripted 모드 egress 0, Live route 부재 등). 명세 가능한 결함은 여기서 끝내고, 판단 잔여(설계 냄새·새로운 보안 로직·"옳은 걸 만들었나")에만 사람/리뷰어를 쓴다. 같은 에이전트가 이번 변경에서 새로 쓴 테스트는 코드와 블라인드스팟을 공유하므로 decorrelation 근거로 치지 않는다.
+- **Contain(격리)**: 되돌릴 수 없는 경로는 flag-default-off, 고정 상한/서킷브레이커, idempotency+reconciliation, Paper-first, soft-delete+복구, audit log로 blast radius를 낮춘다("비밀과 외부 실행 가드"의 broker/egress 규칙을 일반화). 낮출 수 없으면 그 자체가 최상위 위험이다.
+
+**결정 원리: 필요한 decorrelation ∝ 되돌릴 수 없음 × blast radius.** 검증 tier는 코드 경로만이 아니라 *containment 이후 최악 결과의 되돌릴 수 없음*으로 정한다. 이는 "추론 강도"와 같은 위험 축이므로 함께 움직인다 — 되돌릴 수 없음이 크면 추론 강도(XHigh)와 검증 tier(최상위)를 같이 올린다.
+
+| Tier | 트리거 | 방법 |
+| --- | --- | --- |
+| Low/기계적 | 포맷·이름 변경·문서 | oracle만, 리뷰어 없음 |
+| Medium | 계약 안 기능·일반 리팩터 | oracle + 같은-모델 적대 리뷰 1인. 관점·프레이밍·근거 범위(diff만 / spec+diff / 재현)를 어긋낸다 |
+| High | 여러 계층 교차·상태/동시성 | 위 + **blind test-authorship**: 코드를 짠 에이전트는 그 acceptance 테스트를 쓰지 않는다. 별도 에이전트가 구현을 안 본 채 Interface Contract/spec만 받고 반증 테스트를 짠다 |
+| 최상위 | `auth`·credential·order·migration·money 산술 경로를 건드리는 diff는 판단 없이 자동 승격 | contain으로 blast radius를 낮춘 뒤 위 방법으로 충분하다. 낮출 수 없으면 **사람 게이트(`ready-for-human`)**를 우선하고(다른-계열 모델은 예산·최고위험일 때 보조), 사람·다른-계열 어느 것도 없으면 통과시키지 말고 티켓을 block 한다 |
+
+- **반증 산출물 강제**: 리뷰어는 "괜찮아 보임" 대신 반례(실패 테스트/repro)를 제출하거나 "X·Y·Z 각도로 시도했으나 못 만듦"을 명시한다.
+- **spec 대조**: 티켓 contract가 아니라 source-of-truth `.scratch/<feature>/spec.md`/PRD에 직접 대조해 "옳은 걸 만들었나"를 확인한다. 불변식 목록·flag 기본값·ADR은 매 diff가 아니라 확정 시 1회 사람이 검증한다.
+- **믿기 전 측정**: property/테스트가 실제로 결함을 잡는지 mutation testing으로 사전 점검하고, 게이트를 빠져나간 결함은 "어느 tier가 왜 놓쳤나"를 기록해 tier 배정을 보정한다.
+- **예산 시퀀싱**: 지금은 contain 명문화 + `verify:*` 가드 + spec 대조(거의 무비용)를 1차로 한다. 타입 불변식 → property test → mutation testing → 다른-계열 최상위 escalation은 토큰 여유가 회복될 때 도입한다.
+
 ## 검수와 승인
 
 서브에이전트의 결과는 메인 에이전트가 승인하기 전까지 제안된 중간 산출물로 본다. 메인 에이전트는 보고만으로 작업을 승인하지 않는다. 산출물과 변경 내용을 직접 확인하고, 작업의 위험도에 맞는 테스트나 검증을 수행한다.
@@ -127,4 +153,4 @@
 
 ## 완료와 최종 보고
 
-메인 에이전트는 승인된 결과를 통합하고 충돌과 누락을 확인한 뒤 전체 완료 여부를 최종 판단한다. 통합은 변경 파일 검수, 관련 테스트, 전체 검증, 최종 diff 검토, 명시적 stage와 commit 순서로 수행한다. 가능한 한 티켓 하나를 커밋 하나로 마감하고 clean worktree를 확인한 뒤 다음 frontier를 같은 세션에서 계속할 수 있다. 사용자에게는 완료된 내용, 검증 결과, 남은 위험 또는 후속 작업을 하나의 일관된 최종 응답으로 보고한다.
+메인 에이전트는 승인된 결과를 통합하고 충돌과 누락을 확인한 뒤 전체 완료 여부를 최종 판단한다. 통합은 변경 파일 검수, 관련 테스트, 전체 검증, 최종 diff 검토, 명시적 stage와 commit 순서로 수행한다. 전체 검증은 변경 범위에 맞는 check 스크립트를 실제로 실행하고 결과를 인용한다: 로직·유닛·seam은 `npm run check`, F1/F2 UI·성능 변경은 `npm run check:f1` 또는 `check:f2`, 네트워크 차단·마이그레이션 경계는 `npm run verify:network-off`·`verify:migrations`, compose/PR 통합은 `npm run check:pr`. 가능한 한 티켓 하나를 커밋 하나로 마감하고 clean worktree를 확인한 뒤 다음 frontier를 같은 세션에서 계속할 수 있다. 사용자에게는 완료된 내용, 검증 결과, 남은 위험 또는 후속 작업을 하나의 일관된 최종 응답으로 보고한다.
