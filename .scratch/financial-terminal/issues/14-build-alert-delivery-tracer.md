@@ -1,13 +1,13 @@
 # 14 - F5 알림·외부 전달 tracer 구축
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 12, 13
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: main-agent
+Claimed at: 2026-07-16T03:46:16+09:00
+Last heartbeat: 2026-07-16T03:55:30+09:00
 
 ## Objective
 
