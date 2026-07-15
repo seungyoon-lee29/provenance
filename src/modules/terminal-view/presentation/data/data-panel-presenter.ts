@@ -3,7 +3,7 @@ import type { InformationOutcome, ResearchResult } from "@/shared";
 import type { MarketObservation } from "../../../financial-information/data/contracts";
 import type { EvidenceValue } from "../../../financial-information/data/evidence-contracts";
 import type { ResearchResultShape } from "../../../research-assistant/contracts";
-import type { GuestPanelValue } from "../guest/contracts";
+import type { GuestPanelState, GuestPanelValue, PublicPanelKey } from "../guest/contracts";
 import { presentGuestPanel, type GuestPanelPresentation } from "../guest/guest-panel-presenter";
 
 /**
@@ -55,4 +55,26 @@ export function presentEvidencePanel(outcome: InformationOutcome<EvidenceValue>)
 export function presentResearchPanel(outcome: InformationOutcome<ResearchResult>): GuestPanelPresentation {
   // The service's available value is always a ResearchResultShape at runtime.
   return present(mapOutcome(outcome, (value) => researchToValue(value as ResearchResultShape)));
+}
+
+/**
+ * DOM-mount seam: wrap an F4 outcome as a `GuestPanelState` so the F1-proven
+ * `GuestPanel` component renders it unchanged. The AT-01 invariant then holds in
+ * the literal browser DOM, not only in the view-model unit tests above.
+ */
+function panelState(id: string, outcome: InformationOutcome<GuestPanelValue>): GuestPanelState {
+  // ponytail: `id` is a scenario id used only as an opaque DOM/aria key; cast to reuse GuestPanel as-is.
+  return { panelKey: id as PublicPanelKey, state: "ready", outcome, requestRevision: "" };
+}
+
+export function toMarketPanelState(id: string, outcome: InformationOutcome<MarketObservation>): GuestPanelState {
+  return panelState(id, mapOutcome(outcome, marketToValue));
+}
+
+export function toEvidencePanelState(id: string, outcome: InformationOutcome<EvidenceValue>): GuestPanelState {
+  return panelState(id, mapOutcome(outcome, evidenceToValue));
+}
+
+export function toResearchPanelState(id: string, outcome: InformationOutcome<ResearchResult>): GuestPanelState {
+  return panelState(id, mapOutcome(outcome, (value) => researchToValue(value as ResearchResultShape)));
 }
