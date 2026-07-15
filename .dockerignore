@@ -1,0 +1,11 @@
+.env
+.env.*
+.secrets
+.git
+.next
+node_modules
+coverage
+test-results
+*.log
+*.zip
+.DS_Store

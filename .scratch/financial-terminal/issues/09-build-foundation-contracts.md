@@ -1,13 +1,13 @@
 # 09 - F0 기반·공유 계약·vault 구축
 
 Type: implementation
-Status: open
-Triage: ready-for-agent
+Status: claimed
+Triage: ready-for-human
 Depends on: 07, 08
-Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Blocked by: Local Docker runtime unavailable on this Mac
+Owner: /root
+Claimed at: 2026-07-15T12:58:04+09:00
+Last heartbeat: 2026-07-15T14:12:58+09:00
 
 ## Objective
 
@@ -50,3 +50,21 @@ Next.js TypeScript 모듈형 모놀리스, 별도 worker, PostgreSQL, Redis와 n
 ## Traceability
 
 - [승인 spec](../spec.md) §6, §7, §12.2, §13, F0, `SEC-03/04/05/10`, `AT-11`; ADR `A01~A04`, `CFG`.
+
+## Progress
+
+- app/worker bootstrap, PostgreSQL·Redis readiness, migration runner와 Docker internal-network compose tracer를 구현했다.
+- shared public/server-only seam, strict queue envelope, AES-256-GCM CredentialVault·local keyring, authoritative ProviderAuthorization·pinned HTTPS transport를 구현했다.
+- fail-closed runtime composition에 `free_only`, canonical origin, local/global credential, OAuth, delivery keyring과 email 정책을 적용했다.
+
+## Validation checkpoint
+
+- `npm run check`: typecheck, lint, 9 files/81 tests, public/server seam 통과.
+- `npm run build`: production build와 route generation 통과. `npm audit --audit-level=high`: 취약점 0.
+- 실제 Next process에서 `/`, `/api/health` 200과 의존성 미구성 `/api/ready` 503을 확인했고 readiness는 0.03초 이내에 fail closed했다.
+- compose YAML 구조, internal-only PR check 배치, shell syntax와 secret/TypeScript escape scan을 확인했다.
+- standards/spec 2축 review와 수정 범위 targeted re-review에서 Critical/High/Medium 잔여 0을 확인했다.
+
+## Blocker
+
+- 로컬에 `docker` CLI/runtime과 PostgreSQL·Redis 대체 runtime이 없어 `npm run check:pr`, 네 process readiness, fresh/reapply/rollback migration smoke와 Docker network-off 실제 실행은 아직 검증하지 못했다. 시스템 runtime 설치·실행 권한이 준비되면 이 합격 gate를 실행한 뒤 티켓을 resolve한다.

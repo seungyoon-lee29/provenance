@@ -1,0 +1,118 @@
+x-runtime-environment: &runtime-environment
+  APP_ENVIRONMENT: development
+  APP_PUBLIC_ORIGIN: http://localhost:3000
+  PROVIDER_BILLING_MODE: free_only
+  LOCAL_PROVIDER_CREDENTIAL_MODE: contract_only
+  CREDENTIAL_VAULT_PROVIDER: disabled
+  ENABLE_SYNTHETIC_PROVIDER: "false"
+  ENABLE_LIVE_TRADING: "false"
+  ENABLED_PAID_ADAPTERS: ""
+  ENABLED_PAID_ROUTES: ""
+  ENABLED_PAID_SCHEDULES: ""
+  DATABASE_URL: postgresql://fakebloomberg:fakebloomberg@postgres:5432/fakebloomberg
+  REDIS_URL: redis://redis:6379
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: fakebloomberg
+      POSTGRES_USER: fakebloomberg
+      POSTGRES_PASSWORD: fakebloomberg
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fakebloomberg -d fakebloomberg"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [runtime]
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [runtime]
+
+  migrate:
+    build: .
+    command: ["npm", "run", "db:migrate"]
+    environment: *runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [runtime]
+
+  app:
+    build: .
+    command: ["npm", "start", "--", "--hostname", "0.0.0.0"]
+    environment: *runtime-environment
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [runtime]
+
+  worker:
+    build: .
+    command: ["npm", "run", "worker:start"]
+    environment:
+      <<: *runtime-environment
+      WORKER_HEALTH_PORT: "3001"
+    ports:
+      - "3001:3001"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [runtime]
+
+  network-off:
+    profiles: [verify]
+    build: .
+    command: ["npm", "run", "verify:network-off"]
+    environment:
+      NETWORK_HARNESS_ALLOWED_ORIGINS: http://app:3000,http://worker:3001
+    depends_on:
+      app:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    networks: [runtime]
+
+  pr-check:
+    profiles: [verify]
+    build: .
+    command: ["npm", "run", "check"]
+    environment: *runtime-environment
+    networks: [runtime]
+
+  migration-smoke:
+    profiles: [verify]
+    build: .
+    command: ["npm", "run", "verify:migrations"]
+    environment: *runtime-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [runtime]
+
+networks:
+  runtime:
+    internal: true
