@@ -462,22 +462,22 @@ MVP의 배포 기준선은 특정 cloud vendor가 아니라 OCI/Docker 기반의
 
 첫 tracer와 공유 contract가 움직이는 동안 메인 owner가 순차 통합한다. public type, composition root, database migration, barrel/index와 이 spec은 한 명만 수정한다. interface가 고정된 뒤에만 아래 lane을 파일 ownership이 겹치지 않게 병렬화한다.
 
-| ID | vertical slice | Depends on | 병렬 group | critical path | 단일 owned scope | 관찰 가능한 종점 |
+| ID | vertical slice | Depends on | 병렬 group | dependency-depth critical path | 단일 owned scope | 관찰 가능한 종점 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `F0` | foundation/contract | None | sequential | yes | composition root, public types, migration, shared index | app/worker/DB/Redis health와 network-off test harness |
+| `F0` | foundation/contract/vault | None | sequential | yes | composition root, public types, CredentialVault와 ProviderAuthorization/AuthorizedTransport primitive, migration, shared index | app/worker/DB/Redis health, vault/transport security contract와 network-off test harness |
 | `F1` | guest shell | F0 | sequential | yes | TerminalView presentation + public composition | public official Evidence 또는 정확한 unavailable 상태를 실제 browser에 표시 |
 | `F2` | chart | F1 | sequential | yes | FinancialInformation chart + TerminalView chart adapter | 1M/1D→1Y/1W가 실제 bar·화면 값을 변경 |
-| `F3` | Identity + layout | F2 | sequential | yes | Identity + TerminalView layout; shared session type는 F0 owner read-only | email/Google/GitHub session, A layout reload, B/guest 격리 |
-| `F4` | data outcome + AI | F2,F3 | sequential | yes | FinancialInformation non-chart + ResearchAssistant | available/stale/hard-expired/failed와 모든 자료의 consent/redaction/fallback 완주 |
+| `F3` | Identity + Provider Connections core + layout | F2 | sequential | yes | Identity, ProviderConnections core CRUD/vault orchestration, TerminalView layout; shared session/vault type는 F0 owner read-only | email/Google/GitHub session, encrypted connection save/revoke, A layout reload, B/guest 격리 |
+| `F4` | data outcome + AI | F2,F3 | sequential | no | FinancialInformation non-chart, ResearchAssistant, ProviderConnections data/AI route registry | available/stale/hard-expired/failed와 모든 자료의 consent/redaction/fallback 완주 |
 | `F5` | alert tracer | F3,F4 | P1 with F6 | no | NotificationCenter + delivery adapters | one occurrence, durable inbox, scripted Web Push/email fact 완주 |
-| `F6` | Actual baseline | F2,F3 | P1 with F5 | no | ActualPortfolio | Opening Position 표시, Paper 변화로 Actual 불변 |
+| `F6` | Actual baseline | F2,F3 | P1 with F5 | yes | ActualPortfolio | Opening Position 표시, Paper 변화로 Actual 불변 |
 | `F7` | accounting | F6 | P2 with F8 | no | ActualPortfolio calculation/journal | TWR→XIRR→FX→gross/net→transfer→corporate action literal oracle 추가 |
-| `F8` | Internal Paper | F2,F3,F6 | P2 with F7 | no | PaperTrading internal account/simulator | reservation·simulation-v1 fill·state/property 완주 |
-| `F9` | Broker Paper | F8 | P3 with F10 | no | PaperTrading broker execution + ProviderConnections paper transport | timeout→lookup 뒤 outbox/revoke fault 완주 |
+| `F8` | Internal Paper | F2,F3,F6 | P2 with F7 | yes | PaperTrading internal account/simulator | reservation·simulation-v1 fill·state/property 완주 |
+| `F9` | Broker Paper | F8 | P3 with F10 | yes | PaperTrading broker execution + ProviderConnections paper transport | timeout→lookup 뒤 outbox/revoke fault 완주 |
 | `F10` | Broker Sync | F6 | P3 with F9 | no | ActualPortfolio broker sync + ProviderConnections read transport | complete Snapshot 뒤 paging/ordering/late/delete race 완주 |
 | `F11` | release integration | F5,F7,F9,F10 | sequential | yes | testing/deployment artifacts; shared edits는 F0 owner | browser/accessibility/performance/load, Docker/ZIP/docs/screenshot gate 통과 |
 
-critical path는 `F0→F1→F2→F3→F4→F11`의 contract/integration chain이며 F11은 P1~P3의 모든 결과도 기다린다. 병렬 group 안에서도 한 파일에는 한 owner만 둔다. public type, composition root, migration, barrel/index와 spec은 F0/main owner만 수정하고 다른 lane은 변경 요청만 보낸다. 각 lane은 source module의 public interface를 read-only contract로 사용하고 공유 contract 변경은 메인 owner 승인 뒤 모든 dependent owner에게 알린다. 기본적으로 메인 owner만 stage·commit한다.
+F0~F3는 모든 개인화·거래 lane이 공유하는 sequential contract spine이다. lane duration을 아직 추정하지 않은 dependency-depth 기준 최장 경로는 `F0→F1→F2→F3→F6→F8→F9→F11`이며, F11은 이 경로뿐 아니라 `F4→F5`, `F6→F7`, `F6→F10` release branch의 결과도 모두 기다린다. 병렬 group 안에서도 한 파일에는 한 owner만 둔다. public type, composition root, migration, barrel/index와 spec은 F0/main owner만 수정하고 다른 lane은 변경 요청만 보낸다. 각 lane은 source module의 public interface를 read-only contract로 사용하고 공유 contract 변경은 메인 owner 승인 뒤 모든 dependent owner에게 알린다. 기본적으로 메인 owner만 stage·commit한다.
 
 ## 15. Definition of Done
 

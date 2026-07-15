@@ -31,7 +31,17 @@
 - [테스트 seam과 성능 예산 결정](./issues/05-define-testing-seams.md): `free_only` 실행 모드, public Interface 중심의 독립 oracle, network-off 결정론적 CI와 opt-in sandbox contract, freshness·HTTP·browser·worker의 수치 합격 예산을 확정했다.
 - [무료 알림 전달과 운영 이메일 경로 조사](./issues/06-research-free-alert-delivery.md): 인앱 Notification Record를 정본으로 두고 표준 Web Push, Resend Free 운영 email과 Mailpit local/CI 경로, consent·quota·retry·delivery fact를 확정했다.
 - [승인 가능한 MVP 스펙 작성](./issues/07-write-approved-mvp-spec.md): [승인 MVP spec](./spec.md)에 사용자 흐름, module/interface, 정보·권리·보안, Actual/Paper, 알림, 성능·테스트·배포 gate와 F0~F11 구현 ownership을 통합했다.
-- 현재 open frontier는 없다. 다음 작업은 승인 spec의 F0~F11을 의존성 순서의 implementation ticket으로 먼저 분해한 뒤 claim하는 것이다.
+- [MVP 구현 티켓 분해](./issues/08-decompose-mvp-implementation.md): F0~F11을 dependency, single owned scope, interface contract와 acceptance oracle이 있는 issue 09~20으로 분해했다.
+
+## Implementation plan
+
+- **현재 frontier**: [09 - F0 기반·공유 계약·vault 구축](./issues/09-build-foundation-contracts.md)
+- [10 - F1 비로그인 터미널 shell](./issues/10-build-guest-terminal-shell.md) → [11 - F2 chart tracer](./issues/11-build-chart-tracer.md) → [12 - F3 Identity·Provider Connections core·layout](./issues/12-build-identity-provider-layout.md)이 sequential contract spine을 완성한다.
+- P1: [13 - F4 정보 outcome·AI](./issues/13-build-data-outcomes-ai.md) 뒤 [14 - F5 알림·외부 전달](./issues/14-build-alert-delivery-tracer.md), 그리고 [15 - F6 Actual Portfolio baseline](./issues/15-build-actual-portfolio-baseline.md)을 독립 scope로 진행한다.
+- P2: F6 뒤 [16 - F7 포트폴리오 회계](./issues/16-build-portfolio-accounting.md)와 [17 - F8 Internal Paper Trading](./issues/17-build-internal-paper-trading.md)을 병렬화한다.
+- P3: F8 뒤 [18 - F9 Broker Paper execution](./issues/18-build-broker-paper-execution.md), F6 뒤 [19 - F10 Broker Sync](./issues/19-build-broker-sync.md)을 병렬화한다.
+- [20 - F11 release integration](./issues/20-integrate-release-artifacts.md)은 F5·F7·F9·F10을 모두 기다린 뒤 browser/accessibility/performance/load, Docker/ZIP/docs/screenshot gate를 통합한다.
+- issue 09 외 ticket은 현재 `Blocked by`의 선행 issue가 resolved될 때 번호를 제거하고, `Depends on` 이력은 보존한다.
 
 ## Out of scope
 
