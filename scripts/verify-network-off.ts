@@ -8,19 +8,25 @@ async function requireReady(target: string): Promise<void> {
   if (!response.ok) throw new Error(`${target} returned ${response.status}`);
 }
 
+function requirePolicyDenied(target: string): void {
+  try {
+    harness.assertAllowed(target);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("network harness denied origin:")) return;
+    throw error;
+  }
+  throw new Error(`network harness allowed denied origin: ${new URL(target).origin}`);
+}
+
 async function main(): Promise<void> {
   const appOrigin = allowedOrigins.find((origin) => new URL(origin).hostname === "app") ?? allowedOrigins[0];
   const workerOrigin = allowedOrigins.find((origin) => new URL(origin).hostname === "worker") ?? allowedOrigins[1];
   if (appOrigin === undefined || workerOrigin === undefined) throw new Error("network harness requires app and worker origins");
   await requireReady(`${appOrigin}/api/ready`);
   await requireReady(`${workerOrigin}/ready`);
-  let policyDenied = false;
-  try {
-    harness.assertAllowed("https://example.com/external-fixture");
-  } catch {
-    policyDenied = true;
-  }
-  if (!policyDenied) throw new Error("external fixture was not denied by policy");
+  requirePolicyDenied("http://127.0.0.1:3000/localhost-fixture");
+  requirePolicyDenied("http://localhost:3000/localhost-fixture");
+  requirePolicyDenied("https://example.com/external-fixture");
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 2_000);

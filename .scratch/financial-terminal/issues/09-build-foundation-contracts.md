@@ -1,13 +1,13 @@
 # 09 - F0 기반·공유 계약·vault 구축
 
 Type: implementation
-Status: claimed
+Status: resolved
 Triage: ready-for-human
 Depends on: 07, 08
-Blocked by: Local Docker runtime unavailable on this Mac
+Blocked by: None
 Owner: /root
 Claimed at: 2026-07-15T12:58:04+09:00
-Last heartbeat: 2026-07-15T14:12:58+09:00
+Last heartbeat: 2026-07-15T16:45:49+09:00
 
 ## Objective
 
@@ -51,20 +51,39 @@ Next.js TypeScript 모듈형 모놀리스, 별도 worker, PostgreSQL, Redis와 n
 
 - [승인 spec](../spec.md) §6, §7, §12.2, §13, F0, `SEC-03/04/05/10`, `AT-11`; ADR `A01~A04`, `CFG`.
 
-## Progress
+## Answer
 
 - app/worker bootstrap, PostgreSQL·Redis readiness, migration runner와 Docker internal-network compose tracer를 구현했다.
 - shared public/server-only seam, strict queue envelope, AES-256-GCM CredentialVault·local keyring, authoritative ProviderAuthorization·pinned HTTPS transport를 구현했다.
 - fail-closed runtime composition에 `free_only`, canonical origin, local/global credential, OAuth, delivery keyring과 email 정책을 적용했다.
+- Colima 기반 Docker runtime에서 전체 PR integration harness를 실제 실행해 F0 합격 gate를 완료했다.
 
-## Validation checkpoint
+## Changed files
 
-- `npm run check`: typecheck, lint, 9 files/81 tests, public/server seam 통과.
+- `package.json`, `package-lock.json`, TypeScript·Next·ESLint·Vitest 설정, `Dockerfile`, `.dockerignore`, `compose.yaml`.
+- `src/app/**`, `src/worker/**`, `src/composition/**`, `src/shared/**`, `src/platform/**`.
+- `db/migrations/**`, migration·network verification script, local-only TCP ingress와 `tests/**`의 contract/integration suite.
+- `docs/development/foundation-runtime.md`의 local/PR 실행·검증 절차.
+- 이 티켓 파일, Wayfinder map과 다음 frontier metadata.
+
+## Validation
+
+- `npm run check`: typecheck, lint, 10 files/83 tests, public/server seam 통과.
 - `npm run build`: production build와 route generation 통과. `npm audit --audit-level=high`: 취약점 0.
 - 실제 Next process에서 `/`, `/api/health` 200과 의존성 미구성 `/api/ready` 503을 확인했고 readiness는 0.03초 이내에 fail closed했다.
 - compose YAML 구조, internal-only PR check 배치, shell syntax와 secret/TypeScript escape scan을 확인했다.
+- `APP_HOST_PORT=3100 WORKER_HOST_PORT=3101 npm run compose:up`: `127.0.0.1` 전용 ingress를 통해 호스트 app·worker health/readiness 4개가 통과했고, app·worker는 internal network에만 남았다.
+- `npm run check:pr`: verification image를 현재 source에서 재빌드하고 container 내부 typecheck/lint/83 tests/seam, app·worker·PostgreSQL·Redis health/readiness 통과.
+- 같은 명령에서 fresh apply·재실행·rollback migration smoke와 실제 internal Docker network의 localhost·외부 egress 거절 fixture가 통과했고 종료 후 container/network가 정리됐다.
+
+## Review
+
 - standards/spec 2축 review와 수정 범위 targeted re-review에서 Critical/High/Medium 잔여 0을 확인했다.
+- Docker blocker 해소 뒤 review의 localhost negative fixture와 host bind Medium finding을 수정하고 `127.0.0.1` ingress와 PR internal network를 분리했다.
+- 검증 profile image가 stale source를 재사용하던 문제를 실제 test count로 발견해 모든 profile run을 `--build`로 고정했다.
 
-## Blocker
+## Residual risks
 
-- 로컬에 `docker` CLI/runtime과 PostgreSQL·Redis 대체 runtime이 없어 `npm run check:pr`, 네 process readiness, fresh/reapply/rollback migration smoke와 Docker network-off 실제 실행은 아직 검증하지 못했다. 시스템 runtime 설치·실행 권한이 준비되면 이 합격 gate를 실행한 뒤 티켓을 resolve한다.
+- 실제 provider, browser email과 broker contract는 secret·명시적 opt-in이 필요한 후속 lane이므로 이 티켓에서 실행하지 않았다.
+- Mac 재시작 뒤 Docker 작업 전 `colima start`가 필요하며, 자동 로그인 기동은 구성하지 않았다.
+- app/worker local ingress 두 service의 Compose shape 중복은 Standards review의 Low drift risk로 남겼으며 기능·보안 동작에는 영향이 없다.

@@ -8,13 +8,19 @@ Docker가 실행 중인 개발 환경에서 다음 한 명령으로 app, worker,
 npm run compose:up
 ```
 
-provider secret은 필요하지 않으며 compose runtime은 외부 egress가 없는 internal network를 사용한다. 호스트에서 app은 `http://127.0.0.1:3000`, worker는 `http://127.0.0.1:3001`로 확인한다.
+provider secret은 필요하지 않다. app, worker와 dependency는 외부 egress가 없는 internal network에 남고, `local` profile의 고정 TCP ingress만 host용 network에 연결된다. ingress는 provider/runtime 환경변수를 받지 않고 `127.0.0.1`에만 bind하며 app과 worker의 health port만 전달한다. 호스트에서 app은 `http://127.0.0.1:3000`, worker는 `http://127.0.0.1:3001`로 확인한다.
 
 ```sh
 curl --fail http://127.0.0.1:3000/api/health
 curl --fail http://127.0.0.1:3000/api/ready
 curl --fail http://127.0.0.1:3001/health
 curl --fail http://127.0.0.1:3001/ready
+```
+
+기본 host port가 이미 사용 중이면 같은 명령에서 포트만 재지정한다.
+
+```sh
+APP_HOST_PORT=3100 WORKER_HOST_PORT=3101 npm run compose:up
 ```
 
 종료는 `npm run compose:down`을 사용한다.

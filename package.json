@@ -25,7 +25,7 @@
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:public-seam && npm run test:server-seam",
     "check:pr": "npm run compose:verify",
     "compose:verify": "sh scripts/verify-compose.sh",
-    "compose:up": "docker compose up --build --wait",
+    "compose:up": "docker compose --profile local up --build --wait",
     "compose:down": "docker compose down --remove-orphans"
   },
   "dependencies": {

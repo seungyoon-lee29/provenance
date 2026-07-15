@@ -49,8 +49,6 @@ services:
     build: .
     command: ["npm", "start", "--", "--hostname", "0.0.0.0"]
     environment: *runtime-environment
-    ports:
-      - "3000:3000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -69,8 +67,6 @@ services:
     environment:
       <<: *runtime-environment
       WORKER_HEALTH_PORT: "3001"
-    ports:
-      - "3001:3001"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -82,6 +78,46 @@ services:
       timeout: 2s
       retries: 20
     networks: [runtime]
+
+  app-ingress:
+    profiles: [local]
+    build: .
+    command: ["npm", "exec", "--", "tsx", "scripts/tcp-forwarder.ts"]
+    environment:
+      FORWARD_LISTEN_PORT: "3000"
+      FORWARD_TARGET_HOST: app
+      FORWARD_TARGET_PORT: "3000"
+    ports:
+      - "127.0.0.1:${APP_HOST_PORT:-3000}:3000"
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [ingress, runtime]
+
+  worker-ingress:
+    profiles: [local]
+    build: .
+    command: ["npm", "exec", "--", "tsx", "scripts/tcp-forwarder.ts"]
+    environment:
+      FORWARD_LISTEN_PORT: "3001"
+      FORWARD_TARGET_HOST: worker
+      FORWARD_TARGET_PORT: "3001"
+    ports:
+      - "127.0.0.1:${WORKER_HOST_PORT:-3001}:3001"
+    depends_on:
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [ingress, runtime]
 
   network-off:
     profiles: [verify]
@@ -114,5 +150,6 @@ services:
     networks: [runtime]
 
 networks:
+  ingress:
   runtime:
     internal: true
