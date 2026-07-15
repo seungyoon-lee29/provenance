@@ -7,7 +7,7 @@ Depends on: 11, 12
 Blocked by: None
 Owner: main-agent
 Claimed at: 2026-07-16T00:41:26+09:00
-Last heartbeat: 2026-07-16T01:10:48+09:00
+Last heartbeat: 2026-07-16T01:22:45+09:00
 
 ## Objective
 
@@ -74,6 +74,6 @@ Status는 `claimed` 유지. FinancialInformation(비-chart)·ResearchAssistant·
 - **blind test-authorship(새 규칙 High-tier)**: AT-01·AT-04 acceptance를 구현 미열람·spec만으로 별도 에이전트가 작성. AT-01 blind가 **순환 import→policyVersion undefined(타입 계약 위반)** 실버그를 잡음(내 correlated oracle이 놓친 필드) → 수정. AT-04 blind는 16/16 + 자체 mutation-check(assertion 3개 flip red→green)로 non-vacuous 확인.
 
 ### Residual risks / 미완 (B5 + gap)
-- **B5 미착수**: 비-chart 패널·research 패널 presentation, **AT-01 DOM 일치(bullet 1)**, explicit-unavailable, deadline read-경로 배선. Playwright 필요 → gate open.
+- **B5 일부 완료**: presenter view-model 층은 완료(`data-panel-presenter.ts` + 25 test, F1 `presentGuestPanel` 재사용으로 AT-01 DOM 불변식 검증). **미완(gate open)**: 실 page/route mount + Playwright 리터럴 DOM 렌더, explicit-unavailable screenshot, `withDeadline` read-경로 배선. → F4 resolved 전 필수.
 - **SEC-04 transport**: 핵심은 F0 `provider-transport`가 완증(소비만). data/AI route registry 선언·실 adapter는 opt-in(`free_only`) → B5/후속.
 - blind가 표시한 gap: (1) SEC-05 "log" 절반 seam hook 없음(prompt egress만 관측), (2) cross-workspace material 거절 전용 fixture 없음, (3) redaction 케이스 prompt-loop vacuous(실보장은 callCount 0).
