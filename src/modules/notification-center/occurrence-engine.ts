@@ -1,6 +1,7 @@
 import { brandReference } from "../../shared/contracts/brands";
 import type { WorkspaceReference } from "@/shared/contracts/brands";
 
+import { FencedKeyedStore } from "./fenced-store";
 import type {
   AlertObservation,
   AlertOccurrence,
@@ -18,6 +19,8 @@ type RuleState = {
   transitionSequence: number;
 };
 
+export type OccurrenceErasureReceipt = Readonly<{ occurrences: number; records: number }>;
+
 export interface OccurrenceStore {
   registerRule(rule: AlertRule): void;
   /**
@@ -31,15 +34,30 @@ export interface OccurrenceStore {
   observe(observation: AlertObservation): Promise<ObserveResult>;
   listRecords(workspace: WorkspaceReference): readonly NotificationRecord[];
   listOccurrences(rule: AlertRuleReference): readonly AlertOccurrence[];
+  /**
+   * Administrative erasure (SEC-09): shred the workspace's Notification Records,
+   * Alert Occurrences and rule watermark/state behind a deletion fence. A write
+   * belonging to an epoch at or below `fence` is thereafter suppressed, so a late
+   * worker/webhook replay or a backup restore cannot regenerate personal state.
+   */
+  eraseWorkspace(workspace: WorkspaceReference, fence: number): OccurrenceErasureReceipt;
 }
 
-export function createOccurrenceStore(now: () => string): OccurrenceStore {
+export function createOccurrenceStore(now: () => string, options: { writeEpoch?: number } = {}): OccurrenceStore {
+  // ponytail: a single store-level write epoch; a genuinely new post-erasure
+  // authorized epoch is a fresh store/context (B6 coordinator wires that).
+  const writeEpoch = options.writeEpoch ?? 1;
   const states = new Map<string, RuleState>();
-  const occurrences: AlertOccurrence[] = [];
-  const records: NotificationRecord[] = [];
+  const occurrences = new FencedKeyedStore<AlertOccurrence>();
+  const records = new FencedKeyedStore<NotificationRecord>();
 
   return {
     registerRule(rule) {
+      // Restore suppression: no re-registering an erased workspace at an old
+      // epoch. This keeps the transition write below always unsuppressed (a
+      // fenced workspace has no live rule to observe), so no occurrence is
+      // silently dropped after being reported.
+      if (records.isErased(rule.workspaceReference, writeEpoch)) return;
       if (states.has(rule.ruleReference)) return;
       states.set(rule.ruleReference, {
         rule,
@@ -96,8 +114,10 @@ export function createOccurrenceStore(now: () => string): OccurrenceStore {
           read: false,
           dismissed: false,
         };
-        occurrences.push(occurrence);
-        records.push(record);
+        // Synchronous fenced writes keep the critical section atomic; the write
+        // epoch is above the (0) fence for any live rule, so neither is suppressed.
+        occurrences.write(state.rule.workspaceReference, occurrence.occurrenceReference, occurrence, writeEpoch);
+        records.write(state.rule.workspaceReference, record.recordReference, record, writeEpoch);
         return { kind: "transition", occurrence, record };
       }
 
@@ -106,11 +126,25 @@ export function createOccurrenceStore(now: () => string): OccurrenceStore {
     },
 
     listRecords(workspace) {
-      return records.filter((record) => record.workspaceReference === workspace);
+      return records.list(workspace);
     },
 
     listOccurrences(rule) {
-      return occurrences.filter((occurrence) => occurrence.ruleReference === rule);
+      // Occurrences are stored per workspace; resolve it from the rule state
+      // (absent once the workspace is erased → no occurrences to list).
+      const state = states.get(rule);
+      if (!state) return [];
+      return occurrences.list(state.rule.workspaceReference).filter((occurrence) => occurrence.ruleReference === rule);
+    },
+
+    eraseWorkspace(workspace, fence) {
+      for (const [ruleReference, state] of states) {
+        if (state.rule.workspaceReference === workspace) states.delete(ruleReference);
+      }
+      return {
+        occurrences: occurrences.eraseSubject(workspace, fence),
+        records: records.eraseSubject(workspace, fence),
+      };
     },
   };
 }
