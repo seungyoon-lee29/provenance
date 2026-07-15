@@ -108,3 +108,12 @@ Status는 `claimed` 유지. Identity·ProviderConnections·Layout의 도메인/�
 - **F5 위임 항목**(F3 소유지만 delivery와 결합): envelope-encrypted `AccountChallengeMaterial` all-old/all-new 저장 + `resolveAccountChallengeDelivery`, verified-address·security-notice epoch dispatch 재검사.
 - **알려진 ceiling**: in-memory store(no DB), layout idempotency ledger는 object-identity WeakMap(직렬화 시 유실 — DB row에 `{key→hash,revision}` 동반 저장 필요), `credentialVersion`은 vault key rotation 전까지 generation과 일치.
 - enumeration의 timing-class는 in-memory 분기 비대칭이 남으나 관측 가능한 지배 timing은 out-of-band delivery(F5)라 문서화로 남김.
+
+## Follow-up notes (2026-07-16, 신규 검증 규칙 리뷰)
+
+`docs/agents/collaboration.md`의 blast-radius 검증 방법 도입 후 이 resolved 산출물을 그 기준으로 재점검했다(측정: `npm run check` green, escape hatch·secret-log 스캔). 소급 결함은 없음. 신규 규칙 관점의 관찰 2건을 후속으로 남긴다(Status는 `resolved` 유지):
+
+1. **`workspace-server.ts:48` `devWorkspaceProof()` self-guard 부재** — 내부에서 `isDevWorkspaceMode()`를 확인하지 않고 dev 세션을 반환하며 호출자 가드에 의존한다. auth 경로이므로 실제 auth 배선·후속에서 자체 가드(dev/test 아니면 throw)하거나 제거한다. (현재는 WIP scaffolding: ":42 Auth is not wired yet".)
+2. **dual `SessionProof`**(shared opaque vs identity concrete)를 `as unknown as`로 브릿지(:36,49) — Prevent 층 냄새. residual `in-memory 2 store 분리`(F11 통합, ticket 20)와 같은 뿌리이므로 그쪽에서 단일 store·단일 타입으로 해소한다.
+
+standing 불변식(property/mutation) adequacy 후속은 [ticket 21](./21-verify-invariant-adequacy.md).
