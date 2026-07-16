@@ -1,0 +1,17 @@
+# collaboration.md 커밋 프로토콜의 기계화 — 싼 검사부터 (fail fast)
+git diff --cached --check || exit 1
+
+# 알려진 credential 포맷만 매칭 — 'secret' 같은 단어는 이 repo(vault 코드)에 정상 존재
+# ponytail: 포맷 기반 스캔, 일반 엔트로피 탐지가 필요해지면 gitleaks로 승격
+if git diff --cached -U0 | grep -E '^\+' | grep -nE '(sk-ant-[A-Za-z0-9_-]{10,}|sk-[A-Za-z0-9]{24,}|ghp_[A-Za-z0-9]{20,}|gho_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16}|xox[bap]-[A-Za-z0-9-]{10,}|whsec_[A-Za-z0-9]{16,}|-----BEGIN [A-Z ]*PRIVATE KEY)'; then
+  echo "pre-commit: staged diff에 credential 패턴 발견 — 커밋 차단" >&2
+  exit 1
+fi
+
+if git ls-files -- .env.local '.secrets/*' | grep -q .; then
+  echo "pre-commit: .env.local/.secrets가 git에 추적됨 — 커밋 차단" >&2
+  exit 1
+fi
+
+npm run typecheck || exit 1
+npm run test

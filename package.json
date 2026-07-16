@@ -30,7 +30,8 @@
     "check:pr": "npm run compose:verify",
     "compose:verify": "sh scripts/verify-compose.sh",
     "compose:up": "docker compose --profile local up --build --wait",
-    "compose:down": "docker compose down --remove-orphans"
+    "compose:down": "docker compose down --remove-orphans",
+    "prepare": "husky"
   },
   "dependencies": {
     "next": "16.2.10",
@@ -50,6 +51,7 @@
     "@types/react-dom": "19.2.3",
     "eslint": "9.39.5",
     "eslint-config-next": "16.2.10",
+    "husky": "^9.1.7",
     "typescript": "5.9.3",
     "vitest": "4.1.10"
   },
