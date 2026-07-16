@@ -32,6 +32,6 @@ Last heartbeat: - | <ISO 8601>
 - **Frontier**: `Status: open`, `Triage: ready-for-agent`, 모든 `Depends on`이 resolved, `Blocked by: None`, `Owner: unclaimed`인 첫 번호의 티켓이다.
 - **Preflight**: claim 전에 `git status --short --branch`로 기존 변경을 확인한다. 다른 작업의 변경을 덮거나 임의로 stage하지 않는다.
 - **Claim**: 작업 전에 `Status: claimed`, `Owner`, `Claimed at`, `Last heartbeat`를 원자적으로 갱신한다. 2시간 이상 heartbeat가 없으면 메인 에이전트가 작업 트리와 보고를 확인한 뒤에만 stale claim을 회수할 수 있다. 동시 claim 경쟁이 없는 단일 메인 세션의 순차 작업에서는 `Status`/`Owner`만 갱신하고 `Claimed at`/`Last heartbeat`는 `-`로 둘 수 있으며, heartbeat 만료 회수 규칙은 여러 에이전트가 실제로 동시에 claim할 때만 적용한다.
-- **Heartbeat**: 중요한 checkpoint, blocker 발견, 장시간 도구 실행 전후에 갱신한다. routine 메시지를 위한 heartbeat는 만들지 않는다.
+- **Heartbeat**: 중요한 checkpoint(커밋 체크포인트 포함), blocker 발견, 장시간 도구 실행 전후에 갱신한다. routine 메시지를 위한 heartbeat는 만들지 않는다. 커밋은 이미 티켓 파일을 만지는 시점이므로 같은 편집에서 함께 갱신한다.
 - **Resolve**: `## Answer`, `## Changed files`, `## Validation`, `## Review`, `## Residual risks`를 기록하고 `Status: resolved`, 완료 시각의 `Last heartbeat`로 변경한 뒤 지도에 링크를 추가한다.
 - **Commit checkpoint**: 가능한 한 티켓 하나를 검증 가능한 커밋 하나로 끝낸다. 커밋과 clean-worktree 확인 뒤 같은 세션에서 다음 frontier를 계속 진행할 수 있으며, 세션 경계를 작업 경계로 취급하지 않는다. 체크포인트가 나중에 틀린 것으로 드러나면 되돌릴 수 없는 데이터·외부 영향이 있을 때 revert를 우선하고, 순수 코드 결함이면 회귀 테스트를 추가한 fix-forward로 처리한다. 원인과 조치는 티켓에 기록한다.
