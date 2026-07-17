@@ -11,6 +11,12 @@ import type {
 
 type Receipt = Readonly<{ payload: string; outcome: AccountingAppendOutcome }>;
 
+type CorrectionBody =
+  | Readonly<{ kind: "superseding"; supersedes: AccountingEventReference; replacement: AccountingEvent }>
+  | Readonly<{ kind: "reversal"; reverses: AccountingEventReference; reason: string }>;
+
+type EntryBody = Readonly<{ kind: "event"; event: AccountingEvent }> | CorrectionBody;
+
 /**
  * Append-only F7 accounting journal (spec §8 / AT-06): exactly-once via the
  * §8 receipt trio (same key + canonical payload → the ORIGINAL receipt; same
@@ -69,14 +75,20 @@ export class AccountingJournal implements Erasable {
     target: AccountingEventReference,
     receiptKey: string,
     payload: string,
-    body: () => Omit<Extract<AccountingEntry, { kind: "superseding" | "reversal" }>, "eventReference" | "account" | "sequence" | "recordedAt">,
+    body: () => CorrectionBody,
   ): AccountingAppendOutcome {
-    const replay = this.#replay(workspace, receiptKey, payload);
-    if (replay !== undefined) return replay;
     const targetEntry = this.#entries.get(workspace, String(target));
     if (targetEntry === undefined) return { status: "refused", reason: "unknown_event" };
+    // Replay check must use the same account-scoped receipt key #commit writes,
+    // or a replayed correction reads its own prior append as "already corrected".
+    const replay = this.#replay(workspace, `${targetEntry.account}|${receiptKey}`, payload);
+    if (replay !== undefined) return replay;
+    const draft = body();
+    if (draft.kind === "superseding" && draft.replacement.account !== targetEntry.account) {
+      return { status: "refused", reason: "unknown_event" };
+    }
     if (this.#correctionOf(workspace).has(String(target))) return { status: "refused", reason: "already_corrected" };
-    return this.#commit(workspace, targetEntry.account, receiptKey, payload, body);
+    return this.#commit(workspace, targetEntry.account, receiptKey, payload, () => draft);
   }
 
   #replay(workspace: string, receiptKey: string, payload: string): AccountingAppendOutcome | undefined {
@@ -90,7 +102,7 @@ export class AccountingJournal implements Erasable {
     account: ActualAccountReference,
     receiptKey: string,
     payload: string,
-    body: () => Omit<AccountingEntry, "eventReference" | "account" | "sequence" | "recordedAt">,
+    body: () => EntryBody,
   ): AccountingAppendOutcome {
     const scopedReceiptKey = `${account}|${receiptKey}`;
     const replay = this.#replay(workspace, scopedReceiptKey, payload);

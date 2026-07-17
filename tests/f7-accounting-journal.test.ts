@@ -81,6 +81,27 @@ describe("AccountingJournal — exactly-once, all-old/all-new (AT-06)", () => {
       .toEqual({ status: "refused", reason: "already_corrected" });
   });
 
+  it("replaying a CORRECTION returns its original receipt, not already_corrected", () => {
+    // Regression: the correction replay path must look up the same
+    // account-scoped receipt key the commit wrote.
+    const journal = new AccountingJournal(() => NOW);
+    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
+    if (first.status !== "applied") throw new Error("setup failed");
+    const corrected = journal.supersede(WS, first.eventReference, dividend("a1", 400), { idempotencyKey: "fix-1" });
+    const replay = journal.supersede(WS, first.eventReference, dividend("a1", 400), { idempotencyKey: "fix-1" });
+    expect(replay).toEqual(corrected);
+    expect(journal.effectiveEvents(WS, account("a1"))).toHaveLength(1);
+  });
+
+  it("a replacement naming a DIFFERENT account cannot be injected via supersede", () => {
+    const journal = new AccountingJournal(() => NOW);
+    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
+    if (first.status !== "applied") throw new Error("setup failed");
+    expect(journal.supersede(WS, first.eventReference, dividend("a2", 400), { idempotencyKey: "fix-x" }))
+      .toEqual({ status: "refused", reason: "unknown_event" });
+    expect(journal.effectiveEvents(WS, account("a2"))).toHaveLength(0);
+  });
+
   it("reverse drops the event from the effective view; unknown targets are refused", () => {
     const journal = new AccountingJournal(() => NOW);
     const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
