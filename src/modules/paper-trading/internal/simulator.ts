@@ -50,12 +50,45 @@ function ticksPerUnit(currency: string): number {
   return currency === "KRW" ? 1 : 100;
 }
 
-/** Adverse tick rounding with an epsilon guard against float noise. */
-function roundToTick(amount: number, currency: string, direction: "up" | "down"): number {
-  const per = ticksPerUnit(currency);
-  const raw = amount * per;
-  const ticks = direction === "up" ? Math.ceil(raw - 1e-6) : Math.floor(raw + 1e-6);
-  return ticks / per;
+/** Scale for representing (possibly fractional) bps policy numbers exactly. */
+const BPS_SCALE = 1_000_000n;
+
+function ceilDiv(numerator: bigint, denominator: bigint): bigint {
+  return (numerator + denominator - 1n) / denominator;
+}
+
+/**
+ * Exact adverse execution price in integer ticks (codex-panel finding: a float
+ * epsilon guard here swallowed genuine sub-tick slippage, letting a crossing
+ * price fill at the limit). All operands are integers, so a true value even
+ * marginally past a tick boundary rounds adversely — and an exactly-on-tick
+ * value stays put — with no epsilon at all. The stored double price is read as
+ * the decimal it denotes (rounded to its tick grid).
+ */
+function executionPriceTicks(
+  priceTicks: bigint,
+  side: "buy" | "sell",
+  cumulativeWithAllocation: number,
+  volume: number,
+  policy: SimulationPolicy,
+): bigint {
+  const volumeN = BigInt(volume);
+  const base = BigInt(Math.round(policy.baseSlippageBps * Number(BPS_SCALE)));
+  const slope = BigInt(Math.round(policy.participationSlippageBps * Number(BPS_SCALE)));
+  const max = BigInt(Math.round(policy.maxSlippageBps * Number(BPS_SCALE)));
+  // bps (scaled by BPS_SCALE × volume) = min(max, base + slope × participation).
+  const bpsScaled = (() => {
+    const raw = base * volumeN + slope * BigInt(cumulativeWithAllocation);
+    const cap = max * volumeN;
+    return raw < cap ? raw : cap;
+  })();
+  const denominator = 10_000n * BPS_SCALE * volumeN;
+  const numerator = priceTicks * (side === "buy" ? denominator + bpsScaled : denominator - bpsScaled);
+  return side === "buy" ? ceilDiv(numerator, denominator) : numerator / denominator;
+}
+
+function toTicks(amount: number, currency: string): bigint {
+  return BigInt(Math.round(amount * ticksPerUnit(currency)));
 }
 
 function utcDay(iso: string): string {
@@ -71,16 +104,15 @@ export class InternalPaperSimulator {
   ) {}
 
   ingest(workspace: string, account: InternalPaperAccountReference, observation: PaperMarketObservation): readonly SimulationEvent[] {
-    // Hard-expired evidence never produces a fill (§9).
-    if (observation.freshness === "hard_expired") return [];
     if (observation.session !== "regular") return [];
-    if (!Number.isFinite(observation.volume) || observation.volume <= 0) return [];
 
     const events: SimulationEvent[] = [];
     const journal = this.deps.journal;
 
     // Deterministic pass 1 — DAY expiry: an observation from a later trading
-    // day expires open DAY orders instead of filling them.
+    // day expires open DAY orders instead of filling them. Expiry is about the
+    // calendar advancing, so it runs even for a hard-expired observation
+    // (codex-panel finding: gating it on evidence quality left DAY orders open).
     // ponytail: UTC-day boundary, venue-local session calendar when KR venues land.
     for (const order of this.#candidates(journal.state(workspace, account), observation)) {
       if (order.payload.timeInForce !== "DAY") continue;
@@ -91,6 +123,11 @@ export class InternalPaperSimulator {
       });
       if (applied.status === "applied") events.push({ kind: "expired", order: order.order });
     }
+
+    // Hard-expired evidence never produces a FILL (§9); a broken volume can't
+    // parameterize participation either.
+    if (observation.freshness === "hard_expired") return events;
+    if (!Number.isInteger(observation.volume) || observation.volume <= 0) return events;
 
     // Pass 2 — fills against the post-expiry state.
     const state = journal.state(workspace, account);
@@ -111,21 +148,25 @@ export class InternalPaperSimulator {
       const allocation = Math.min(remaining, capShares - cumulative);
       if (allocation <= 0) continue;
 
-      const participation = (cumulative + allocation) / observation.volume;
-      const bps = Math.min(
-        this.deps.policy.maxSlippageBps,
-        this.deps.policy.baseSlippageBps + this.deps.policy.participationSlippageBps * participation,
-      );
       const side = order.payload.side;
-      const adjusted = (observation.price.amount * (10_000 + (side === "buy" ? bps : -bps))) / 10_000;
-      const price = roundToTick(adjusted, observation.price.currency, side === "buy" ? "up" : "down");
+      const currency = observation.price.currency;
+      const priceTicks = executionPriceTicks(
+        toTicks(observation.price.amount, currency),
+        side,
+        cumulative + allocation,
+        observation.volume,
+        this.deps.policy,
+      );
+      const price = Number(priceTicks) / ticksPerUnit(currency);
 
       // Limit guard: a slippage-adjusted price crossing the limit unfavorably
-      // produces no fill at all (§9) — no partial price improvement.
+      // produces no fill at all (§9). Integer-tick comparison — no epsilon to
+      // hide a genuine crossing (codex-panel finding).
       const limit = order.payload.limitPrice;
       if (limit !== undefined) {
-        if (side === "buy" && price > limit.amount + EPSILON) continue;
-        if (side === "sell" && price < limit.amount - EPSILON) continue;
+        const limitTicks = toTicks(limit.amount, limit.currency);
+        if (side === "buy" && priceTicks > limitTicks) continue;
+        if (side === "sell" && priceTicks < limitTicks) continue;
       }
 
       if (!this.#covered(state, order, side, allocation, price, observation.price.currency)) continue;

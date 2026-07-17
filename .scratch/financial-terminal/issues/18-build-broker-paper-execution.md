@@ -4,7 +4,7 @@ Type: implementation
 Status: open
 Triage: ready-for-agent
 Depends on: 17
-Blocked by: 17
+Blocked by: None
 Owner: unclaimed
 Claimed at: -
 Last heartbeat: -

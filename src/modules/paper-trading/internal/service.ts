@@ -335,6 +335,10 @@ function validPayload(payload: PaperOrderPayload): boolean {
   if (payload.orderType === "limit") {
     if (payload.limitPrice === undefined) return false;
     if (!Number.isFinite(payload.limitPrice.amount) || payload.limitPrice.amount <= 0) return false;
+    // Limits live on the tick grid, so the simulator's limit guard is an exact
+    // integer comparison (USD $0.01 / KRW 1).
+    const ticks = payload.limitPrice.amount * (payload.limitPrice.currency === "KRW" ? 1 : 100);
+    if (Math.abs(ticks - Math.round(ticks)) > 1e-6) return false;
   }
   return true;
 }

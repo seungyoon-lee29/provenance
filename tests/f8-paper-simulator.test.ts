@@ -286,6 +286,67 @@ describe("DAY expiry (§9 time in force)", () => {
   });
 });
 
+describe("codex-panel regressions: exact tick arithmetic and expiry ordering", () => {
+  it("rounds genuine sub-tick slippage adversely instead of collapsing it (panel finding a)", async () => {
+    const { service } = harness();
+    // A policy with a vanishing base slippage: the true adjusted price is
+    // 0.61 × (1 + ε) — strictly above the $0.61 tick — so an adverse buy
+    // rounding must land on $0.62, never back on $0.61.
+    const tiny = new InternalPaperSimulator({
+      journal: service.journal,
+      policy: { ...SIMULATION_V1, baseSlippageBps: 0.000001, participationSlippageBps: 0 },
+    });
+    const { order, account } = await submit(service, limitBuy(1, 1), "panel-a");
+    const events = tiny.ingest(WORKSPACE, account, observation({ price: { amount: 0.61, currency: "USD" }, volume: 2_000 }));
+    expect(events).toEqual([expect.objectContaining({ kind: "fill", order, price: { amount: 0.62, currency: "USD" } })]);
+  });
+
+  it("a limit exactly at the observed price never fills when ANY slippage crosses it (panel finding c)", async () => {
+    const { service } = harness();
+    const tiny = new InternalPaperSimulator({
+      journal: service.journal,
+      policy: { ...SIMULATION_V1, baseSlippageBps: 0.000001, participationSlippageBps: 0 },
+    });
+    const { account } = await submit(service, limitBuy(1, 0.61), "panel-c");
+    const events = tiny.ingest(WORKSPACE, account, observation({ price: { amount: 0.61, currency: "USD" }, volume: 2_000 }));
+    expect(events).toEqual([]);
+    expect((await shellOf(service)).orders[0]!.filledQuantity).toBe(0);
+  });
+
+  it("zero slippage fills exactly on the tick — the exact path does not over-round", async () => {
+    const { service } = harness();
+    const none = new InternalPaperSimulator({
+      journal: service.journal,
+      policy: { ...SIMULATION_V1, baseSlippageBps: 0, participationSlippageBps: 0 },
+    });
+    const { order, account } = await submit(service, limitBuy(1, 100), "panel-zero");
+    const events = none.ingest(WORKSPACE, account, observation({ volume: 2_000 }));
+    expect(events).toEqual([expect.objectContaining({ kind: "fill", order, price: { amount: 100, currency: "USD" } })]);
+  });
+
+  it("a hard-expired next-day observation still expires a DAY order — it only suppresses fills (panel finding e)", async () => {
+    const { service, simulator } = harness();
+    const { order, account } = await submit(service, { ...limitBuy(10, 110), timeInForce: "DAY" }, "panel-e");
+    const events = simulator.ingest(WORKSPACE, account, observation({
+      freshness: "hard_expired",
+      eventTime: "2026-07-19T14:30:00.000Z",
+      dataClock: "2026-07-19T14:30:00.000Z",
+      evidenceReference: "evidence:dead-next-day",
+    }));
+    expect(events).toEqual([expect.objectContaining({ kind: "expired", order })]);
+    const shell = await shellOf(service);
+    expect(shell.orders[0]!.execution).toBe("expired");
+    expect(shell.orders[0]!.filledQuantity).toBe(0);
+    expect(shell.cash.find((row) => row.currency === "USD")!.reserved).toBe(0);
+  });
+
+  it("prepare refuses an off-tick limit price so the limit guard stays exact", async () => {
+    const { service } = harness();
+    const offTick = await service.prepare({ payload: limitBuy(1, 0.615) }, viewer());
+    expect(offTick).toEqual({ status: "refused", reason: "invalid_payload" });
+  });
+});
+
 describe("market order (§9)", () => {
   it("fills a market buy at the slippage-adjusted price within the reservation bound", async () => {
     let updateCounter = 0;

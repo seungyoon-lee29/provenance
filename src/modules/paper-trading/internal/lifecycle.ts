@@ -30,11 +30,10 @@ export type DividendEntitlement = Readonly<{
   perShare: PaperMoney;
 }>;
 
-export type LifecycleOutcome =
-  | Readonly<{ status: "applied"; revision: number }>
-  | Readonly<{ status: "duplicate" }>
-  | Readonly<{ status: "suppressed" }>
-  | Readonly<{ status: "refused"; reason: "invalid_adjustment" | "fractional_result" }>;
+import type { SystemAppendOutcome } from "./journal";
+
+/** Journal-boundary outcomes pass through; lifecycle pre-validation uses the same refusal reasons. */
+export type LifecycleOutcome = SystemAppendOutcome;
 
 export class PaperLifecycleIngestion {
   constructor(private readonly deps: Readonly<{ journal: PaperJournal }>) {}

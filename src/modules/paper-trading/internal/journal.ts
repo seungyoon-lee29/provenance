@@ -97,6 +97,110 @@ export type PaperAccountState = Readonly<{
 type MutationControl = Readonly<{ idempotencyKey: string; expectedRevision: string }>;
 type Receipt = Readonly<{ canonicalPayload: string; outcome: PaperCommandOutcome }>;
 
+export type SystemRefusalReason =
+  | "command_only"
+  | "already_opened"
+  | "unknown_order"
+  | "order_not_fillable"
+  | "invalid_fill"
+  | "insufficient_cash"
+  | "insufficient_position"
+  | "order_not_expirable"
+  | "invalid_adjustment"
+  | "fractional_result";
+
+export type SystemAppendOutcome =
+  | Readonly<{ status: "applied"; revision: number }>
+  | Readonly<{ status: "duplicate" }>
+  | Readonly<{ status: "suppressed" }>
+  | Readonly<{ status: "refused"; reason: SystemRefusalReason }>;
+
+const EPSILON = 1e-9;
+
+/** §9 boundary validation for server-only system events (see appendSystem). */
+export function validateSystemBody(state: PaperAccountState, body: PaperEntryBody): SystemRefusalReason | undefined {
+  switch (body.kind) {
+    // Order submission and cancellation are user commands — they carry the §8
+    // trio and must never enter through the system path.
+    case "order_submitted":
+    case "cancellation_resolved":
+      return "command_only";
+    case "account_opened":
+      // Genesis happens exactly once per account.
+      return state.cash.size > 0 || state.orders.size > 0 ? "already_opened" : undefined;
+    case "order_expired": {
+      const order = state.orders.get(String(body.order));
+      if (order === undefined) return "unknown_order";
+      if (order.execution !== "open" && order.execution !== "partially_filled") return "order_not_expirable";
+      return undefined;
+    }
+    case "corporate_action_applied": {
+      const { numerator, denominator } = body.adjustment;
+      if (!Number.isInteger(numerator) || !Number.isInteger(denominator) || numerator <= 0 || denominator <= 0) {
+        return "invalid_adjustment";
+      }
+      const wholeShares = (quantity: number) => Number.isInteger((quantity * numerator) / denominator);
+      const position = state.positions.get(String(body.instrument));
+      if (position !== undefined && !wholeShares(position.quantity)) return "fractional_result";
+      for (const order of state.orders.values()) {
+        if (String(order.payload.instrument) !== String(body.instrument)) continue;
+        if (order.execution !== "open" && order.execution !== "partially_filled") continue;
+        if (!wholeShares(order.payload.quantity) || !wholeShares(order.filledQuantity)) return "fractional_result";
+      }
+      return undefined;
+    }
+    case "dividend_applied":
+      return Number.isFinite(body.perShare.amount) && body.perShare.amount > 0 ? undefined : "invalid_adjustment";
+    case "fill_applied": {
+      const fill = body.fill;
+      const order = state.orders.get(String(fill.order));
+      if (order === undefined) return "unknown_order";
+      if (order.execution !== "open" && order.execution !== "partially_filled") return "order_not_fillable";
+      if (!Number.isInteger(fill.quantity) || fill.quantity <= 0) return "invalid_fill";
+      if (fill.quantity > order.payload.quantity - order.filledQuantity) return "invalid_fill";
+      if (!Number.isFinite(fill.price.amount) || fill.price.amount <= 0) return "invalid_fill";
+      // A limit order can never fill past its (post-split) limit — enforced
+      // here too, not only in the simulator (codex-panel finding: a forged
+      // fill at a stale pre-split or over-limit price landed via the journal).
+      const limit = order.payload.limitPrice;
+      if (limit !== undefined) {
+        if (fill.price.currency !== limit.currency) return "invalid_fill";
+        const per = limit.currency === "KRW" ? 1 : 100;
+        const fillTicks = Math.round(fill.price.amount * per);
+        const limitTicks = Math.round(limit.amount * per);
+        if (order.payload.side === "buy" && fillTicks > limitTicks) return "order_not_fillable";
+        if (order.payload.side === "sell" && fillTicks < limitTicks) return "order_not_fillable";
+      }
+      if (Date.parse(fill.eventTime) <= Date.parse(order.acceptedAt)) return "order_not_fillable";
+      if (order.cancellation === "confirmed") {
+        // Only a late VALID fill — from before the cancellation instant — may land.
+        if (order.cancelledAt === undefined || Date.parse(fill.eventTime) >= Date.parse(order.cancelledAt)) {
+          return "order_not_fillable";
+        }
+      }
+      const reservingNow = order.cancellation !== "confirmed";
+      if (order.payload.side === "buy") {
+        const cash = state.cash.get(fill.price.currency);
+        if (cash === undefined) return "insufficient_cash";
+        const ownReservation = reservingNow && order.reservation.kind === "cash"
+          ? (order.payload.quantity - order.filledQuantity) * order.reservation.unitPrice.amount
+          : 0;
+        const available = cash.balance - cash.reserved + ownReservation;
+        if (fill.quantity * fill.price.amount > available + EPSILON) return "insufficient_cash";
+        return undefined;
+      }
+      const position = state.positions.get(String(order.payload.instrument));
+      if (position === undefined) return "insufficient_position";
+      const ownReservation = reservingNow && order.reservation.kind === "quantity"
+        ? order.payload.quantity - order.filledQuantity
+        : 0;
+      const available = position.quantity - position.reserved + ownReservation;
+      if (fill.quantity > available + EPSILON) return "insufficient_position";
+      return undefined;
+    }
+  }
+}
+
 export type CommandDecision =
   | Readonly<{ entry: PaperEntryBody; order: PaperOrderReference }>
   | Readonly<{ refuse: Extract<PaperCommandOutcome, { status: "refused" }>["reason"] }>
@@ -163,18 +267,27 @@ export class PaperJournal {
   /**
    * Server-only system path (fills, expiry, corporate actions): exactly-once
    * by dedupe key — a redelivery is a no-op returning the original revision.
+   *
+   * The journal is the module's real mutation boundary (F9 builds on it), so
+   * the §9 invariants are enforced HERE, not merely in the simulator's own
+   * guards (codex-panel finding): a fill must target a fillable order inside
+   * its market-time window and stay affordable, expiry must hit a live order,
+   * genesis happens once, and a split can never break whole-share lots. A
+   * violating body is refused with zero writes — the dedupe key is only
+   * consumed by an applied entry, so a later legitimate delivery still lands.
    */
   appendSystem(
     workspace: string,
     account: InternalPaperAccountReference,
     dedupeKey: string,
     body: PaperEntryBody,
-  ): Readonly<{ status: "applied"; revision: number }> | Readonly<{ status: "duplicate" }> | Readonly<{ status: "suppressed" }> {
+  ): SystemAppendOutcome {
     const scopedKey = `${String(account)}|${dedupeKey}`;
+    if (this.#systemKeys.get(workspace, scopedKey) !== undefined) return { status: "duplicate" };
+    const violation = validateSystemBody(this.state(workspace, account), body);
+    if (violation !== undefined) return { status: "refused", reason: violation };
     const inserted = this.#systemKeys.writeIfAbsent(workspace, scopedKey, true, this.writeEpoch());
-    if (!inserted.written) {
-      return inserted.value === undefined ? { status: "suppressed" } : { status: "duplicate" };
-    }
+    if (!inserted.written) return { status: "suppressed" };
     const accountKey = `${workspace}|${String(account)}`;
     const revision = (this.#revisions.get(accountKey) ?? 0) + 1;
     const entry = this.#buildEntry(account, body, revision);
