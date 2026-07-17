@@ -113,6 +113,27 @@ describe("AccountingJournal — exactly-once, all-old/all-new (AT-06)", () => {
       .toEqual({ status: "refused", reason: "unknown_event" });
   });
 
+  it("superseding a CORRECTION is refused — chain parity must not resurrect the original (panel finding)", () => {
+    // A → sup B → sup C used to report BOTH A(10) and C(30): dividend income
+    // double-counted. Superseding now targets base events only.
+    const journal = new AccountingJournal(() => NOW);
+    const first = journal.append(WS, dividend("a1", 10), { idempotencyKey: "div-1" });
+    if (first.status !== "applied") throw new Error("setup failed");
+    const correction = journal.supersede(WS, first.eventReference, dividend("a1", 20), { idempotencyKey: "fix-1" });
+    if (correction.status !== "applied") throw new Error("setup failed");
+    expect(journal.supersede(WS, correction.eventReference, dividend("a1", 30), { idempotencyKey: "fix-2" }))
+      .toEqual({ status: "refused", reason: "already_corrected" });
+    const effective = journal.effectiveEvents(WS, account("a1"));
+    expect(effective).toHaveLength(1);
+    expect(effective[0]?.kind === "dividend_entitlement" && effective[0].amountPerShare.amount).toBe(20);
+    // A reversal may still target a correction and restores the original alone.
+    const rollback = journal.reverse(WS, correction.eventReference, "wrong correction", { idempotencyKey: "rev-1" });
+    expect(rollback.status).toBe("applied");
+    const restored = journal.effectiveEvents(WS, account("a1"));
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.kind === "dividend_entitlement" && restored[0].amountPerShare.amount).toBe(10);
+  });
+
   it("erasure is fence-first: events shredded, late appends suppressed (SEC-09)", () => {
     const journal = new AccountingJournal(() => NOW);
     journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });

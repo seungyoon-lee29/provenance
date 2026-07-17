@@ -52,19 +52,21 @@ export function computeScopeAwareReturn(
   input: PerformanceInput,
   changes: readonly MembershipChange[],
 ): ScopeAwareReturnResult {
-  const breaks = [
-    ...new Set(
-      changes
-        .filter((change) => change.at > input.window.from && change.at < input.window.to)
-        .map((change) => change.at),
-    ),
-  ].sort();
+  const fromMs = Date.parse(input.window.from);
+  const toMs = Date.parse(input.window.to);
+  const changeInstants = changes.map((change) => Date.parse(change.at));
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || changeInstants.some(Number.isNaN)) {
+    return { status: "unavailable", reason: "invalid_timestamp" };
+  }
+  // Instants are compared in normalized ms, matching the TWR engine — a break
+  // written with different ISO precision still collides with an equal flow.
+  const breaks = [...new Set(changeInstants.filter((at) => at > fromMs && at < toMs))].sort((left, right) => left - right);
   if (breaks.length === 0) return computePortfolioReturn(input);
-  if (input.externalFlows.some((flow) => breaks.includes(flow.at))) {
+  if (input.externalFlows.some((flow) => breaks.includes(Date.parse(flow.at)))) {
     return { status: "unavailable", reason: "flow_at_scope_break" };
   }
 
-  const cuts = [input.window.from, ...breaks, input.window.to];
+  const cuts = [input.window.from, ...breaks.map((at) => new Date(at).toISOString()), input.window.to];
   const segments: Array<Readonly<{ window: PerformanceWindow; result: PortfolioReturnResult }>> = [];
   for (let index = 0; index < cuts.length - 1; index += 1) {
     const from = cuts[index];

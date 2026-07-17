@@ -87,6 +87,14 @@ export class AccountingJournal implements Erasable {
     if (draft.kind === "superseding" && draft.replacement.account !== targetEntry.account) {
       return { status: "refused", reason: "unknown_event" };
     }
+    // Superseding may only target a BASE event. Superseding a correction makes
+    // the chain-parity rule resurrect the original alongside the new
+    // replacement (adversarial panel 2026-07-18: A→sup B→sup C reported both A
+    // and C — financial double count). Reversal of a correction stays allowed:
+    // parity restores exactly one contributor in every reversal chain.
+    if (draft.kind === "superseding" && targetEntry.kind !== "event") {
+      return { status: "refused", reason: "already_corrected" };
+    }
     if (this.#correctionOf(workspace).has(String(target))) return { status: "refused", reason: "already_corrected" };
     return this.#commit(workspace, targetEntry.account, receiptKey, payload, () => draft);
   }

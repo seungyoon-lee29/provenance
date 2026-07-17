@@ -42,7 +42,8 @@ export type PerformanceUnavailableReason =
   | "missing_valuation_at_flow"
   | "zero_or_negative_base"
   | "flow_outside_window"
-  | "mixed_currency";
+  | "mixed_currency"
+  | "invalid_timestamp";
 
 export type PortfolioReturnResult =
   | Readonly<{ status: "covered"; timeWeightedReturn: number; subPeriods: readonly SubPeriodReturn[] }>

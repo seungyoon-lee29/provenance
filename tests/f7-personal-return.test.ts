@@ -123,6 +123,18 @@ describe("Personal Return — 유일해가 없으면 값 없음 (spec §8 fail c
     ).toEqual({ status: "unavailable", reason: "insufficient_flows" });
   });
 
+  it("an unparseable timestamp fails closed instead of a confident wrong rate (panel finding)", () => {
+    // 'not-a-date' → NaN year fractions used to collapse the solver onto the
+    // bracket floor: a +10% profit reported as covered −99.99%.
+    const result = computePersonalReturn({
+      flows: [
+        { at: "not-a-date", amount: krw(-1_000) },
+        { at: Y2027, amount: krw(1_100) },
+      ],
+    });
+    expect(result).toEqual({ status: "unavailable", reason: "invalid_timestamp" });
+  });
+
   it("mixed currencies are rejected: no implicit conversion in the solver", () => {
     const result = computePersonalReturn({
       flows: [

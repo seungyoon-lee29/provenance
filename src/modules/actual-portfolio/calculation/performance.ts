@@ -13,10 +13,24 @@ import type {
  *
  * Convention: a valuation point at a flow instant is the PRE-flow value; the
  * flow lands after it and forms the next sub-period's base.
+ *
+ * All instants are normalized through `Date.parse` so equal instants written
+ * with different ISO precision ("…00Z" vs "…00.000Z") collapse to one cut —
+ * an unparseable timestamp fails closed (adversarial panel 2026-07-18: raw
+ * string keys let a boundary flow slip past the window guard as a phantom
+ * zero-duration sub-period).
  */
 export function computePortfolioReturn(input: PerformanceInput): PortfolioReturnResult {
-  const { window } = input;
-  if (window.from >= window.to) return { status: "unavailable", reason: "empty_window" };
+  const fromMs = Date.parse(input.window.from);
+  const toMs = Date.parse(input.window.to);
+  const instants = [
+    fromMs,
+    toMs,
+    ...input.valuations.map((point) => Date.parse(point.at)),
+    ...input.externalFlows.map((flow) => Date.parse(flow.at)),
+  ];
+  if (instants.some(Number.isNaN)) return { status: "unavailable", reason: "invalid_timestamp" };
+  if (fromMs >= toMs) return { status: "unavailable", reason: "empty_window" };
 
   const currency = input.valuations[0]?.value.currency;
   if (currency === undefined) return { status: "unavailable", reason: "missing_boundary_valuation" };
@@ -25,26 +39,28 @@ export function computePortfolioReturn(input: PerformanceInput): PortfolioReturn
   if (!sameCurrency) return { status: "unavailable", reason: "mixed_currency" };
 
   for (const flow of input.externalFlows) {
-    if (flow.at <= window.from || flow.at >= window.to) {
+    const flowMs = Date.parse(flow.at);
+    if (flowMs <= fromMs || flowMs >= toMs) {
       return { status: "unavailable", reason: "flow_outside_window" };
     }
   }
 
-  const valuationAt = new Map<string, number>();
-  for (const point of input.valuations) valuationAt.set(point.at, point.value.amount);
-  if (!valuationAt.has(window.from) || !valuationAt.has(window.to)) {
+  const valuationAt = new Map<number, number>();
+  for (const point of input.valuations) valuationAt.set(Date.parse(point.at), point.value.amount);
+  if (!valuationAt.has(fromMs) || !valuationAt.has(toMs)) {
     return { status: "unavailable", reason: "missing_boundary_valuation" };
   }
 
-  const flowTotals = new Map<string, number>();
+  const flowTotals = new Map<number, number>();
   for (const flow of input.externalFlows) {
-    flowTotals.set(flow.at, (flowTotals.get(flow.at) ?? 0) + flow.amount.amount);
+    const flowMs = Date.parse(flow.at);
+    flowTotals.set(flowMs, (flowTotals.get(flowMs) ?? 0) + flow.amount.amount);
   }
   for (const at of flowTotals.keys()) {
     if (!valuationAt.has(at)) return { status: "unavailable", reason: "missing_valuation_at_flow" };
   }
 
-  const cuts = [window.from, ...[...flowTotals.keys()].sort(), window.to];
+  const cuts = [fromMs, ...[...flowTotals.keys()].sort((left, right) => left - right), toMs];
   const subPeriods: SubPeriodReturn[] = [];
   let linked = 1;
   for (let index = 0; index < cuts.length - 1; index += 1) {
@@ -52,9 +68,12 @@ export function computePortfolioReturn(input: PerformanceInput): PortfolioReturn
     const to = cuts[index + 1];
     if (from === undefined || to === undefined) continue;
     const base = (valuationAt.get(from) ?? 0) + (flowTotals.get(from) ?? 0);
-    if (base <= 0) return { status: "unavailable", reason: "zero_or_negative_base" };
-    const ratio = (valuationAt.get(to) ?? 0) / base;
-    subPeriods.push({ from, to, ratio });
+    const end = valuationAt.get(to) ?? 0;
+    // A non-positive base OR end value makes the ratio financially meaningless
+    // (no short-book TWR semantics in this contract) — fail closed.
+    if (base <= 0 || end <= 0) return { status: "unavailable", reason: "zero_or_negative_base" };
+    const ratio = end / base;
+    subPeriods.push({ from: new Date(from).toISOString(), to: new Date(to).toISOString(), ratio });
     linked *= ratio;
   }
 

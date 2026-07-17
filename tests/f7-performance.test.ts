@@ -134,6 +134,41 @@ describe("Performance Coverage — no value outside coverage (spec §8: 추정 �
     expect(result).toEqual({ status: "unavailable", reason: "flow_outside_window" });
   });
 
+  it("equal instants in different ISO precision collapse to one cut — no phantom sub-period (panel finding)", () => {
+    // '2026-04-01T00:00:00Z' === window-interior flow instant written as
+    // '...00.000Z': after normalization the same-instant valuation merges and
+    // a boundary-equal flow is caught by the window guard.
+    const result = computePortfolioReturn({
+      window: { from: "2026-04-01T00:00:00.000Z", to: "2026-05-01T00:00:00.000Z" },
+      valuations: [
+        { at: "2026-04-01T00:00:00.000Z", value: krw(1_000) },
+        { at: "2026-04-01T00:00:00Z", value: krw(1_200) },
+        { at: "2026-05-01T00:00:00.000Z", value: krw(1_800) },
+      ],
+      externalFlows: [{ at: "2026-04-01T00:00:00Z", amount: krw(300) }],
+    });
+    expect(result).toEqual({ status: "unavailable", reason: "flow_outside_window" });
+  });
+
+  it("an unparseable timestamp fails closed (panel finding)", () => {
+    const input = baseInput();
+    expect(
+      computePortfolioReturn({ ...input, valuations: [...input.valuations, { at: "not-a-date", value: krw(1) }] }),
+    ).toEqual({ status: "unavailable", reason: "invalid_timestamp" });
+  });
+
+  it("a non-positive ENDING valuation is fail-closed too — no short-book TWR semantics (panel finding)", () => {
+    const result = computePortfolioReturn({
+      window: { from: T0, to: T2 },
+      valuations: [
+        { at: T0, value: krw(1_000) },
+        { at: T2, value: krw(-100) },
+      ],
+      externalFlows: [],
+    });
+    expect(result).toEqual({ status: "unavailable", reason: "zero_or_negative_base" });
+  });
+
   it("mixed-currency inputs are rejected: no implicit conversion in the return engine", () => {
     const input = baseInput();
     const result = computePortfolioReturn({

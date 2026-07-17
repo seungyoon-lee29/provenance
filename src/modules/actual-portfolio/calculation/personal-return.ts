@@ -13,7 +13,7 @@ export type PersonalReturnResult =
   | Readonly<{ status: "covered"; annualizedRate: number }>
   | Readonly<{
       status: "unavailable";
-      reason: "insufficient_flows" | "no_sign_change" | "no_unique_solution" | "mixed_currency";
+      reason: "insufficient_flows" | "no_sign_change" | "no_unique_solution" | "mixed_currency" | "invalid_timestamp";
     }>;
 
 const MS_PER_YEAR = 365 * 24 * 60 * 60 * 1000;
@@ -37,6 +37,10 @@ export function computePersonalReturn(input: PersonalReturnInput): PersonalRetur
   const totals = new Map<number, number>();
   for (const flow of input.flows) {
     const atMs = Date.parse(flow.at);
+    // Fail closed on unparseable instants: NaN times poison every year
+    // fraction and let the solver emit a confident wrong rate (adversarial
+    // panel 2026-07-18: 'not-a-date' turned a +10% profit into covered −99.99%).
+    if (Number.isNaN(atMs)) return { status: "unavailable", reason: "invalid_timestamp" };
     totals.set(atMs, (totals.get(atMs) ?? 0) + flow.amount.amount);
   }
   const ordered = [...totals.entries()]
