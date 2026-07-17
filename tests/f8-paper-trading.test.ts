@@ -395,7 +395,7 @@ describe("cancellation axis (§9)", () => {
     expect(usd.balance).toBe(100_000);
   });
 
-  it("cancel of an unknown order is refused; cancel after confirmed cancellation records a rejection and keeps state intact", async () => {
+  it("cancel of an unknown order is refused; cancel after confirmed cancellation is refused with state intact", async () => {
     const service = makeService();
     const submitted = await submitOrder(service, limitBuy(5, 40), "c2");
     if (submitted.status !== "applied") throw new Error("submit failed");
@@ -409,11 +409,13 @@ describe("cancellation axis (§9)", () => {
 
     const first = service.change({ kind: "cancel", account, order: submitted.order }, { idempotencyKey: "c-a", expectedRevision: "2" }, viewer());
     expect(first.status).toBe("applied");
+    // The cancellation axis is terminal at confirmed: a second cancel is a
+    // side-effect-free refusal, not another journal row (blind-gate finding).
     const second = service.change({ kind: "cancel", account, order: submitted.order }, { idempotencyKey: "c-b", expectedRevision: "3" }, viewer());
-    expect(second.status).toBe("applied");
+    expect(second).toEqual({ status: "refused", reason: "already_cancelled" });
     const shell = await readShell(service);
-    // The second cancel is a recorded rejection — the confirmed state stands.
     expect(shell.orders[0]!.cancellation).toBe("confirmed");
     expect(shell.cash.find((row) => row.currency === "USD")!.reserved).toBe(0);
+    expect(service.journal.currentRevision("workspace:a", account)).toBe(3);
   });
 });

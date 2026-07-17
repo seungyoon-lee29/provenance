@@ -3,6 +3,7 @@ import type { InternalPaperAccountReference, PaperOrderReference } from "../../.
 import type { ViewerContext, WorkspaceViewerContext } from "../../../shared/contracts/viewer-context";
 
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
+import type { Erasable } from "../../notification-center/fenced-store";
 import type {
   PaperCashRow,
   PaperCommandOutcome,
@@ -284,11 +285,12 @@ export class PaperTradingService {
   #decideCancel(order: PaperOrderReference, state: PaperAccountState): CommandDecision {
     const current = state.orders.get(String(order));
     if (current === undefined) return { refuse: "unknown_order" };
-    const cancellable =
-      (current.execution === "open" || current.execution === "partially_filled")
-      && current.cancellation !== "confirmed";
-    // A cancel on a terminal order is a recorded rejection: the reservation
-    // (already released by the terminal state) is untouched either way.
+    // A confirmed cancellation is terminal for the axis: a second cancel is a
+    // side-effect-free refusal, not another journal row (blind-gate finding).
+    if (current.cancellation === "confirmed") return { refuse: "already_cancelled" };
+    const cancellable = current.execution === "open" || current.execution === "partially_filled";
+    // A cancel on a filled/expired order is a recorded rejection: the
+    // reservation (already released by the terminal state) is untouched.
     return {
       entry: { kind: "cancellation_resolved", order, resolution: cancellable ? "confirmed" : "rejected" },
       order,
@@ -305,6 +307,11 @@ export class PaperTradingService {
     if (observation.freshness !== "realtime" && observation.freshness !== "delayed") return undefined;
     const bounded = observation.price.amount * (1 + this.deps.policy.maxSlippageBps / 10_000);
     return { amount: roundUpToTick(bounded, observation.price.currency), currency: observation.price.currency };
+  }
+
+  /** SEC-09 wiring: the module's non-journal fenced stores, for the erasure participant. */
+  erasableStores(): readonly Readonly<{ label: string; store: Erasable }>[] {
+    return [{ label: "paper-intents", store: this.#intents }];
   }
 
   #consumeIntent(workspace: string, reference: PaperOrderIntentReference): void {

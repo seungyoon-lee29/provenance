@@ -114,6 +114,7 @@ export type PaperCommandOutcome =
       reason:
         | "unknown_account"
         | "unknown_order"
+        | "already_cancelled"
         | "unknown_intent"
         | "intent_consumed"
         | "intent_expired"
