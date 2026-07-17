@@ -1,13 +1,13 @@
 # 16 - F7 포트폴리오 회계 구축
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 15
-Blocked by: 15
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Blocked by: None
+Owner: main-agent
+Claimed at: 2026-07-17T23:04:53+09:00
+Last heartbeat: 2026-07-17T23:15:30+09:00
 
 ## Objective
 

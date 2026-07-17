@@ -1,0 +1,39 @@
+# F7 (ticket 16) 진행 — 포트폴리오 회계
+
+Owner: main-agent. Claimed 2026-07-17T23:04:53+09:00. 기준: spec §8·AT-05/06·SEC-06/09·ADR A04, `docs/agents/collaboration.md`.
+
+## Blast-radius 프레이밍
+- **되돌릴 수 없는 위험**: (1) 잘못된 재무 수치 표시(TWR/XIRR/FX/P&L 오산 → 사용자 투자 판단 오도 — 이 티켓의 핵심 리스크), (2) 중복 수익 계상(Price Basis 이중 반영, corporate action 이중 적용), (3) coverage 밖 값 생성(추정 금지 위반), (4) Rebalancing Proposal이 주문 경로에 닿는 것. 외부 egress 없음(전 oracle network-off literal fixture) → blast radius는 **표시 정확성**에 집중.
+- **Prevent**: coverage-typed 결과(값은 covered variant에만 존재 — F6 completeness 패턴 계승), `total_return_adjusted` basis 거절, proposal 타입에 주문 필드 자체 부재, Actual→Paper 변환 method 부재.
+- **Contain**: 계산은 F6 journal/projection 위의 순수 함수(F6 public interface read-only — baseline/** 무수정). F7 소유 회계 이벤트(배당·transfer·corporate action)는 `journal/`의 **별도 append-only 원장**(FencedKeyedStore 재사용, SEC-09 fence 계승).
+- **Detect**: spec 고정 literal oracle(TWR 21%, XIRR 10%, FX 10+20+2=32%, gross20-fee2-tax1=17, 2:1 split 동등성), **oracle 독립성**(production 계산기를 expected-value 생성기에 import 금지 — 티켓 명시), blind test-authorship + **Workflow 적대 반박 패널**(사용자 승인 2026-07-17: 구현은 직렬 유지, 게이트만 workflow — finding당 반박 검증자, 동시 팬아웃 ≤4~6, 기계적 스테이지 sonnet 명시).
+
+## 추론 강도
+- TWR/XIRR/FX·P&L reconciliation 엔진 = **XHigh**(돈 산술). transfer/dividend/corporate action exactly-once = **XHigh**. coverage/scope 경계·proposal guardrail = High. fixture 배선 = Medium.
+
+## 위임 계약 (AGENTS.md 402ebc9 반영)
+- 모든 위임 프롬프트: ① 필요한 스킬 지목+호출 지시, ② 해당 하한 규칙 인라인, ③ 모델 티어 명시. blind는 격리 제약 인라인 유지. 검수 시 실제 스킬 호출 여부를 subagents/agent-*.jsonl에서 확인.
+
+## 핵심 invariant
+1. Portfolio Return = TWR(외부 cash flow 효과 제거), Personal Return = 유일해 XIRR(cash-flow timing 반영). Performance Coverage 밖·flow 시점 평가액 결측·다중해/무해 XIRR → **값 없음**(unavailable, 부분값·추정 0). (§8/AT-05)
+2. Reporting Currency P&L은 가격 성과·FX·interaction으로 분해되고 성분 합 = 총 P&L (중복·누락 0). security+cash 모두 포함. (AT-05)
+3. Source/Analytic Cost Basis 구분 보존, fee/tax 포함 여부 원천대로. raw Price Basis와 Corporate Action Adjustment는 **정확히 한 번** 반영. `total_return_adjusted` basis는 P&L 입력에서 거절. (§8/AT-06)
+4. 배당·transfer·corporate action은 F7 회계 원장에 append-only, exactly-once, all-old/all-new. Portfolio Transfer는 scope 안 = 외부 flow 아님, scope 경계 현물 = evidence-based fair value 있을 때만 return용 flow. (§8)
+5. 2:1 split의 raw/restated series는 동일 결과. 불완전 merger/spin-off basis·상장폐지 후 price 결측 → basis/coverage/valuation unavailable (fail closed). (AT-06)
+6. scope membership 변경(add/remove/disconnect)은 기존 series에 조용히 연결되지 않고 scope-change break/새 series. (§8/AT-06)
+7. Target Allocation/Exposure Guardrail은 configured일 때만 평가(`not_configured` 구분), incomplete total → proposal unavailable, proposal → 주문 전송 경로 0, Actual→Paper 자동 변환 method 0. (AT-06)
+8. oracle 독립성: expected value는 손으로 푼 spec literal만. production 계산기/reducer를 기대값 생성에 import 0.
+
+## 검증 oracle
+- `npm run check`, AT-05/06 literal fixture 대조, mutation(배치별 3~5, 물리 적용→RED→복원), B5에서 blind + Workflow 반박 패널.
+- 브라우저/perf 게이트는 이 티켓 AC에 없음(계산 fixture 동등성만) — 표면 mount는 F11(ticket 20) 통합에서.
+
+## 배치 (각 = 체크포인트, npm run check green 후 다음)
+- [x] **B1 calculation contracts + Performance Coverage + TWR** — `calculation/{contracts,performance}.ts`: coverage-typed `PortfolioReturnResult`(값은 covered variant에만), 외부 flow 시점 분할·pre-flow 평가 관례·기하 연결. fail-closed: flow 시점 평가액 결측·경계 결측·base ≤0·window 밖 flow·혼합 통화 → 이유 있는 unavailable(보간 0). literal oracle(손으로 푼 값): 1,000→1,100·+900→2,000→2,200 ⇒ 21%, 인출(−600) 변형도 21%(flow 효과 제거 증명), 동시각 flow 합산. author 9 green(red-first). mutation 4/4 kill(base가 flow 누락 4f·보간 허용 1f·산술 합산 3f·flow 부호 무시 2f — 물리 적용→RED→복원, untracked 파일이라 git checkout 불가 → scratchpad 백업 방식 사용). check green.
+- [ ] **B2 XIRR(Personal Return)** — 유일해 판별(부호 변화·bracketing) + Newton/bisection, 다중해·무해 → unavailable. literal: −1,000 @t0 / +1,100 @t0+1y ⇒ 10%; 다중해 fixture(−1,000/+2,500/−1,560) ⇒ unavailable.
+- [ ] **B3 Reporting Currency P&L + FX 분해** — security+cash, 가격 10%+FX 20%+interaction 2%=32% literal, gross 20 − fee 2 − tax 1 = 17, 성분 합=총액 reconciliation·중복 0. Source vs Analytic Cost Basis 구분.
+- [ ] **B4 회계 원장 확장(F7 소유)** — `journal/accounting-journal.ts`: dividend entitlement, transfer(scope 내/경계), Corporate Action Adjustment append-only·exactly-once, 2:1 split raw/restated 동등성, total_return_adjusted 거절, 불완전 merger/spin-off/상폐 fail-closed, scope membership timeline(break/new series). SEC-09 fence 참여.
+- [ ] **B5 proposal/guardrail + 게이트 + closeout** — Target Allocation `not_configured`/proposal unavailable/주문 경로 0/Paper 변환 0. blind test-authorship(sonnet) → **Workflow 적대 반박 패널**(candidate finding당 반박 검증자 3, 동시 ≤4) → 판정·closeout.
+
+## 진행 로그
+- 2026-07-17: claim + 계획 수립.
