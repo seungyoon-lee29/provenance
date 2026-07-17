@@ -51,9 +51,17 @@ export class ActualJournal {
     }
 
     if (command.kind === "supersede_entry" || command.kind === "reverse_entry") {
-      if (this.#entries.get(workspace, entryKey(command.account, command.target)) === undefined) {
-        return { status: "refused", reason: "unknown_entry" };
-      }
+      const target = this.#entries.get(workspace, entryKey(command.account, command.target));
+      if (target === undefined) return { status: "refused", reason: "unknown_entry" };
+      // Corrections stay a linear chain: a row is corrected at most once and a
+      // reversal itself can never be a correction target — further changes
+      // correct the correcting entry instead.
+      if (target.kind === "reversal") return { status: "refused", reason: "already_corrected" };
+      const alreadyCorrected = this.#entries.list(workspace).some((entry) =>
+        (entry.kind === "superseding" && String(entry.supersedes) === String(command.target))
+        || (entry.kind === "reversal" && String(entry.reverses) === String(command.target)),
+      );
+      if (alreadyCorrected) return { status: "refused", reason: "already_corrected" };
     }
 
     const revision = currentRevision + 1;

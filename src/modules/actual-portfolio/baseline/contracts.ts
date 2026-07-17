@@ -90,5 +90,5 @@ export type ActualCommandOutcome =
   | Readonly<{ status: "applied"; revision: number; entryReference: ActualJournalEntryReference }>
   | Readonly<{ status: "conflict" }>
   | Readonly<{ status: "rejected"; currentRevision: number }>
-  | Readonly<{ status: "refused"; reason: "unknown_entry" }>
+  | Readonly<{ status: "refused"; reason: "unknown_entry" | "already_corrected" }>
   | Readonly<{ status: "suppressed" }>;
