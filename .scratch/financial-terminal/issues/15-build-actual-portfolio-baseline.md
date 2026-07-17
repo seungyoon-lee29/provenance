@@ -1,13 +1,13 @@
 # 15 - F6 Actual Portfolio baseline 구축
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 11, 12
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: main-agent
+Claimed at: 2026-07-17T15:37:43+09:00
+Last heartbeat: 2026-07-17T15:37:43+09:00
 
 ## Objective
 
