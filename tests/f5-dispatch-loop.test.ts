@@ -378,6 +378,28 @@ describe("email channel gates run before any provider call", () => {
     expect(w.emailCalls).toHaveLength(2);
   });
 
+  it("cooldown is per rule even when the rule reference contains colons — a different rule sends immediately", async () => {
+    const w = world({
+      emailResults: [
+        { status: "accepted", providerMessageId: "pm-ns-1" },
+        { status: "accepted", providerMessageId: "pm-ns-2" },
+      ],
+    });
+    // Realistic rule references: `rule:a` / `rule:b` → cause ids `cause:alert:rule:a:1`.
+    const first = financialEmailIntent("rule:a", 1);
+    const second = financialEmailIntent("rule:b", 1);
+    commit(w, first);
+    await w.dispatcher.dispatchTick(WORKSPACE, T0);
+    commit(w, second);
+    await w.dispatcher.dispatchTick(WORKSPACE, T0 + 1_000);
+    expect(w.emailCalls).toHaveLength(2);
+    // Same rule inside the window still holds.
+    const replay = financialEmailIntent("rule:a", 2);
+    commit(w, replay);
+    await w.dispatcher.dispatchTick(WORKSPACE, T0 + 2_000);
+    expect(w.emailCalls).toHaveLength(2);
+  });
+
   it("per-user daily quota exhaustion defers financial email to the next UTC day", async () => {
     const w = world({ emailResults: [{ status: "accepted", providerMessageId: "pm-u" }] });
     // Pre-consume the 5/day user cap (financial).

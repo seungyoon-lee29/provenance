@@ -4,7 +4,7 @@ const baseURL = "http://127.0.0.1:3102";
 
 export default defineConfig({
   testDir: "./tests/performance",
-  testMatch: ["browser-shell-performance.spec.ts", "chart-performance.spec.ts", "layout-performance.spec.ts"],
+  testMatch: ["browser-shell-performance.spec.ts", "chart-performance.spec.ts", "layout-performance.spec.ts", "notification-performance.spec.ts"],
   fullyParallel: false,
   workers: 1,
   retries: 0,

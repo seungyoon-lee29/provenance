@@ -8,6 +8,7 @@ import type {
   AlertRule,
   AlertRuleReference,
   NotificationRecord,
+  NotificationRecordReference,
   ObserveResult,
 } from "./contracts";
 
@@ -34,6 +35,12 @@ export interface OccurrenceStore {
   observe(observation: AlertObservation): Promise<ObserveResult>;
   listRecords(workspace: WorkspaceReference): readonly NotificationRecord[];
   listOccurrences(rule: AlertRuleReference): readonly AlertOccurrence[];
+  /**
+   * Foreground acknowledgement — the ONLY mutation a Notification Record ever
+   * takes (a Delivery Fact never touches it). Idempotent; false for an unknown
+   * record or behind the deletion fence (no post-erasure regeneration).
+   */
+  acknowledge(workspace: WorkspaceReference, record: NotificationRecordReference, action: "read" | "dismiss"): boolean;
   /**
    * Administrative erasure (SEC-09): shred the workspace's Notification Records,
    * Alert Occurrences and rule watermark/state behind a deletion fence. A write
@@ -127,6 +134,15 @@ export function createOccurrenceStore(now: () => string, options: { writeEpoch?:
 
     listRecords(workspace) {
       return records.list(workspace);
+    },
+
+    acknowledge(workspace, record, action) {
+      const existing = records.get(workspace, record);
+      if (existing === undefined) return false;
+      const updated: NotificationRecord = action === "read"
+        ? { ...existing, read: true }
+        : { ...existing, dismissed: true };
+      return records.write(workspace, record, updated, writeEpoch);
     },
 
     listOccurrences(rule) {

@@ -372,10 +372,14 @@ export class DeliveryDispatcher {
   }
 
   #ruleOf(intent: PlannedDeliveryIntent): string {
-    // Alert cause ids are `cause:alert:{rule}:{seq}`; the 30-minute financial
-    // cooldown is per rule, so replays of the same rule pace together.
+    // Alert cause ids are `cause:alert:{ruleReference}:{seq}` and the rule
+    // reference itself may contain colons (`rule:r1`), so the rule is everything
+    // between the fixed prefix and the trailing sequence — the 30-minute
+    // financial cooldown must pace per rule, not across all rules.
     const parts = String(intent.cause.causeId).split(":");
-    return intent.cause.kind === "alert_occurrence" && parts.length >= 3 ? (parts[2] ?? "") : String(intent.cause.causeId);
+    return intent.cause.kind === "alert_occurrence" && parts.length >= 4
+      ? parts.slice(2, -1).join(":")
+      : String(intent.cause.causeId);
   }
 
   #epoch(): number {
