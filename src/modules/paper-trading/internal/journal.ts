@@ -77,6 +77,8 @@ export type PaperOrderState = Readonly<{
   submission: "acknowledged";
   execution: "not_started" | "open" | "partially_filled" | "filled" | "expired";
   cancellation: "none" | "requested" | "confirmed" | "rejected";
+  /** Set when the cancellation was confirmed — the late-valid-fill boundary. */
+  cancelledAt?: string;
   acceptedAt: string;
   reservation: PaperReservationSpec;
   filledQuantity: number;
@@ -273,7 +275,11 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
         // A confirmed cancellation is terminal for the axis: a later recorded
         // rejection (e.g. a second cancel attempt) never regresses it.
         if (order !== undefined && order.cancellation !== "confirmed") {
-          orders.set(String(entry.order), { ...order, cancellation: entry.resolution });
+          orders.set(String(entry.order), {
+            ...order,
+            cancellation: entry.resolution,
+            cancelledAt: entry.resolution === "confirmed" ? entry.recordedAt : order.cancelledAt,
+          });
         }
         break;
       }

@@ -354,6 +354,26 @@ describe("reservation CAS (§9: overspend/oversell 0)", () => {
   });
 });
 
+describe("journal system-event exactly-once (§9 dedupe layer)", () => {
+  it("a redelivered system event with the same dedupe key is a duplicate no-op", async () => {
+    const service = makeService();
+    await submitOrder(service, limitBuy(1, 10), "seed");
+    const account = (await readShell(service)).account;
+    const body = {
+      kind: "dividend_applied",
+      action: brandReference<string, "PaperCorporateActionReference">("action:div-1") as never,
+      instrument: AAPL,
+      perShare: { amount: 1, currency: "USD" },
+    } as const;
+    const first = service.journal.appendSystem("workspace:a", account, "action:div-1", body);
+    expect(first.status).toBe("applied");
+    const replay = service.journal.appendSystem("workspace:a", account, "action:div-1", body);
+    expect(replay).toEqual({ status: "duplicate" });
+    // Revision advanced exactly once for the pair.
+    expect(service.journal.currentRevision("workspace:a", account)).toBe(3);
+  });
+});
+
 describe("cancellation axis (§9)", () => {
   it("cancel of an open order confirms and releases the remaining reservation", async () => {
     const service = makeService();
