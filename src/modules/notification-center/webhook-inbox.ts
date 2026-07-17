@@ -24,20 +24,34 @@ export type WebhookOwnerBinding = Readonly<{
   templateRevision: string;
 }>;
 
+export type ProviderRoute = Readonly<{ provider: string; environment: string }>;
+
 /** Server-side dispatch record: provider message id → owner binding. */
 export class ProviderMessageDirectory {
-  readonly #bindings = new Map<string, WebhookOwnerBinding>();
+  readonly #bindings = new Map<string, Readonly<{ binding: WebhookOwnerBinding; route?: ProviderRoute }>>();
 
-  bind(providerMessageId: string, binding: WebhookOwnerBinding): void {
-    this.#bindings.set(providerMessageId, binding);
+  /** `route` is where the message was dispatched; erasure needs it to tombstone the id (SEC-09). */
+  bind(providerMessageId: string, binding: WebhookOwnerBinding, route?: ProviderRoute): void {
+    this.#bindings.set(providerMessageId, { binding, ...(route === undefined ? {} : { route }) });
   }
 
   lookup(providerMessageId: string): WebhookOwnerBinding | undefined {
-    return this.#bindings.get(providerMessageId);
+    return this.#bindings.get(providerMessageId)?.binding;
   }
 
   erase(providerMessageId: string): void {
     this.#bindings.delete(providerMessageId);
+  }
+
+  /** Remove every binding owned by `owner` and return the removed ids for tombstoning. */
+  eraseOwner(owner: string): readonly Readonly<{ providerMessageId: string; route?: ProviderRoute }>[] {
+    const removed: Readonly<{ providerMessageId: string; route?: ProviderRoute }>[] = [];
+    for (const [id, entry] of this.#bindings) {
+      if (entry.binding.owner !== owner) continue;
+      removed.push({ providerMessageId: id, ...(entry.route === undefined ? {} : { route: entry.route }) });
+      this.#bindings.delete(id);
+    }
+    return removed;
   }
 }
 
