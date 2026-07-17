@@ -30,6 +30,8 @@ export class ActualJournal {
   readonly #entries = new FencedKeyedStore<ActualJournalEntry>();
   readonly #revisions = new Map<string, number>();
   readonly #receipts = new Map<string, Receipt>();
+  /** An Actual account belongs to exactly one workspace, fixed at first record. */
+  readonly #owners = new Map<string, string>();
 
   constructor(
     private readonly now: () => string,
@@ -74,6 +76,7 @@ export class ActualJournal {
     const written = this.#entries.write(workspace, entryKey(command.account, entryReference), entry, this.writeEpoch());
     if (!written) return { status: "suppressed" };
     this.#revisions.set(accountKey, revision);
+    if (!this.#owners.has(String(command.account))) this.#owners.set(String(command.account), workspace);
     const outcome: ActualCommandOutcome = { status: "applied", revision, entryReference };
     this.#receipts.set(receiptKey, { canonicalPayload, outcome });
     return outcome;
@@ -90,10 +93,24 @@ export class ActualJournal {
     return this.#revisions.get(`${workspace}|${String(account)}`) ?? 0;
   }
 
-  /** SEC-09: shred entries, revision counters and command receipts behind the fence. */
+  /** The workspace that first recorded into the account, if any. */
+  ownerOf(account: ActualAccountReference): string | undefined {
+    return this.#owners.get(String(account));
+  }
+
+  accounts(workspace: string): readonly ActualAccountReference[] {
+    const owned: ActualAccountReference[] = [];
+    for (const [account, owner] of this.#owners) {
+      if (owner === workspace) owned.push(account as ActualAccountReference);
+    }
+    return owned;
+  }
+
+  /** SEC-09: shred entries, revision counters, account ownership and command receipts behind the fence. */
   eraseWorkspace(workspace: string, fence: number): number {
     for (const key of [...this.#revisions.keys()]) if (key.startsWith(`${workspace}|`)) this.#revisions.delete(key);
     for (const key of [...this.#receipts.keys()]) if (key.startsWith(`${workspace}|`)) this.#receipts.delete(key);
+    for (const [account, owner] of [...this.#owners]) if (owner === workspace) this.#owners.delete(account);
     return this.#entries.eraseSubject(workspace, fence);
   }
 }

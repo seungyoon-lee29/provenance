@@ -91,4 +91,6 @@ export type ActualCommandOutcome =
   | Readonly<{ status: "conflict" }>
   | Readonly<{ status: "rejected"; currentRevision: number }>
   | Readonly<{ status: "refused"; reason: "unknown_entry" | "already_corrected" }>
+  /** SEC-01: guest, stale auth epoch or a cross-workspace account id. */
+  | Readonly<{ status: "denied" }>
   | Readonly<{ status: "suppressed" }>;
