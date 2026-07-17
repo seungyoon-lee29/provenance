@@ -1,3 +1,14 @@
+## 모든 에이전트 공통 하한
+
+아래 상세 문서를 읽지 않았어도 이 하한은 항상 적용된다.
+
+- frontier 티켓은 claim(`Status`/`Owner`/heartbeat) 후 작업하고, 커밋 체크포인트마다 heartbeat를 갱신한다.
+- dirty worktree는 다른 세션의 작업으로 간주해 보존한다. 한 파일의 owner는 언제나 한 명.
+- 커밋은 파일 allowlist로 stage한다. pre-commit 훅(whitespace·secret 스캔·typecheck·test)을 `--no-verify`로 우회하지 않는다.
+- `.env.local`·`.secrets`·credential 원문은 읽기·출력·stage 금지.
+- push·`reset --hard`·`clean -f` 등 파괴적 git은 훅이 차단하며, 배정 없이 시도하지 않는다.
+- 서브에이전트 위임 시 탐색·조사·기계적 작업은 하위 모델(`sonnet`/`haiku`)을 명시한다. 판단·고위험 에이전트만 메인 모델.
+
 ## Agent skills
 
 ### Issue tracker
