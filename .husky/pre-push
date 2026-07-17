@@ -1,0 +1,6 @@
+# push 기본 차단 — git 레벨이라 Claude/Codex/사람 공통 적용
+# 의도적 push는: ALLOW_PUSH=1 git push
+if [ -z "$ALLOW_PUSH" ]; then
+  echo "pre-push: push는 기본 차단됨 (에이전트 공통 가드). 의도적 push는 ALLOW_PUSH=1 git push" >&2
+  exit 1
+fi
