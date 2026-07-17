@@ -40,13 +40,14 @@
 
 ## Implementation plan
 
-- **현재 frontier**: [14 - F5 알림·외부 전달](./issues/14-build-alert-delivery-tracer.md) (13 F4 resolved; 15 F6 Actual Portfolio baseline도 병렬 eligible)
+- **현재 frontier**: [16 - F7 포트폴리오 회계](./issues/16-build-portfolio-accounting.md) (14 F5·15 F6 resolved; 17 F8·19 F10도 eligible)
 - [10 - F1 비로그인 터미널 shell](./issues/10-build-guest-terminal-shell.md) → [11 - F2 chart tracer](./issues/11-build-chart-tracer.md) → [12 - F3 Identity·Provider Connections core·layout](./issues/12-build-identity-provider-layout.md)이 sequential contract spine을 완성했다.
 - P1: [13 - F4 정보 outcome·AI](./issues/13-build-data-outcomes-ai.md) 뒤 [14 - F5 알림·외부 전달](./issues/14-build-alert-delivery-tracer.md), 그리고 [15 - F6 Actual Portfolio baseline](./issues/15-build-actual-portfolio-baseline.md)을 독립 scope로 진행한다.
 - P2: F6 뒤 [16 - F7 포트폴리오 회계](./issues/16-build-portfolio-accounting.md)와 [17 - F8 Internal Paper Trading](./issues/17-build-internal-paper-trading.md)을 병렬화한다.
 - P3: F8 뒤 [18 - F9 Broker Paper execution](./issues/18-build-broker-paper-execution.md), F6 뒤 [19 - F10 Broker Sync](./issues/19-build-broker-sync.md)을 병렬화한다.
 - [20 - F11 release integration](./issues/20-integrate-release-artifacts.md)은 F5·F7·F9·F10을 모두 기다린 뒤 browser/accessibility/performance/load, Docker/ZIP/docs/screenshot gate를 통합한다.
 - [21 - 불변식 검증 adequacy](./issues/21-verify-invariant-adequacy.md)는 F-spine 밖 cross-cutting 품질 backlog로, `docs/agents/collaboration.md` 예산 시퀀싱에 따라 토큰 여유 회복 시 착수한다(standing property/mutation으로 과거·미래 코드를 동시 검증).
+- [22 - CI 게이트 도입](./issues/22-add-ci-gate-parity.md)은 로컬 pre-commit 훅과 동일 게이트를 원격에서 강제하는 두 번째 층이다. 원격 저장소·CI 플랫폼 결정(needs-info)이 선행돼야 한다.
 - 각 ticket은 선행 issue가 resolved되면 `Blocked by`에서만 제거하고, `Depends on` 이력은 보존한다.
 
 ## Out of scope
