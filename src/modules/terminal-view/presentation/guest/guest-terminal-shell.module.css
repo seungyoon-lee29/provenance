@@ -19,8 +19,12 @@
   background: var(--canvas);
   font-size: 13px;
   letter-spacing: 0.01em;
-  display: grid;
-  grid-template-rows: 46px auto 52px minmax(0, 1fr);
+  /* Flex column instead of positional grid rows: the synthetic banner is a
+     conditional child, and fixed row slots collapse the workspace to the
+     52px strip row whenever it is absent (production mode). Each fixed-height
+     bar owns its height; the workspace flexes to the remainder. */
+  display: flex;
+  flex-direction: column;
 }
 
 .shell :is(button, input, a, [tabindex="0"]):focus-visible {
@@ -31,6 +35,8 @@
 .globalHeader {
   position: relative;
   z-index: 5;
+  flex: none;
+  height: 46px;
   min-width: 0;
   padding: 0 12px;
   display: grid;
@@ -166,6 +172,7 @@
 }
 
 .syntheticBanner {
+  flex: none;
   min-width: 0;
   min-height: 26px;
   padding: 4px 12px;
@@ -187,6 +194,8 @@
 }
 
 .indexStrip {
+  flex: none;
+  height: 52px;
   min-width: 0;
   overflow-x: auto;
   border-bottom: 1px solid var(--line-strong);
@@ -234,6 +243,7 @@
 }
 
 .workspace {
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   padding: 8px;
@@ -566,13 +576,13 @@
 @media (max-width: 720px) {
   .shell {
     min-height: 0;
-    grid-template-rows: 108px auto 58px minmax(0, 1fr);
     font-size: 14px;
   }
 
   .globalHeader {
     position: sticky;
     top: 0;
+    height: 108px;
     padding: 7px 8px;
     grid-template-columns: 44px minmax(0, 1fr) 52px;
     grid-template-rows: 44px 46px;
@@ -661,6 +671,10 @@
     flex-direction: column;
     gap: 1px;
     font-size: 9px;
+  }
+
+  .indexStrip {
+    height: 58px;
   }
 
   .indexStrip ul {

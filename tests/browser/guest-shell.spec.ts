@@ -24,6 +24,33 @@ test("renders honest guest outcomes, provenance, and access gates", async ({ pag
   await expect(page.locator('[data-state="unavailable"] [data-role="primary-value"], [data-state="failed"] [data-role="primary-value"]')).toHaveCount(0);
 });
 
+test("workspace keeps its height when the synthetic banner is absent (production row map)", async ({ page }) => {
+  // Production mode renders no synthetic banner. The shell layout must not
+  // depend on that child's presence: with positional grid rows the workspace
+  // collapsed to the 52px strip slot and every panel was clipped (regression
+  // found on a production build, 2026-07-17).
+  await page.evaluate(() => {
+    document.querySelector('[class*="syntheticBanner"]')?.remove();
+  });
+  const workspace = await page.evaluate(() => {
+    const main = document.querySelector("main#workspace");
+    if (!(main instanceof HTMLElement)) return undefined;
+    // Mobile scrolls the workspace internally, so panels below the fold are
+    // fine — the regression signals are a collapsed container (52px) and
+    // zero-height panels.
+    const panels = [...main.querySelectorAll("[data-panel-key]")];
+    return {
+      height: Math.round(main.getBoundingClientRect().height),
+      panelCount: panels.length,
+      flatPanels: panels.filter((panel) => panel.getBoundingClientRect().height === 0).length,
+    };
+  });
+  expect(workspace).toBeDefined();
+  expect(workspace?.height ?? 0).toBeGreaterThan(300);
+  expect(workspace?.panelCount ?? 0).toBeGreaterThan(0);
+  expect(workspace?.flatPanels).toBe(0);
+});
+
 test("keeps the desktop grid and mobile column inside the exact viewport", async ({ page }, testInfo) => {
   const measurements = await page.evaluate(() => {
     const root = document.documentElement;
