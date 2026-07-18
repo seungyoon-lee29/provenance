@@ -12,6 +12,9 @@ import type { CancellationState, ExecutionState, PaperMoney, PaperOrderPayload, 
  * representation here at all.
  */
 
+/** All live writes happen at this epoch; the erasure fence retires it (F8 lane pattern). */
+export const BROKER_LIVE_EPOCH = 1;
+
 /** Stable client order identity — minted once at prepare, reused verbatim across every retry/lookup. */
 export type BrokerClientOrderReference = Brand<string, "BrokerClientOrderReference">;
 export type BrokerPaperOrderIntentReference = Brand<string, "BrokerPaperOrderIntentReference">;

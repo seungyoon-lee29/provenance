@@ -81,6 +81,7 @@ export type PendingBrokerSubmission = Readonly<{
   clientOrder: BrokerClientOrderReference;
   intent: BrokerPaperOrderIntentReference;
   since: string;
+  resolved?: boolean;
 }>;
 
 export class BrokerPendingSubmissions {
@@ -92,8 +93,21 @@ export class BrokerPendingSubmissions {
     return { status: written ? "committed" : "duplicate" };
   }
 
+  /** Queue acknowledgement: the submission's fate is durably decided. Idempotent. */
+  resolve(workspace: string, clientOrder: BrokerClientOrderReference, atEpoch: number): boolean {
+    const row = this.#rows.get(workspace, String(clientOrder));
+    if (row === undefined) return false;
+    if (row.resolved === true) return true;
+    return this.#rows.write(workspace, String(clientOrder), { ...row, resolved: true }, atEpoch);
+  }
+
   list(workspace: string): readonly PendingBrokerSubmission[] {
     return this.#rows.list(workspace);
+  }
+
+  /** The reconciliation worklist: submissions whose fate is not yet queue-acknowledged. */
+  open(workspace: string): readonly PendingBrokerSubmission[] {
+    return this.#rows.list(workspace).filter((row) => row.resolved !== true);
   }
 
   eraseSubject(workspace: string, fence: number): number {

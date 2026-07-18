@@ -6,6 +6,7 @@ import type { ViewerContext, WorkspaceViewerContext } from "../../../shared/cont
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
 import type { PaperMoney, PaperOrderPayload } from "../internal/contracts";
 import type { BrokerPaperBook } from "./book";
+import { BROKER_LIVE_EPOCH } from "./contracts";
 import type { BrokerOrderView, BrokerClientOrderReference, BrokerPaperOrderIntentReference, BrokerSubmitRefusalReason } from "./contracts";
 import type { BrokerOutbox, BrokerPendingSubmissions } from "./outbox";
 
@@ -23,8 +24,8 @@ import type { BrokerOutbox, BrokerPendingSubmissions } from "./outbox";
  * representation on this surface at all.
  */
 
-/** All writes happen at the live epoch; the erasure fence retires it (F8 lane pattern). */
-const LIVE_EPOCH = 1;
+
+
 
 type IntentRecord = Readonly<{
   view: BrokerOrderIntentView;
@@ -127,7 +128,7 @@ export class BrokerPaperTradingService {
 
     // First touch provisions the broker paper account under this workspace —
     // a forged reference can never be provisioned into another workspace's book.
-    this.deps.book.provision(workspace, request.account, this.deps.policy.seedCash, LIVE_EPOCH);
+    this.deps.book.provision(workspace, request.account, this.deps.policy.seedCash, BROKER_LIVE_EPOCH);
 
     const issuedAt = this.deps.now();
     const reference = brandReference<string, "BrokerPaperOrderIntentReference">(
@@ -155,7 +156,7 @@ export class BrokerPaperTradingService {
       payload,
       consumed: false,
     };
-    const written = this.#intents.write(workspace, String(reference), record, LIVE_EPOCH);
+    const written = this.#intents.write(workspace, String(reference), record, BROKER_LIVE_EPOCH);
     if (!written) return { status: "denied" };
     return { status: "issued", intent: view };
   }
@@ -191,21 +192,21 @@ export class BrokerPaperTradingService {
         if (this.deps.connections.currentGeneration(connection, workspaceViewer) !== record.view.connectionGeneration) {
           return { refuse: { status: "refused", reason: "connection_revoked" } };
         }
-        const submitted = this.deps.book.submitLocal(workspace, account, clientOrder, record.payload, LIVE_EPOCH);
+        const submitted = this.deps.book.submitLocal(workspace, account, clientOrder, record.payload, BROKER_LIVE_EPOCH);
         if (submitted.status === "refused") return { refuse: { status: "refused", reason: submitted.reason } };
         if (submitted.status === "suppressed") return { refuse: { status: "suppressed" } };
         // One transaction: intent consumption, order + derived reservation,
         // outbox row and reconciliation worklist — all before any route call.
-        this.#intents.write(workspace, String(intentReference), { ...record, consumed: true }, LIVE_EPOCH);
+        this.#intents.write(workspace, String(intentReference), { ...record, consumed: true }, BROKER_LIVE_EPOCH);
         this.deps.outbox.commit(
           workspace,
           { kind: "submit", account, connection, clientOrder, intent: intentReference, state: "pending_dispatch", attempts: 0 },
-          LIVE_EPOCH,
+          BROKER_LIVE_EPOCH,
         );
         this.deps.pending.commit(
           workspace,
           { account, connection, clientOrder, intent: intentReference, since: this.deps.now() },
-          LIVE_EPOCH,
+          BROKER_LIVE_EPOCH,
         );
         const order = this.deps.book.state(workspace, account).orders.find((row) => String(row.order) === String(clientOrder))!;
         return { commit: { status: "applied", revision: nextRevision, order } };
@@ -231,14 +232,14 @@ export class BrokerPaperTradingService {
       { idempotencyKey: control.idempotencyKey, expectedRevision: String(control.expectedRevision) },
       canonical(["cancel", String(clientOrder)]),
       (nextRevision) => {
-        const refusal = this.deps.book.requestCancelLocal(workspace, account, clientOrder, LIVE_EPOCH);
+        const refusal = this.deps.book.requestCancelLocal(workspace, account, clientOrder, BROKER_LIVE_EPOCH);
         if (refusal !== undefined) return { refuse: { status: "refused", reason: refusal } };
         const row = this.deps.outbox.get(workspace, account, clientOrder, "submit");
         const connection = row?.connection ?? this.#intents.list(workspace).find((intent) => String(intent.view.clientOrder) === String(clientOrder))?.view.connection;
         this.deps.outbox.commit(
           workspace,
           { kind: "cancel", account, connection: connection!, clientOrder, state: "pending_dispatch", attempts: 0 },
-          LIVE_EPOCH,
+          BROKER_LIVE_EPOCH,
         );
         const order = this.deps.book.state(workspace, account).orders.find((entry) => String(entry.order) === String(clientOrder))!;
         return { commit: { status: "applied", revision: nextRevision, order } };

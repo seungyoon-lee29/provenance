@@ -147,6 +147,35 @@ export class BrokerPaperBook {
     return result.commit;
   }
 
+  /**
+   * Submission Uncertainty (§9): a dispatch that may or may not have reached
+   * the broker. Idempotent; the reservation stays held while unknown.
+   */
+  markSubmissionUnknown(workspace: string, account: BrokerPaperAccountReference, clientOrder: BrokerClientOrderReference, atEpoch: number): boolean {
+    if (this.#accounts.isErased(workspace, atEpoch)) return false;
+    const order = this.#accounts.get(workspace, String(account))?.orders.get(String(clientOrder));
+    if (order === undefined) return false;
+    if (order.submission === "submission_unknown") return true;
+    if (order.submission !== "pending_submission") return false;
+    order.submission = "submission_unknown";
+    return true;
+  }
+
+  /**
+   * Local terminal for an order the broker NEVER saw (revoke fenced the
+   * dispatch before any route call): submission → rejected, reservation
+   * released by derivation. Refused once the broker has acknowledged.
+   */
+  resolveLocalRejection(workspace: string, account: BrokerPaperAccountReference, clientOrder: BrokerClientOrderReference, atEpoch: number): boolean {
+    if (this.#accounts.isErased(workspace, atEpoch)) return false;
+    const order = this.#accounts.get(workspace, String(account))?.orders.get(String(clientOrder));
+    if (order === undefined) return false;
+    if (order.submission !== "pending_submission" && order.submission !== "submission_unknown") return false;
+    order.submission = "rejected";
+    this.#revisions.set(`${workspace}|${String(account)}`, this.currentRevision(workspace, account) + 1);
+    return true;
+  }
+
   /** Local `requested` mark on the cancellation axis; the confirmed state is terminal. */
   requestCancelLocal(
     workspace: string,
