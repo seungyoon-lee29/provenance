@@ -27,18 +27,35 @@ export type BrokerProjection = Readonly<{
 }>;
 
 export function effectiveBrokerEvents(events: readonly BrokerSyncEvent[]): readonly BrokerSyncEvent[] {
-  const correctionOf = new Map<string, BrokerSyncEvent>();
+  // A target may be corrected more than once (a provider anomaly). Pick a single
+  // deterministic winner — highest revision, ties broken by event key — so the
+  // fold can never double-count or depend on arrival order (codex panel). The
+  // losing correctors of the same target are voided along with the base.
+  const correctorsOf = new Map<string, BrokerSyncEvent[]>();
   for (const event of events) {
-    if (event.corrects !== undefined) correctionOf.set(event.corrects, event);
+    if (event.corrects === undefined) continue;
+    const bucket = correctorsOf.get(event.corrects);
+    if (bucket === undefined) correctorsOf.set(event.corrects, [event]);
+    else bucket.push(event);
+  }
+  const winnerOf = new Map<string, BrokerSyncEvent>();
+  const losers = new Set<string>();
+  for (const [target, correctors] of correctorsOf) {
+    const winner = correctors.reduce((best, next) =>
+      next.revision > best.revision || (next.revision === best.revision && eventKey(next) > eventKey(best)) ? next : best,
+    );
+    winnerOf.set(target, winner);
+    for (const corrector of correctors) if (eventKey(corrector) !== eventKey(winner)) losers.add(eventKey(corrector));
   }
 
   const memo = new Map<string, boolean>();
   const effective = (event: BrokerSyncEvent): boolean => {
     const key = eventKey(event);
+    if (losers.has(key)) return false; // superseded by a later correction of the same target
     const cached = memo.get(key);
     if (cached !== undefined) return cached;
-    const corrector = correctionOf.get(key);
-    const result = corrector === undefined ? true : !effective(corrector);
+    const winner = winnerOf.get(key);
+    const result = winner === undefined ? true : !effective(winner);
     memo.set(key, result);
     return result;
   };

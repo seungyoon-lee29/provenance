@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { brandReference } from "../src/shared/contracts/brands";
+import { lineageKey } from "../src/modules/actual-portfolio/broker-sync/contracts";
+import type { ExternalAccountIdentity } from "../src/modules/actual-portfolio/broker-sync/contracts";
 import { CONNECTION, ScriptedBrokerReadSource, WORKSPACE, account, cashWire, makeWorker, positionWire, viewer } from "./f10-broker-sync-harness";
 
 const NOW = () => new Date("2026-07-19T00:00:00.000Z");
@@ -83,7 +86,9 @@ describe("F10 broker sync worker", () => {
     expect((await h.worker.sync(WORKSPACE, viewer(), account(), CONNECTION)).status).toBe("promoted");
     const view = h.snapshots.current(WORKSPACE, account(), NOW());
     if (view.status === "fresh") expect(view.projection.positions.map((row) => row.entity)).toEqual(["MSFT"]);
-    expect(h.cursors.lineageKeyOf(WORKSPACE, account())).toContain("|2");
+    expect(h.cursors.lineageKeyOf(WORKSPACE, account())).toBe(
+      lineageKey({ externalAccountIdentity: brandReference<string, "ExternalAccountIdentity">("ext-acct-1") as ExternalAccountIdentity, verifiedFingerprint: "fp-1", providerDataEpoch: 2 }),
+    );
   });
 
   it("replaces the projection when a newer snapshot restates a position (read-sync semantics)", async () => {

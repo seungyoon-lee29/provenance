@@ -36,7 +36,7 @@ export class BrokerSyncEventStore {
     if (this.#events.isErased(workspace, epoch)) return "suppressed";
 
     const namespace = lineageKey(lineage);
-    const key = `${namespace}|${eventKey(event)}`;
+    const key = JSON.stringify([namespace, eventKey(event)]);
     const canonical = canonicalPayload(event.body);
 
     const existing = this.#events.get(workspace, key);
@@ -47,7 +47,7 @@ export class BrokerSyncEventStore {
 
     // A given (component,entity,kind,revision) may bind to exactly one external
     // identity within a lineage — a second identity is a reconciliation issue.
-    const permKey = `${namespace}|${permutationKey(event)}`;
+    const permKey = JSON.stringify([namespace, permutationKey(event)]);
     const boundIdentity = this.#identity.get(workspace, permKey);
     if (boundIdentity !== undefined && boundIdentity !== event.externalIdentity) {
       return this.#quarantineIssue(workspace, epoch, namespace, key, "identity_permutation", boundIdentity, event.externalIdentity);
@@ -68,7 +68,7 @@ export class BrokerSyncEventStore {
     divergent: string,
   ): BrokerRecordOutcome {
     const issue: BrokerReconciliationIssue = { lineageKey: namespace, eventKey: key, reason, storedPayload: stored, divergentPayload: divergent };
-    this.#quarantine.write(workspace, `${key}|${reason}`, issue, epoch);
+    this.#quarantine.write(workspace, JSON.stringify([key, reason]), issue, epoch);
     return "quarantined";
   }
 

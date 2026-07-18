@@ -83,19 +83,26 @@ export type BrokerReconciliationIssue = Readonly<{
   divergentPayload: string;
 }>;
 
-/** Stable string key for a lineage (the dedupe namespace prefix). */
+/**
+ * Stable string key for a lineage (the dedupe namespace).
+ *
+ * JSON-array encoded, not `|`-joined: a raw delimiter join is not injective, so
+ * `("broker|fingerprint","v1")` and `("broker","fingerprint|v1")` would collide
+ * and bleed two distinct lineages into one namespace (codex panel). JSON quoting
+ * makes the tuple encoding injective.
+ */
 export function lineageKey(lineage: BrokerLineage): string {
-  return `${String(lineage.externalAccountIdentity)}|${lineage.verifiedFingerprint}|${lineage.providerDataEpoch}`;
+  return JSON.stringify([String(lineage.externalAccountIdentity), lineage.verifiedFingerprint, lineage.providerDataEpoch]);
 }
 
-/** Durable-unique event key within a lineage. */
+/** Durable-unique event key within a lineage (injective JSON-tuple encoding). */
 export function eventKey(event: BrokerSyncEvent): string {
-  return `${String(event.connection)}|${String(event.account)}|${event.component}|${event.entity}|${event.kind}|${event.externalIdentity}|${event.revision}`;
+  return JSON.stringify([String(event.connection), String(event.account), event.component, event.entity, event.kind, event.externalIdentity, event.revision]);
 }
 
 /** Permutation key: (component, entity, kind, revision) must map to one external identity. */
 export function permutationKey(event: BrokerSyncEvent): string {
-  return `${event.component}|${event.entity}|${event.kind}|${event.revision}`;
+  return JSON.stringify([event.component, event.entity, event.kind, event.revision]);
 }
 
 /** Order-insensitive canonical form for divergence detection. */

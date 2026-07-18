@@ -110,6 +110,7 @@ export function brokerReadRoutes(origin = "https://broker-read.example"): readon
 }
 
 export type BrokerReadPageResponse = z.infer<typeof readPage>;
+export type BrokerReadChecksumResponse = z.infer<typeof checksumResponse>;
 export type BrokerReadManifest = z.infer<typeof manifest>;
 export type BrokerReadWireEvent = z.infer<typeof wireEvent>;
 export type BrokerReadLineageWire = z.infer<typeof lineage>;

@@ -1,9 +1,10 @@
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
 import type { Erasable } from "../../notification-center/fenced-store";
+import { brandReference } from "../../../shared/contracts/brands";
 import type { ProviderConnectionReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "../../../shared/contracts/viewer-context";
 import { BROKER_READ_ROUTE_IDS } from "../../provider-connections/read-transport/routes";
-import type { BrokerReadPageResponse } from "../../provider-connections/read-transport/routes";
+import type { BrokerReadChecksumResponse, BrokerReadLineageWire, BrokerReadPageResponse, BrokerReadWireEvent } from "../../provider-connections/read-transport/routes";
 import type { BrokerReadTransport } from "../../provider-connections/read-transport/broker-read-transport";
 
 import type { BrokerComponentKey, BrokerLineage, BrokerSyncAccountReference, BrokerSyncEvent, ExternalAccountIdentity } from "./contracts";
@@ -94,12 +95,16 @@ export class BrokerSyncWorker {
       return { status: "unauthorized" };
     }
 
+    // SEC-06 late fence: re-check erasure right before any broker read. If the
+    // deletion fence landed during authorization, make zero transport calls
+    // (codex panel: an erasure that wins the authorize race still read once).
+    if (this.deps.cursors.isErased(workspace)) return { status: "suppressed" };
+
     let manifestHead: { lineage: BrokerLineage; manifest: SnapshotManifest };
     try {
-      const head = (await (await transport.execute(BROKER_READ_ROUTE_IDS.checksum, { account: String(account) })).commit(async (value) => value)) as {
-        lineage: { externalAccountIdentity: string; verifiedFingerprint: string; providerDataEpoch: number };
-        manifest: SnapshotManifest;
-      };
+      // The response is already validated against the checksum route's Zod schema
+      // inside AuthorizedTransport.execute; the inferred type keeps this cast honest.
+      const head = (await (await transport.execute(BROKER_READ_ROUTE_IDS.checksum, { account: String(account) })).commit(async (value) => value)) as BrokerReadChecksumResponse;
       manifestHead = { lineage: brandLineage(head.lineage), manifest: head.manifest };
     } catch {
       return { status: "held", reason: "transport_failed" };
@@ -124,7 +129,7 @@ export class BrokerSyncWorker {
         if (page.pageIndex !== expected) return { status: "held", reason: "cursor_reset" };
 
         for (const wire of page.events) {
-          const event = { connection, account, component: component.key, entity: wire.entity, kind: wire.kind, externalIdentity: wire.externalIdentity, revision: wire.revision, asOf: wire.asOf, ...(wire.corrects !== undefined ? { corrects: wire.corrects } : {}), body: wire.body } as BrokerSyncEvent;
+          const event = wireEventToBrokerSyncEvent(wire, connection, account, component.key);
           this.deps.events.record(workspace, lineage, event);
           runKeys.add(eventKey(event));
         }
@@ -149,6 +154,26 @@ export class BrokerSyncWorker {
   }
 }
 
-function brandLineage(wire: { externalAccountIdentity: string; verifiedFingerprint: string; providerDataEpoch: number }): BrokerLineage {
-  return { externalAccountIdentity: wire.externalAccountIdentity as ExternalAccountIdentity, verifiedFingerprint: wire.verifiedFingerprint, providerDataEpoch: wire.providerDataEpoch };
+/** Map a Zod-validated wire event to the branded domain event — the one place the wire and domain shapes couple. */
+function wireEventToBrokerSyncEvent(wire: BrokerReadWireEvent, connection: ProviderConnectionReference, account: BrokerSyncAccountReference, component: BrokerComponentKey): BrokerSyncEvent {
+  return {
+    connection,
+    account,
+    component,
+    entity: wire.entity,
+    kind: wire.kind,
+    externalIdentity: wire.externalIdentity,
+    revision: wire.revision,
+    asOf: wire.asOf,
+    ...(wire.corrects !== undefined ? { corrects: wire.corrects } : {}),
+    body: wire.body,
+  } as BrokerSyncEvent;
+}
+
+function brandLineage(wire: BrokerReadLineageWire): BrokerLineage {
+  return {
+    externalAccountIdentity: brandReference<string, "ExternalAccountIdentity">(wire.externalAccountIdentity) as ExternalAccountIdentity,
+    verifiedFingerprint: wire.verifiedFingerprint,
+    providerDataEpoch: wire.providerDataEpoch,
+  };
 }
