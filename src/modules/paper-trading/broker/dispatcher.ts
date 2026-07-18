@@ -144,14 +144,17 @@ export class BrokerDispatcher {
   ): Promise<DispatchOutcome> {
     const row = this.deps.outbox.get(workspace, account, clientOrder, "cancel");
     if (row === undefined || row.state !== "pending_dispatch") return { status: "not_pending", routeCalls: 0 };
+    // Same CAS claim as dispatchSubmit: exactly one racer sends the cancel.
+    if (!this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "dispatched")) {
+      return { status: "not_pending", routeCalls: 0 };
+    }
     let transport;
     try {
       transport = await this.deps.transport.authorize(row.connection, viewer);
     } catch {
-      this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "closed");
+      this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["dispatched"], "closed");
       return { status: "closed_unauthorized", routeCalls: 0 };
     }
-    this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "dispatched");
     let result;
     try {
       result = await transport.execute(PAPER_ORDER_ROUTE_IDS.cancel, { clientOrder: String(clientOrder) });

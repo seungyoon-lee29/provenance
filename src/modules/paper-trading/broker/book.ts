@@ -1,4 +1,4 @@
-import type { BrokerPaperAccountReference } from "@/shared/contracts/brands";
+import type { BrokerPaperAccountReference } from "../../../shared/contracts/brands";
 
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
 import { currencyMinorUnitScale } from "../internal/contracts";

@@ -40,3 +40,4 @@ Owner: claude-main (Fable 5 session). Blast radius: money/order 경로 → colla
 ## 진행 로그
 
 - 2026-07-18 15:21 KST: claim + 계획 수립.
+- 2026-07-18(B5 후): **사후 Standards 축 code-review 1패스**(신규 게이트, sonnet). hard 0 / judgement 6 / suppressed 5. **6건 전부 수정**(전부 저비용, 게이트 취지대로): J1 F9 내부 `@/`↔relative import 혼용→relative 통일, J2 `currencyMinorUnitScale` 마이그레이션 완결(journal.ts·simulator.ts의 잔여 `?1:100` 삼항 제거 — F8 리뷰 이월 완료), J3 `dispatchCancel`에 dispatchSubmit과 대칭인 authorize-전 CAS claim 추가, J4 `service.canonical`→`commandPayload` 개명(book.canonical 딥소트와 동명이의 해소), J5 `connection!` 단언을 명시적 refuse 가드+주석으로 교체, J6 여분 빈 줄 제거. check 1,136/89 green 유지(J2가 F8 money 파일 접촉 — 전 F8 스위트 green 재확인).

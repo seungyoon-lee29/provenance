@@ -1,6 +1,7 @@
 import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
+import { currencyMinorUnitScale } from "./contracts";
 import type { PaperFill, PaperMarketObservation, PaperMoney } from "./contracts";
 import type { PaperAccountState, PaperJournal, PaperOrderState } from "./journal";
 
@@ -46,10 +47,6 @@ export type SimulationEvent =
 
 const EPSILON = 1e-9;
 
-function ticksPerUnit(currency: string): number {
-  return currency === "KRW" ? 1 : 100;
-}
-
 /** Scale for representing (possibly fractional) bps policy numbers exactly. */
 const BPS_SCALE = 1_000_000n;
 
@@ -88,7 +85,7 @@ function executionPriceTicks(
 }
 
 function toTicks(amount: number, currency: string): bigint {
-  return BigInt(Math.round(amount * ticksPerUnit(currency)));
+  return BigInt(Math.round(amount * currencyMinorUnitScale(currency)));
 }
 
 function utcDay(iso: string): string {
@@ -157,7 +154,7 @@ export class InternalPaperSimulator {
         observation.volume,
         this.deps.policy,
       );
-      const price = Number(priceTicks) / ticksPerUnit(currency);
+      const price = Number(priceTicks) / currencyMinorUnitScale(currency);
 
       // Limit guard: a slippage-adjusted price crossing the limit unfavorably
       // produces no fill at all (§9). Integer-tick comparison — no epsilon to

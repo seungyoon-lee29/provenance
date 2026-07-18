@@ -2,6 +2,7 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
+import { currencyMinorUnitScale } from "./contracts";
 import type {
   PaperCommandOutcome,
   PaperCorporateActionReference,
@@ -165,7 +166,7 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       const limit = order.payload.limitPrice;
       if (limit !== undefined) {
         if (fill.price.currency !== limit.currency) return "invalid_fill";
-        const per = limit.currency === "KRW" ? 1 : 100;
+        const per = currencyMinorUnitScale(limit.currency);
         const fillTicks = Math.round(fill.price.amount * per);
         const limitTicks = Math.round(limit.amount * per);
         if (order.payload.side === "buy" && fillTicks > limitTicks) return "order_not_fillable";

@@ -1,4 +1,4 @@
-import type { Brand, BrokerPaperAccountReference, ProviderConnectionReference } from "@/shared/contracts/brands";
+import type { Brand, BrokerPaperAccountReference, ProviderConnectionReference } from "../../../shared/contracts/brands";
 
 import type { CancellationState, ExecutionState, PaperMoney, PaperOrderPayload, SubmissionState } from "../internal/contracts";
 

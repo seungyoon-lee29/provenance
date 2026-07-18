@@ -24,9 +24,6 @@ import type { BrokerOutbox, BrokerPendingSubmissions } from "./outbox";
  * representation on this surface at all.
  */
 
-
-
-
 type IntentRecord = Readonly<{
   view: BrokerOrderIntentView;
   workspace: string;
@@ -95,7 +92,8 @@ export type BrokerPaperTradingDeps = Readonly<{
   newClientOrder: (seed: string) => string;
 }>;
 
-function canonical(parts: readonly string[]): string {
+/** The §8 idempotency payload for a command: its kind + the reference it targets. */
+function commandPayload(parts: readonly string[]): string {
   return JSON.stringify(parts);
 }
 
@@ -176,7 +174,7 @@ export class BrokerPaperTradingService {
       account,
       "submit",
       { idempotencyKey: control.idempotencyKey, expectedRevision: String(control.expectedRevision) },
-      canonical(["submit", String(intentReference)]),
+      commandPayload(["submit", String(intentReference)]),
       (nextRevision) => {
         // Binding re-checks run AFTER the receipt trio so an identical replay
         // returns the original receipt instead of tripping over its own
@@ -233,13 +231,18 @@ export class BrokerPaperTradingService {
       account,
       "cancel",
       { idempotencyKey: control.idempotencyKey, expectedRevision: String(control.expectedRevision) },
-      canonical(["cancel", String(clientOrder)]),
+      commandPayload(["cancel", String(clientOrder)]),
       (nextRevision) => {
         const refusal = this.deps.book.requestCancelLocal(workspace, account, clientOrder);
         if (refusal !== undefined) return { refuse: { status: "refused", reason: refusal } };
+        // The submit outbox row is written in the same transaction as the order,
+        // so a cancellable order always has one; fall back to the intent only for
+        // defensiveness. If neither resolves the connection, refuse rather than
+        // commit a malformed cancel row.
         const row = this.deps.outbox.get(workspace, account, clientOrder, "submit");
         const connection = row?.connection ?? this.#intents.list(workspace).find((intent) => String(intent.view.clientOrder) === String(clientOrder))?.view.connection;
-        this.deps.outbox.commit(workspace, { kind: "cancel", account, connection: connection!, clientOrder, state: "pending_dispatch", attempts: 0 });
+        if (connection === undefined) return { refuse: { status: "refused", reason: "unknown_order" } };
+        this.deps.outbox.commit(workspace, { kind: "cancel", account, connection, clientOrder, state: "pending_dispatch", attempts: 0 });
         const order = this.deps.book.state(workspace, account).orders.find((entry) => String(entry.order) === String(clientOrder))!;
         return { commit: { status: "applied", revision: nextRevision, order } };
       },

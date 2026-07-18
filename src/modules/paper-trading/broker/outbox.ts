@@ -1,4 +1,4 @@
-import type { BrokerPaperAccountReference, ProviderConnectionReference } from "@/shared/contracts/brands";
+import type { BrokerPaperAccountReference, ProviderConnectionReference } from "../../../shared/contracts/brands";
 
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
 import { BROKER_LIVE_EPOCH } from "./contracts";
