@@ -1,13 +1,13 @@
 # 19 - F10 Broker Sync 구축
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 15
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: claude-main
+Claimed at: 2026-07-19
+Last heartbeat: 2026-07-19 (B1 committed)
 
 ## Objective
 
