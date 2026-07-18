@@ -227,7 +227,7 @@ describe("reservation and cash (hand-worked literals)", () => {
       externalIdentity: "E-acc-fill",
       revision: 1,
       body: { externalOrder: "X-fill-test" },
-    }, 1);
+    });
 
     const fillEvent = {
       connection: CONNECTION,
@@ -237,7 +237,7 @@ describe("reservation and cash (hand-worked literals)", () => {
       revision: 2,
       body: { quantity: 5, price: { amount: 109.90, currency: "USD" } },
     };
-    const ingestResult = await h.book.ingest(WORKSPACE, account(), fillEvent, 1);
+    const ingestResult = await h.book.ingest(WORKSPACE, account(), fillEvent);
     expect(ingestResult.status).toBe("applied");
 
     const cash = usd(h);
@@ -264,10 +264,10 @@ describe("ingest: duplicate vs quarantined divergent payload", () => {
       body: { externalOrder: "X-999" },
     };
 
-    const first = await h.book.ingest(WORKSPACE, account(), event, 1);
+    const first = await h.book.ingest(WORKSPACE, account(), event);
     expect(first.status).toBe("applied");
 
-    const second = await h.book.ingest(WORKSPACE, account(), event, 1);
+    const second = await h.book.ingest(WORKSPACE, account(), event);
     expect(second.status).toBe("duplicate");
 
     // Book state unchanged by the second call: still one order, same cash.
@@ -288,7 +288,7 @@ describe("ingest: duplicate vs quarantined divergent payload", () => {
       externalIdentity: "E-acc-div",
       revision: 1,
       body: { externalOrder: "X-div-test" },
-    }, 1);
+    });
 
     const base = {
       connection: CONNECTION,
@@ -298,11 +298,11 @@ describe("ingest: duplicate vs quarantined divergent payload", () => {
       revision: 3,
     };
 
-    const first = await h.book.ingest(WORKSPACE, account(), { ...base, body: { quantity: 5, price: { amount: 109.00, currency: "USD" } } }, 1);
+    const first = await h.book.ingest(WORKSPACE, account(), { ...base, body: { quantity: 5, price: { amount: 109.00, currency: "USD" } } });
     expect(first.status).toBe("applied");
 
     // Same identity key but different body → quarantined (Reconciliation Issue)
-    const second = await h.book.ingest(WORKSPACE, account(), { ...base, body: { quantity: 5, price: { amount: 110.00, currency: "USD" } } }, 1);
+    const second = await h.book.ingest(WORKSPACE, account(), { ...base, body: { quantity: 5, price: { amount: 110.00, currency: "USD" } } });
     expect(second.status).toBe("quarantined");
 
     // Quarantine record must appear in book state; balance must not double-count.
@@ -526,7 +526,7 @@ describe("three independent state axes", () => {
       revision: 1,
       body: { externalOrder: "X-1" },
     };
-    await h.book.ingest(WORKSPACE, account(), accepted, 1);
+    await h.book.ingest(WORKSPACE, account(), accepted);
 
     const bookOrder = h.book.state(WORKSPACE, account()).orders.find((r) => r.order === o.order);
     expect(bookOrder?.submission).toBe("acknowledged");
@@ -547,7 +547,7 @@ describe("three independent state axes", () => {
       externalIdentity: "E-2",
       revision: 1,
       body: { externalOrder: "X-2" },
-    }, 1);
+    });
 
     // Fill 2 of 5 → partially_filled.
     const partialFill = await h.book.ingest(WORKSPACE, account(), {
@@ -557,7 +557,7 @@ describe("three independent state axes", () => {
       externalIdentity: "E-fill-partial",
       revision: 2,
       body: { quantity: 2, price: { amount: 109.00, currency: "USD" } },
-    }, 1);
+    });
     expect(partialFill.status).toBe("applied");
 
     const bookOrder = h.book.state(WORKSPACE, account()).orders.find((r) => r.order === o.order);

@@ -1,6 +1,7 @@
 import type { BrokerPaperAccountReference, ProviderConnectionReference } from "@/shared/contracts/brands";
 
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
+import { BROKER_LIVE_EPOCH } from "./contracts";
 import type { BrokerClientOrderReference, BrokerPaperOrderIntentReference } from "./contracts";
 
 /**
@@ -37,11 +38,16 @@ function rowKey(account: BrokerPaperAccountReference, clientOrder: BrokerClientO
   return `${String(account)}|${String(clientOrder)}|${kind}`;
 }
 
+/** acknowledged and closed are terminal — no edge leaves them, so a completed dispatch can never reopen. */
+const TERMINAL_OUTBOX_STATES: ReadonlySet<BrokerOutboxRowState> = new Set(["acknowledged", "closed"]);
+
 export class BrokerOutbox {
   readonly #rows = new FencedKeyedStore<BrokerOutboxRow>();
 
-  commit(workspace: string, row: BrokerOutboxRow, atEpoch: number): BrokerOutboxCommitResult {
-    const { written, value } = this.#rows.writeIfAbsent(workspace, rowKey(row.account, row.clientOrder, row.kind), row, atEpoch);
+  constructor(private readonly writeEpoch: () => number = () => BROKER_LIVE_EPOCH) {}
+
+  commit(workspace: string, row: BrokerOutboxRow): BrokerOutboxCommitResult {
+    const { written, value } = this.#rows.writeIfAbsent(workspace, rowKey(row.account, row.clientOrder, row.kind), row, this.writeEpoch());
     if (value === undefined) return { status: "suppressed" };
     return { status: written ? "committed" : "duplicate" };
   }
@@ -50,7 +56,13 @@ export class BrokerOutbox {
     return this.#rows.get(workspace, rowKey(account, clientOrder, kind));
   }
 
-  /** Monotonic state advance; a write below the fence is suppressed and returns false. */
+  /**
+   * CAS state advance: succeeds (returns true) only when the row is currently
+   * in one of `from` AND not already terminal. Callers use the boolean to claim
+   * exclusive ownership of the next step — two racers reading the same
+   * pre-state cannot both win (codex dispatch panel: dispatch/reconcile race
+   * double-submitted; terminal rows were reopenable).
+   */
   transition(
     workspace: string,
     account: BrokerPaperAccountReference,
@@ -58,12 +70,11 @@ export class BrokerOutbox {
     kind: BrokerOutboxRowKind,
     from: readonly BrokerOutboxRowState[],
     to: BrokerOutboxRowState,
-    atEpoch: number,
   ): boolean {
     const key = rowKey(account, clientOrder, kind);
     const row = this.#rows.get(workspace, key);
-    if (row === undefined || !from.includes(row.state)) return false;
-    return this.#rows.write(workspace, key, { ...row, state: to, attempts: row.attempts + (to === "dispatched" ? 1 : 0) }, atEpoch);
+    if (row === undefined || TERMINAL_OUTBOX_STATES.has(row.state) || !from.includes(row.state)) return false;
+    return this.#rows.write(workspace, key, { ...row, state: to, attempts: row.attempts + (to === "dispatched" ? 1 : 0) }, this.writeEpoch());
   }
 
   list(workspace: string): readonly BrokerOutboxRow[] {
@@ -87,18 +98,20 @@ export type PendingBrokerSubmission = Readonly<{
 export class BrokerPendingSubmissions {
   readonly #rows = new FencedKeyedStore<PendingBrokerSubmission>();
 
-  commit(workspace: string, row: PendingBrokerSubmission, atEpoch: number): BrokerOutboxCommitResult {
-    const { written, value } = this.#rows.writeIfAbsent(workspace, String(row.clientOrder), row, atEpoch);
+  constructor(private readonly writeEpoch: () => number = () => BROKER_LIVE_EPOCH) {}
+
+  commit(workspace: string, row: PendingBrokerSubmission): BrokerOutboxCommitResult {
+    const { written, value } = this.#rows.writeIfAbsent(workspace, String(row.clientOrder), row, this.writeEpoch());
     if (value === undefined) return { status: "suppressed" };
     return { status: written ? "committed" : "duplicate" };
   }
 
   /** Queue acknowledgement: the submission's fate is durably decided. Idempotent. */
-  resolve(workspace: string, clientOrder: BrokerClientOrderReference, atEpoch: number): boolean {
+  resolve(workspace: string, clientOrder: BrokerClientOrderReference): boolean {
     const row = this.#rows.get(workspace, String(clientOrder));
     if (row === undefined) return false;
     if (row.resolved === true) return true;
-    return this.#rows.write(workspace, String(clientOrder), { ...row, resolved: true }, atEpoch);
+    return this.#rows.write(workspace, String(clientOrder), { ...row, resolved: true }, this.writeEpoch());
   }
 
   list(workspace: string): readonly PendingBrokerSubmission[] {

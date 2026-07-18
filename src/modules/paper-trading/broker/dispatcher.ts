@@ -3,7 +3,6 @@ import type { WorkspaceViewerContext } from "../../../shared/contracts/viewer-co
 import { PAPER_ORDER_ROUTE_IDS } from "../../provider-connections/paper-transport/routes";
 import type { PaperOrderTransport } from "../../provider-connections/paper-transport/paper-order-transport";
 import type { BrokerPaperBook } from "./book";
-import { BROKER_LIVE_EPOCH } from "./contracts";
 import type { BrokerClientOrderReference, BrokerExternalOrderEvent } from "./contracts";
 import type { BrokerOutbox, BrokerPendingSubmissions } from "./outbox";
 
@@ -77,20 +76,26 @@ export class BrokerDispatcher {
     if (row === undefined || row.state !== "pending_dispatch") return { status: "not_pending", routeCalls: 0 };
     this.#fault(opts.faultAt, "after-intent-commit");
 
+    // Claim the send exclusively BEFORE authorizing: the pending_dispatch →
+    // dispatched CAS returns false if another racer (a concurrent reconcile)
+    // already claimed it, so at most one route call is ever made per order
+    // (codex dispatch panel: dispatch/reconcile race double-submitted).
+    if (!this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["pending_dispatch"], "dispatched")) {
+      return { status: "not_pending", routeCalls: 0 };
+    }
+
     let transport;
     try {
       transport = await this.deps.transport.authorize(row.connection, viewer);
     } catch {
       // Revoke committed before dispatch was ever possible: route call 0 and
-      // the order resolves locally — the broker never saw it.
-      this.deps.book.resolveLocalRejection(workspace, account, clientOrder, BROKER_LIVE_EPOCH);
-      this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["pending_dispatch"], "closed", BROKER_LIVE_EPOCH);
-      this.deps.pending.resolve(workspace, clientOrder, BROKER_LIVE_EPOCH);
+      // the order resolves locally — the broker never saw it. Re-open the CAS
+      // claim to a terminal so the marker reflects "never sent".
+      this.deps.book.resolveLocalRejection(workspace, account, clientOrder);
+      this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], "closed");
+      this.deps.pending.resolve(workspace, clientOrder);
       return { status: "closed_unauthorized", routeCalls: 0 };
     }
-
-    // Durable "a send may now happen" marker — MUST land before the route call.
-    this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["pending_dispatch"], "dispatched", BROKER_LIVE_EPOCH);
     this.#fault(opts.faultAt, "after-authorize-before-route-dispatch");
 
     const order = this.deps.book.state(workspace, account).orders.find((entry) => String(entry.order) === String(clientOrder));
@@ -107,7 +112,7 @@ export class BrokerDispatcher {
       });
     } catch {
       // Timeout/drop is Submission Uncertainty — never a definite failure.
-      this.deps.book.markSubmissionUnknown(workspace, account, clientOrder, BROKER_LIVE_EPOCH);
+      this.deps.book.markSubmissionUnknown(workspace, account, clientOrder);
       return { status: "submission_unknown", routeCalls: 1 };
     }
     this.#fault(opts.faultAt, "after-broker-accept-before-local-ack");
@@ -116,18 +121,18 @@ export class BrokerDispatcher {
     try {
       await result.commit(async (value) => {
         fact = value as OrderFact;
-        this.deps.book.ingest(workspace, account, this.#eventOf(row, fact), BROKER_LIVE_EPOCH);
-        this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], fact.state === "accepted" ? "acknowledged" : "closed", BROKER_LIVE_EPOCH);
+        this.deps.book.ingest(workspace, account, this.#eventOf(row, fact));
+        this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], fact.state === "accepted" ? "acknowledged" : "closed");
       });
     } catch {
       // Late commit fenced by commitWhileCurrent (revoke raced the ack): the
       // local truth stays "uncertain" and only reconciliation may resolve it.
-      this.deps.book.markSubmissionUnknown(workspace, account, clientOrder, BROKER_LIVE_EPOCH);
+      this.deps.book.markSubmissionUnknown(workspace, account, clientOrder);
       return { status: "submission_unknown", routeCalls: 1 };
     }
     this.#fault(opts.faultAt, "after-local-commit-before-queue-ack");
 
-    this.deps.pending.resolve(workspace, clientOrder, BROKER_LIVE_EPOCH);
+    this.deps.pending.resolve(workspace, clientOrder);
     return { status: fact!.state === "accepted" ? "acknowledged" : "rejected_by_broker", routeCalls: 1 };
   }
 
@@ -143,10 +148,10 @@ export class BrokerDispatcher {
     try {
       transport = await this.deps.transport.authorize(row.connection, viewer);
     } catch {
-      this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "closed", BROKER_LIVE_EPOCH);
+      this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "closed");
       return { status: "closed_unauthorized", routeCalls: 0 };
     }
-    this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "dispatched", BROKER_LIVE_EPOCH);
+    this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["pending_dispatch"], "dispatched");
     let result;
     try {
       result = await transport.execute(PAPER_ORDER_ROUTE_IDS.cancel, { clientOrder: String(clientOrder) });
@@ -156,8 +161,8 @@ export class BrokerDispatcher {
     try {
       await result.commit(async (value) => {
         const fact = value as OrderFact;
-        this.deps.book.ingest(workspace, account, this.#eventOf(row, fact), BROKER_LIVE_EPOCH);
-        this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["dispatched"], "acknowledged", BROKER_LIVE_EPOCH);
+        this.deps.book.ingest(workspace, account, this.#eventOf(row, fact));
+        this.deps.outbox.transition(workspace, account, clientOrder, "cancel", ["dispatched"], "acknowledged");
       });
     } catch {
       return { status: "submission_unknown", routeCalls: 1 };
@@ -187,13 +192,13 @@ export class BrokerDispatcher {
       if (row.state === "acknowledged" || row.state === "closed") {
         // Crash landed between the local commit and the queue ack: the fact is
         // already durable, only the worklist entry needs acknowledging.
-        this.deps.pending.resolve(workspace, clientOrder, BROKER_LIVE_EPOCH);
+        this.deps.pending.resolve(workspace, clientOrder);
         outcomes.push({ clientOrder, resolution: "queue_acknowledged" });
         continue;
       }
 
       // dispatched → Submission Uncertainty.
-      this.deps.book.markSubmissionUnknown(workspace, account, clientOrder, BROKER_LIVE_EPOCH);
+      this.deps.book.markSubmissionUnknown(workspace, account, clientOrder);
       let transport;
       try {
         transport = await this.deps.transport.authorize(row.connection, viewer);
@@ -210,9 +215,9 @@ export class BrokerDispatcher {
       }
       if (lookup.found) {
         const fact = lookup.fact;
-        this.deps.book.ingest(workspace, account, this.#eventOf(row, fact), BROKER_LIVE_EPOCH);
-        this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], fact.state === "accepted" ? "acknowledged" : "closed", BROKER_LIVE_EPOCH);
-        this.deps.pending.resolve(workspace, clientOrder, BROKER_LIVE_EPOCH);
+        this.deps.book.ingest(workspace, account, this.#eventOf(row, fact));
+        this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], fact.state === "accepted" ? "acknowledged" : "closed");
+        this.deps.pending.resolve(workspace, clientOrder);
         outcomes.push({ clientOrder, resolution: "resolved_by_lookup" });
         continue;
       }
@@ -223,7 +228,7 @@ export class BrokerDispatcher {
       }
       // Horizon-guaranteed not-found: the submit provably never landed; one
       // lookup-verified resend of the SAME client order identity.
-      this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], "pending_dispatch", BROKER_LIVE_EPOCH);
+      this.deps.outbox.transition(workspace, account, clientOrder, "submit", ["dispatched"], "pending_dispatch");
       await this.dispatchSubmit(workspace, viewer, account, clientOrder);
       outcomes.push({ clientOrder, resolution: "retried_after_lookup" });
     }

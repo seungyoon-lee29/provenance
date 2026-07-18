@@ -128,7 +128,7 @@ export class BrokerPaperTradingService {
 
     // First touch provisions the broker paper account under this workspace —
     // a forged reference can never be provisioned into another workspace's book.
-    this.deps.book.provision(workspace, request.account, this.deps.policy.seedCash, BROKER_LIVE_EPOCH);
+    this.deps.book.provision(workspace, request.account, this.deps.policy.seedCash);
 
     const issuedAt = this.deps.now();
     const reference = brandReference<string, "BrokerPaperOrderIntentReference">(
@@ -181,8 +181,14 @@ export class BrokerPaperTradingService {
         // Binding re-checks run AFTER the receipt trio so an identical replay
         // returns the original receipt instead of tripping over its own
         // consumption (§8); refusals below stay unreceipted and side-effect free.
+        // Re-check authority just before the durable write — identity may have
+        // advanced the auth epoch since method entry (codex intent panel).
+        if (this.deps.identity.currentAuthorizationEpoch(workspaceViewer) !== String(workspaceViewer.accountAuthorizationEpoch)) {
+          return { refuse: { status: "denied" } };
+        }
         if (record.consumed) return { refuse: { status: "refused", reason: "intent_consumed" } };
-        if (Date.parse(this.deps.now()) > Date.parse(record.view.expiresAt)) return { refuse: { status: "refused", reason: "intent_expired" } };
+        // Expired AT the deadline, not only after it (codex intent panel: now == expiresAt).
+        if (Date.parse(this.deps.now()) >= Date.parse(record.view.expiresAt)) return { refuse: { status: "refused", reason: "intent_expired" } };
         if (!this.deps.book.hasAccount(workspace, account)) return { refuse: { status: "refused", reason: "unknown_account" } };
         if (record.view.accountRevision !== this.deps.book.currentRevision(workspace, account)) {
           return { refuse: { status: "refused", reason: "stale_intent_binding" } };
@@ -192,26 +198,23 @@ export class BrokerPaperTradingService {
         if (this.deps.connections.currentGeneration(connection, workspaceViewer) !== record.view.connectionGeneration) {
           return { refuse: { status: "refused", reason: "connection_revoked" } };
         }
-        const submitted = this.deps.book.submitLocal(workspace, account, clientOrder, record.payload, BROKER_LIVE_EPOCH);
+        const submitted = this.deps.book.submitLocal(workspace, account, clientOrder, record.payload);
         if (submitted.status === "refused") return { refuse: { status: "refused", reason: submitted.reason } };
         if (submitted.status === "suppressed") return { refuse: { status: "suppressed" } };
         // One transaction: intent consumption, order + derived reservation,
         // outbox row and reconciliation worklist — all before any route call.
         this.#intents.write(workspace, String(intentReference), { ...record, consumed: true }, BROKER_LIVE_EPOCH);
-        this.deps.outbox.commit(
-          workspace,
-          { kind: "submit", account, connection, clientOrder, intent: intentReference, state: "pending_dispatch", attempts: 0 },
-          BROKER_LIVE_EPOCH,
-        );
-        this.deps.pending.commit(
-          workspace,
-          { account, connection, clientOrder, intent: intentReference, since: this.deps.now() },
-          BROKER_LIVE_EPOCH,
-        );
+        this.deps.outbox.commit(workspace, { kind: "submit", account, connection, clientOrder, intent: intentReference, state: "pending_dispatch", attempts: 0 });
+        this.deps.pending.commit(workspace, { account, connection, clientOrder, intent: intentReference, since: this.deps.now() });
         const order = this.deps.book.state(workspace, account).orders.find((row) => String(row.order) === String(clientOrder))!;
         return { commit: { status: "applied", revision: nextRevision, order } };
       },
     );
+  }
+
+  /** SEC-09: every broker-owned store joins the module erasure receipt (F8 participant pattern). */
+  erasableStores(): readonly Readonly<{ label: string; store: Readonly<{ eraseSubject(subject: string, fence: number): number }> }>[] {
+    return [{ label: "broker-intents", store: this.#intents }];
   }
 
   async cancel(
@@ -232,15 +235,11 @@ export class BrokerPaperTradingService {
       { idempotencyKey: control.idempotencyKey, expectedRevision: String(control.expectedRevision) },
       canonical(["cancel", String(clientOrder)]),
       (nextRevision) => {
-        const refusal = this.deps.book.requestCancelLocal(workspace, account, clientOrder, BROKER_LIVE_EPOCH);
+        const refusal = this.deps.book.requestCancelLocal(workspace, account, clientOrder);
         if (refusal !== undefined) return { refuse: { status: "refused", reason: refusal } };
         const row = this.deps.outbox.get(workspace, account, clientOrder, "submit");
         const connection = row?.connection ?? this.#intents.list(workspace).find((intent) => String(intent.view.clientOrder) === String(clientOrder))?.view.connection;
-        this.deps.outbox.commit(
-          workspace,
-          { kind: "cancel", account, connection: connection!, clientOrder, state: "pending_dispatch", attempts: 0 },
-          BROKER_LIVE_EPOCH,
-        );
+        this.deps.outbox.commit(workspace, { kind: "cancel", account, connection: connection!, clientOrder, state: "pending_dispatch", attempts: 0 });
         const order = this.deps.book.state(workspace, account).orders.find((entry) => String(entry.order) === String(clientOrder))!;
         return { commit: { status: "applied", revision: nextRevision, order } };
       },

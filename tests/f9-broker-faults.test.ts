@@ -121,6 +121,33 @@ describe("late commit fence (SEC-10)", () => {
   });
 });
 
+describe("codex panel replays (dispatch axis)", () => {
+  it("a dispatch racing a reconcile submits exactly once — the dispatched marker is a CAS claim", async () => {
+    const h = harness();
+    const intent = await submitted(h);
+    await Promise.all([
+      h.dispatcher.dispatchSubmit(WORKSPACE, viewer(), account(), intent.clientOrder),
+      h.restartedDispatcher().reconcile(WORKSPACE, viewer()),
+    ]);
+    expect(h.broker.submitCalls).toBe(1);
+    expect(order(h).submission).toBe("acknowledged");
+    expect(h.pending.open(WORKSPACE)).toHaveLength(0);
+  });
+
+  it("terminal outbox rows are monotonic: closed can never reopen into a second dispatch", async () => {
+    const h = harness();
+    h.broker.mode = "reject";
+    const intent = await submitted(h);
+    await h.dispatcher.dispatchSubmit(WORKSPACE, viewer(), account(), intent.clientOrder);
+    expect(h.outbox.get(WORKSPACE, account(), intent.clientOrder, "submit")!.state).toBe("closed");
+
+    expect(h.outbox.transition(WORKSPACE, account(), intent.clientOrder, "submit", ["closed"], "pending_dispatch")).toBe(false);
+    expect(h.outbox.get(WORKSPACE, account(), intent.clientOrder, "submit")!.state).toBe("closed");
+    expect(await h.dispatcher.dispatchSubmit(WORKSPACE, viewer(), account(), intent.clientOrder)).toEqual({ status: "not_pending", routeCalls: 0 });
+    expect(h.broker.submitCalls).toBe(1);
+  });
+});
+
 describe("stream/poll duplicate redelivery after convergence", () => {
   it("re-ingesting the acknowledged fact via stream is a duplicate with no revision movement", async () => {
     const h = harness();
@@ -131,7 +158,6 @@ describe("stream/poll duplicate redelivery after convergence", () => {
       WORKSPACE,
       account(),
       { connection: intent.connection, order: intent.clientOrder, kind: "accepted", externalIdentity: "E-1", revision: 1, body: { externalOrder: "X-1" } },
-      1,
     );
     expect(redelivered.status).toBe("duplicate");
     expect(h.book.currentRevision(WORKSPACE, account())).toBe(revision);

@@ -3,6 +3,7 @@ import type { BrokerPaperAccountReference } from "@/shared/contracts/brands";
 import { FencedKeyedStore } from "../../notification-center/fenced-store";
 import { currencyMinorUnitScale } from "../internal/contracts";
 import type { PaperMoney, PaperOrderPayload } from "../internal/contracts";
+import { BROKER_LIVE_EPOCH } from "./contracts";
 import type {
   BrokerBookState,
   BrokerClientOrderReference,
@@ -48,8 +49,24 @@ type AccountState = {
   orders: Map<string, OrderState>;
   /** eventKey -> canonical body of the applied fact (durable-unique index). */
   events: Map<string, string>;
+  /** `${order}|${kind}|${revision}` -> the external identity that applied it (permutation guard). */
+  facts: Map<string, string>;
   quarantine: Map<string, BrokerQuarantineRecord>;
 };
+
+/** Product bound: keeps quantity × minor-unit price inside the safe-integer range. */
+const MAX_QUANTITY = 100_000_000;
+
+/** A money value is tick-aligned when it lands exactly on a minor unit (no sub-tick residue). */
+function tickAligned(money: PaperMoney): boolean {
+  const scaled = money.amount * currencyMinorUnitScale(money.currency);
+  return Number.isFinite(scaled) && Math.abs(scaled - Math.round(scaled)) <= 1e-9;
+}
+
+/** The full cost stays an exact safe integer in minor units (no float overflow/drift). */
+function safeCostMinor(quantity: number, price: PaperMoney): boolean {
+  return Number.isSafeInteger(toMinor(price)) && Number.isSafeInteger(quantity * toMinor(price));
+}
 
 function canonical(value: unknown): string {
   return JSON.stringify(value, (_key, entry) =>
@@ -109,6 +126,13 @@ export class BrokerPaperBook {
   /** `${workspace}|${account}|${kind}|${idempotencyKey}` -> receipted outcome (§8 trio). */
   readonly #receipts = new Map<string, { payload: string; outcome: unknown }>();
 
+  /**
+   * The epoch every live write belongs to (F8 lane pattern). Constructor-
+   * injected and constant, NOT a per-call argument: a caller can never hand in
+   * an epoch above the deletion fence to bypass SEC-09 erasure suppression.
+   */
+  constructor(private readonly writeEpoch: () => number = () => BROKER_LIVE_EPOCH) {}
+
   currentRevision(workspace: string, account: BrokerPaperAccountReference): number {
     return this.#revisions.get(`${workspace}|${String(account)}`) ?? 0;
   }
@@ -132,7 +156,7 @@ export class BrokerPaperBook {
     canonicalPayload: string,
     act: (nextRevision: number) => Readonly<{ commit: T }> | Readonly<{ refuse: T }>,
   ): BrokerBookCommandResult<T> {
-    if (this.#accounts.isErased(workspace, 1)) return { status: "suppressed" };
+    if (this.#accounts.isErased(workspace, this.writeEpoch())) return { status: "suppressed" };
     const receiptKey = `${workspace}|${String(account)}|${commandKind}|${control.idempotencyKey}`;
     const prior = this.#receipts.get(receiptKey);
     if (prior !== undefined) {
@@ -151,8 +175,8 @@ export class BrokerPaperBook {
    * Submission Uncertainty (§9): a dispatch that may or may not have reached
    * the broker. Idempotent; the reservation stays held while unknown.
    */
-  markSubmissionUnknown(workspace: string, account: BrokerPaperAccountReference, clientOrder: BrokerClientOrderReference, atEpoch: number): boolean {
-    if (this.#accounts.isErased(workspace, atEpoch)) return false;
+  markSubmissionUnknown(workspace: string, account: BrokerPaperAccountReference, clientOrder: BrokerClientOrderReference): boolean {
+    if (this.#accounts.isErased(workspace, this.writeEpoch())) return false;
     const order = this.#accounts.get(workspace, String(account))?.orders.get(String(clientOrder));
     if (order === undefined) return false;
     if (order.submission === "submission_unknown") return true;
@@ -166,8 +190,8 @@ export class BrokerPaperBook {
    * dispatch before any route call): submission → rejected, reservation
    * released by derivation. Refused once the broker has acknowledged.
    */
-  resolveLocalRejection(workspace: string, account: BrokerPaperAccountReference, clientOrder: BrokerClientOrderReference, atEpoch: number): boolean {
-    if (this.#accounts.isErased(workspace, atEpoch)) return false;
+  resolveLocalRejection(workspace: string, account: BrokerPaperAccountReference, clientOrder: BrokerClientOrderReference): boolean {
+    if (this.#accounts.isErased(workspace, this.writeEpoch())) return false;
     const order = this.#accounts.get(workspace, String(account))?.orders.get(String(clientOrder));
     if (order === undefined) return false;
     if (order.submission !== "pending_submission" && order.submission !== "submission_unknown") return false;
@@ -181,9 +205,8 @@ export class BrokerPaperBook {
     workspace: string,
     account: BrokerPaperAccountReference,
     clientOrder: BrokerClientOrderReference,
-    atEpoch: number,
   ): "unknown_account" | "unknown_order" | "cancel_pending" | "cancellation_terminal" | undefined {
-    if (this.#accounts.isErased(workspace, atEpoch)) return "unknown_account";
+    if (this.#accounts.isErased(workspace, this.writeEpoch())) return "unknown_account";
     const state = this.#accounts.get(workspace, String(account));
     if (state === undefined) return "unknown_account";
     const order = state.orders.get(String(clientOrder));
@@ -194,16 +217,17 @@ export class BrokerPaperBook {
     return undefined;
   }
 
-  provision(workspace: string, account: BrokerPaperAccountReference, seedCash: readonly PaperMoney[], atEpoch: number): BrokerProvisionOutcome {
+  provision(workspace: string, account: BrokerPaperAccountReference, seedCash: readonly PaperMoney[]): BrokerProvisionOutcome {
     const fresh: AccountState = {
       account,
       cash: new Map(seedCash.map((money) => [money.currency, { balanceMinor: toMinor(money) }])),
       positions: new Map(),
       orders: new Map(),
       events: new Map(),
+      facts: new Map(),
       quarantine: new Map(),
     };
-    const { written, value } = this.#accounts.writeIfAbsent(workspace, String(account), fresh, atEpoch);
+    const { written, value } = this.#accounts.writeIfAbsent(workspace, String(account), fresh, this.writeEpoch());
     if (value === undefined) return { status: "suppressed" };
     return { status: written ? "applied" : "duplicate" };
   }
@@ -213,17 +237,19 @@ export class BrokerPaperBook {
     account: BrokerPaperAccountReference,
     clientOrder: BrokerClientOrderReference,
     payload: PaperOrderPayload,
-    atEpoch: number,
   ): BrokerSubmitOutcome {
-    if (this.#accounts.isErased(workspace, atEpoch)) return { status: "suppressed" };
+    if (this.#accounts.isErased(workspace, this.writeEpoch())) return { status: "suppressed" };
     const state = this.#accounts.get(workspace, String(account));
     if (state === undefined) return { status: "refused", reason: "unknown_account" };
 
     // ponytail: limit-only v1 — the broker lane has no pre-submit price bound
     // for a market buy; observation-bound reservation (F8 style) is the upgrade.
     if (payload.orderType !== "limit" || payload.limitPrice === undefined) return { status: "refused", reason: "unsupported_order_type" };
-    if (!Number.isInteger(payload.quantity) || payload.quantity <= 0) return { status: "refused", reason: "invalid_payload" };
-    if (!Number.isFinite(payload.limitPrice.amount) || payload.limitPrice.amount <= 0) return { status: "refused", reason: "invalid_payload" };
+    if (!Number.isInteger(payload.quantity) || payload.quantity <= 0 || payload.quantity > MAX_QUANTITY) return { status: "refused", reason: "invalid_payload" };
+    // Tick-aligned, finite, bounded limit — an off-tick or overflowing price
+    // would let minor-unit rounding cross the limit or produce non-finite cash
+    // (codex money panel: 109.999999999 and 1e308 both refused here).
+    if (!tickAligned(payload.limitPrice) || !safeCostMinor(payload.quantity, payload.limitPrice)) return { status: "refused", reason: "invalid_payload" };
 
     const payloadCanonical = canonical(payload);
     const existing = state.orders.get(String(clientOrder));
@@ -258,8 +284,8 @@ export class BrokerPaperBook {
     return { status: "accepted" };
   }
 
-  ingest(workspace: string, account: BrokerPaperAccountReference, event: BrokerExternalOrderEvent, atEpoch: number): BrokerIngestOutcome {
-    if (this.#accounts.isErased(workspace, atEpoch)) return { status: "suppressed" };
+  ingest(workspace: string, account: BrokerPaperAccountReference, event: BrokerExternalOrderEvent): BrokerIngestOutcome {
+    if (this.#accounts.isErased(workspace, this.writeEpoch())) return { status: "suppressed" };
     const state = this.#accounts.get(workspace, String(account));
     if (state === undefined) return { status: "refused", reason: "unknown_account" };
 
@@ -274,9 +300,21 @@ export class BrokerPaperBook {
       return { status: "quarantined" };
     }
 
+    // A distinct external identity carrying an already-applied (order, kind,
+    // revision) fact is a reconciliation issue, not a second apply — this stops
+    // one underlying fill from moving money twice under a permuted message id
+    // (codex money panel: externalIdentity permutation).
+    const factKey = `${String(event.order)}|${event.kind}|${String(event.revision)}`;
+    const priorIdentity = state.facts.get(factKey);
+    if (priorIdentity !== undefined && priorIdentity !== event.externalIdentity) {
+      state.quarantine.set(`${factKey}#${event.externalIdentity}`, { order: event.order, eventKey, storedPayload: `identity:${priorIdentity}`, divergentPayload: `identity:${event.externalIdentity}` });
+      return { status: "quarantined" };
+    }
+
     const refusal = this.#fold(state, event);
     if (refusal !== undefined) return { status: "refused", reason: refusal };
     state.events.set(eventKey, body);
+    state.facts.set(factKey, event.externalIdentity);
     this.#revisions.set(`${workspace}|${String(account)}`, this.currentRevision(workspace, account) + 1);
     return { status: "applied" };
   }
@@ -325,9 +363,12 @@ export class BrokerPaperBook {
   #foldFill(state: AccountState, order: OrderState, event: BrokerExternalOrderEvent): BrokerIngestRefusalReason | undefined {
     const { quantity, price } = event.body;
     const limit = order.payload.limitPrice;
-    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) return "invalid_event";
+    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0 || quantity > MAX_QUANTITY) return "invalid_event";
     if (price === undefined || !Number.isFinite(price.amount) || price.amount <= 0) return "invalid_event";
     if (limit === undefined || price.currency !== limit.currency) return "invalid_event";
+    // Off-tick or overflowing provider price → reconciliation issue, never a
+    // money move (codex money panel: float-limit crossing + 1e308 overflow).
+    if (!tickAligned(price) || !safeCostMinor(quantity, price)) return "invalid_event";
     if (order.execution !== "open" && order.execution !== "partially_filled") return "not_fillable";
     if (quantity > order.payload.quantity - order.filledQuantity) return "invalid_event";
     // A fill after a confirmed cancellation is only the late delivery of a
@@ -343,6 +384,11 @@ export class BrokerPaperBook {
     const currency = price.currency;
     const cashRow = state.cash.get(currency) ?? { balanceMinor: 0 };
     const instrument = String(order.payload.instrument);
+    const heldPosition = state.positions.get(instrument);
+    // One instrument, one currency: a fill in a different currency than the
+    // held position is a reconciliation issue, not a basis merge (codex money
+    // panel: cross-currency basis pollution).
+    if (heldPosition !== undefined && heldPosition.currency !== currency) return "invalid_event";
 
     if (order.payload.side === "buy") {
       // Own reservation covers a reserving order's fill (price ≤ limit); a late
@@ -352,17 +398,23 @@ export class BrokerPaperBook {
       if (costMinor > available) return "insufficient_cash";
       cashRow.balanceMinor -= costMinor;
       state.cash.set(currency, cashRow);
-      const position = state.positions.get(instrument) ?? { quantity: 0, basisMinor: 0, currency };
+      const position = heldPosition ?? { quantity: 0, basisMinor: 0, currency };
       position.quantity += quantity;
       position.basisMinor += costMinor;
       state.positions.set(instrument, position);
     } else {
-      const position = state.positions.get(instrument);
-      if (position === undefined || position.quantity < quantity) return "insufficient_position";
-      const reduceMinor = Math.round((position.basisMinor * quantity) / position.quantity);
-      position.quantity -= quantity;
-      position.basisMinor -= reduceMinor;
-      if (position.quantity === 0) state.positions.delete(instrument);
+      if (heldPosition === undefined) return "insufficient_position";
+      // Symmetric with the buy side: shares reserved by OTHER open sells are not
+      // available to this fill, so a late fill on a cancelled order cannot
+      // consume a live order's shares (codex money panel: oversell via
+      // cancelled-order late fill left reserved > held).
+      const ownSharesReserved = reserving(order) ? order.payload.quantity - order.filledQuantity : 0;
+      const availableShares = heldPosition.quantity - reservedShares(state, instrument) + ownSharesReserved;
+      if (quantity > availableShares) return "insufficient_position";
+      const reduceMinor = Math.round((heldPosition.basisMinor * quantity) / heldPosition.quantity);
+      heldPosition.quantity -= quantity;
+      heldPosition.basisMinor -= reduceMinor;
+      if (heldPosition.quantity === 0) state.positions.delete(instrument);
       cashRow.balanceMinor += costMinor;
       state.cash.set(currency, cashRow);
     }
