@@ -1,13 +1,13 @@
 # 18 - F9 Broker Paper execution 구축
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 17
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: claude-main (Fable 5 session)
+Claimed at: 2026-07-18T15:21:02+09:00
+Last heartbeat: 2026-07-18T15:31:36+09:00
 
 ## Objective
 

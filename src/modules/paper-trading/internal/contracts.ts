@@ -20,6 +20,15 @@ export type PaperCorporateActionReference = Brand<string, "PaperCorporateActionR
 
 export type PaperMoney = Readonly<{ amount: number; currency: string }>;
 
+/**
+ * Minor units per major currency unit — the one shared tick/scale mapping for
+ * both paper lanes (review carry-over: consolidates the per-file ternaries).
+ * ponytail: two currencies is the product scope; a table when a third lands.
+ */
+export function currencyMinorUnitScale(currency: string): number {
+  return currency === "KRW" ? 1 : 100;
+}
+
 export type PaperOrderPayload = Readonly<{
   instrument: PaperInstrumentReference;
   venue: string;
