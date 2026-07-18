@@ -50,3 +50,4 @@ Owner: claude-main (Fable 5 session). Claimed 2026-07-18T01:37:47+09:00. 기준:
 ## 진행 로그
 
 - 2026-07-18: claim + 계획 수립.
+- 2026-07-18(resolve 뒤): **사후 code-review v1**(Standards 축 단독 — Spec 축은 B4 blind+B5 codex가 대체, 유의미성 실험 목적). 결과: hard 0 / judgement 7 / suppressed 1행(~124k 서브에이전트 토큰). 실버그 1건: lifecycle pre-validation의 dedupe 순서 파괴로 적용된 3:2 split 재전달이 refuse(재전달 no-op AC 위반) — 27 mutation·blind 31·codex 4축이 전부 놓친 계열(경계 간 중복 로직 드리프트는 Spec 게이트의 사각). red→green 수정+dead payloadHash·잉여 alias 제거, 1,046/80 green. **판정: 유의미 → collaboration.md에 "Standards 축 1패스"(티켓당 1회) 게이트 추가.** maintenance 4건은 티켓 17 Residual risks로 이월.

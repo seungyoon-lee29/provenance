@@ -1,18 +1,19 @@
 import type { InternalPaperAccountReference } from "../../../shared/contracts/brands";
 
 import type { PaperCorporateActionReference, PaperInstrumentReference, PaperMoney } from "./contracts";
-import type { PaperJournal } from "./journal";
+import type { PaperJournal, SystemAppendOutcome } from "./journal";
 
 /**
  * F8 server-only lifecycle ingestion (spec §9, AT-06): Corporate Action
  * Adjustments and dividend entitlements applied to Internal Paper accounts.
  *
  * Each action is idempotent by its action reference — a redelivery is a
- * duplicate no-op. The transformation itself lives in the journal fold, so an
- * applied split flips order event, Paper Reservation, position and basis
- * all-old/all-new at exactly one revision: no observer can see a half-applied
- * state. Validation runs against the folded state BEFORE anything is
- * appended, so a refused action leaves no record and no side effect.
+ * duplicate no-op. All validation lives at the journal boundary
+ * (validateSystemBody), where the dedupe check runs FIRST: a redelivered
+ * action must never be re-validated against the already-transformed state.
+ * The transformation itself lives in the journal fold, so an applied split
+ * flips order event, Paper Reservation, position and basis all-old/all-new at
+ * exactly one revision: no observer can see a half-applied state.
  */
 
 export type SplitAdjustment = Readonly<{
@@ -30,48 +31,19 @@ export type DividendEntitlement = Readonly<{
   perShare: PaperMoney;
 }>;
 
-import type { SystemAppendOutcome } from "./journal";
-
-/** Journal-boundary outcomes pass through; lifecycle pre-validation uses the same refusal reasons. */
-export type LifecycleOutcome = SystemAppendOutcome;
-
 export class PaperLifecycleIngestion {
   constructor(private readonly deps: Readonly<{ journal: PaperJournal }>) {}
 
-  applySplit(workspace: string, account: InternalPaperAccountReference, split: SplitAdjustment): LifecycleOutcome {
-    const { numerator, denominator } = split;
-    if (!Number.isInteger(numerator) || !Number.isInteger(denominator) || numerator <= 0 || denominator <= 0) {
-      return { status: "refused", reason: "invalid_adjustment" };
-    }
-    // Fail closed on any transformation that would break whole-share lots
-    // (initial product scope). ponytail: cash-in-lieu is the upgrade path.
-    const state = this.deps.journal.state(workspace, account);
-    const instrument = String(split.instrument);
-    const wholeShares = (quantity: number) => Number.isInteger((quantity * numerator) / denominator);
-    const position = state.positions.get(instrument);
-    if (position !== undefined && !wholeShares(position.quantity)) {
-      return { status: "refused", reason: "fractional_result" };
-    }
-    for (const order of state.orders.values()) {
-      if (String(order.payload.instrument) !== instrument) continue;
-      if (order.execution !== "open" && order.execution !== "partially_filled") continue;
-      if (!wholeShares(order.payload.quantity) || !wholeShares(order.filledQuantity)) {
-        return { status: "refused", reason: "fractional_result" };
-      }
-    }
-
+  applySplit(workspace: string, account: InternalPaperAccountReference, split: SplitAdjustment): SystemAppendOutcome {
     return this.deps.journal.appendSystem(workspace, account, String(split.action), {
       kind: "corporate_action_applied",
       action: split.action,
       instrument: split.instrument,
-      adjustment: { kind: "split", numerator, denominator },
+      adjustment: { kind: "split", numerator: split.numerator, denominator: split.denominator },
     });
   }
 
-  applyDividend(workspace: string, account: InternalPaperAccountReference, dividend: DividendEntitlement): LifecycleOutcome {
-    if (!Number.isFinite(dividend.perShare.amount) || dividend.perShare.amount <= 0) {
-      return { status: "refused", reason: "invalid_adjustment" };
-    }
+  applyDividend(workspace: string, account: InternalPaperAccountReference, dividend: DividendEntitlement): SystemAppendOutcome {
     return this.deps.journal.appendSystem(workspace, account, String(dividend.action), {
       kind: "dividend_applied",
       action: dividend.action,

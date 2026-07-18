@@ -76,8 +76,9 @@ export type PaperPositionRow = Readonly<{
 /**
  * Opaque one-time server record (spec §9): the browser only ever holds the
  * reference. Binding covers workspace, auth epoch, account kind/id/revision,
- * paper environment, canonical payload hash, simulation policy and expiry —
- * submit re-checks every one of them from the workspace-scoped store.
+ * paper environment, simulation policy and expiry — submit re-checks every
+ * one of them from the workspace-scoped store. The payload itself is
+ * server-held on the record, so nothing client-supplied needs a hash check.
  */
 export type PaperOrderIntentView = Readonly<{
   reference: PaperOrderIntentReference;

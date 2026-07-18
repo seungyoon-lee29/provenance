@@ -77,6 +77,7 @@ F8 Internal Paper Trading을 scripted 레인에서 완주했다. 설계 스파�
 ## Review
 
 - blind test-authorship(별도 sonnet, 구현·기존 테스트 미열람 — 타입 선언 3파일 열람은 oracle 오염 불가 판정·편차 기록): 31 tests. 후보 버그 2건 → 1건 부분 인정(이중 cancel의 applied+no-op 행 → `already_cancelled` refuse로 수정), 1건 기각(post-erasure suppressed 요구는 열거 누출 — refused가 판정 계약, 판정문 주석 공개).
+- 사후 code-review v1(Standards 축, resolve 뒤 2026-07-18): hard violation 0, judgement call 7. **실버그 1건 수정** — lifecycle pre-validation이 journal의 dedupe-first 순서를 깨서 적용된 3:2 split 재전달이 no-op 대신 `fractional_result` refuse(AC "재전달 no-op" 위반; 2:1 fixture는 정수×2라 은폐). pre-validation 삭제(journal `validateSystemBody`가 전 항목 커버)+회귀 테스트. dead `payloadHash`(쓰기만, 읽기 0)+허위 doc 주석 삭제, `LifecycleOutcome` 잉여 alias 제거. check 1,046/80 green. 잔여 4건은 Residual risks로 이관.
 - codex 반박 패널 4축(다른 계열 모델, 병렬·실행 반례 강제): **실버그 5건 인정·수정** — (money) journal 경계에 위조 fill 주입 시 음수 잔고 → 경계 검증 신설, (simulator a/c) epsilon 가드가 진짜 sub-tick slippage 삼킴 → BigInt 정수 산술로 교체+limit tick 정렬 강제, (simulator e) hard-expired 조기 반환이 DAY 만료 가로챔 → 만료 sweep 선행, (lifecycle a/c) split 후 stale 단가·over-limit fill 경계 수용 → limit tick 대조 추가. **기각 1건**(split 내용-해시 dedupe — reference가 동일성 정의). **방어 실측 확인**: intent 축 8 프로브 전부, 10% cap redelivery, 배분 결정론, erasure 전 경로, AI resolver 격리. 모든 인정 건은 패널 공격 그대로 회귀 테스트화(red 확인 후 수정).
 
 ## Residual risks
@@ -86,3 +87,4 @@ F8 Internal Paper Trading을 scripted 레인에서 완주했다. 설계 스파�
 - 시장 캘린더 단순화(ponytail 주석으로 명시): DAY 만료는 UTC 일 경계(venue-local 세션 캘린더는 업그레이드 경로), dividend는 적용 시점 보유 기준(ex-date entitlement는 캘린더 도입 시), 수수료 0을 published 가정으로 명시.
 - composition 실등록: PaperTradingErasure의 IdentityService participants 배열 등록과 TerminalView 우측 패널/WS-01 mount는 F11 통합 시(현재 dev 표면+계약 테스트로 증명). PaperTrading 공개 interface의 composition 배선도 동일.
 - F9 경계: BrokerPaperExecutionPort는 미구현(스펙대로 journal 미공유 — F9은 기존 public contract 위 subtree만 추가해야 하며, journal 경계 검증이 그 안전망).
+- 사후 code-review 이월(maintenance-grade, F9/F11에서 해당 파일 접촉 시): 통화→tick 매핑 4곳 2표현 → 공유 helper 1개; EPSILON 정의 산재(journal/simulator/service inline 1e-9·1e-6); `PaperJournalEntry`/`PaperEntryBody` union 이중 서술 → 한쪽에서 파생; `PaperSectionKey`의 `blotter`가 orders를 반환(presentBlotter는 dev page만 배선 — F11 composition에서 실배선 또는 키 삭제).

@@ -40,7 +40,6 @@ type IntentRecord = Readonly<{
   workspace: string;
   authorizationEpoch: string;
   payload: PaperOrderPayload;
-  payloadHash: string;
   consumed: boolean;
 }>;
 
@@ -150,7 +149,6 @@ export class PaperTradingService {
       workspace,
       authorizationEpoch: String(viewer.accountAuthorizationEpoch),
       payload: request.payload,
-      payloadHash: JSON.stringify(request.payload),
       consumed: false,
     };
     const written = this.#intents.write(workspace, String(reference), record, 1);

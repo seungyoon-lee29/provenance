@@ -192,6 +192,24 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
     expect(shell.orders[0]!.payload.quantity).toBe(5);
     expect(service.journal.currentRevision(WORKSPACE, account)).toBe(2);
   });
+
+  it("redelivers an applied 3:2 split as a duplicate no-op even though the post-split state would no longer validate", async () => {
+    const { service, simulator, lifecycle } = harness();
+    // Fully filled 10-share position (B2 fixture) — no open orders, so only the
+    // position path is exercised: 10 × 3/2 = 15 is integral and applies.
+    const { account } = await submit(service, limitBuy(10, 110), "redeliver-3-2");
+    simulator.ingest(WORKSPACE, account, observation());
+    const applied = lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2-again"), instrument: AAPL, numerator: 3, denominator: 2 });
+    expect(applied.status).toBe("applied");
+    expect((await shellOf(service)).positions[0]!.quantity).toBe(15);
+
+    // §9: the Corporate Action reference IS the identity, so redelivery must be
+    // a duplicate no-op — never re-validated against the already-transformed
+    // state (15 × 3/2 = 22.5 would misreport fractional_result).
+    const replay = lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2-again"), instrument: AAPL, numerator: 3, denominator: 2 });
+    expect(replay).toEqual({ status: "duplicate" });
+    expect((await shellOf(service)).positions[0]!.quantity).toBe(15);
+  });
 });
 
 describe("dividend entitlement (§9)", () => {

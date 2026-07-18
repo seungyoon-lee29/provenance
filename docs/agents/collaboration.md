@@ -122,6 +122,7 @@
 - **반증 산출물 강제**: 리뷰어는 "괜찮아 보임" 대신 반례(실패 테스트/repro)를 제출하거나 "X·Y·Z 각도로 시도했으나 못 만듦"을 명시한다.
 - **spec 대조**: 티켓 contract가 아니라 source-of-truth `.scratch/<feature>/spec.md`/PRD에 직접 대조해 "옳은 걸 만들었나"를 확인한다. 불변식 목록·flag 기본값·ADR은 매 diff가 아니라 확정 시 1회 사람이 검증한다.
 - **믿기 전 측정**: property/테스트가 실제로 결함을 잡는지 mutation testing으로 사전 점검하고, 게이트를 빠져나간 결함은 "어느 tier가 왜 놓쳤나"를 기록해 tier 배정을 보정한다.
+- **Standards 축 1패스**: High·최상위 구현 티켓은 resolve 전 `code-review` 스킬의 Standards 축을 1회 돌린다(티켓당 1회, 배치당 아님). Spec 게이트(blind·적대 리뷰·mutation)는 경계 간 중복 로직의 우선순위 드리프트 계열을 구조적으로 놓친다 — F8 사후 리뷰 v1이 lifecycle pre-validation의 재전달 no-op 위반을 실증(2026-07-18, 27 mutation+blind+codex 전부 통과 후 발견).
 - **예산 시퀀싱**: 지금은 contain 명문화 + `verify:*` 가드 + spec 대조(거의 무비용)를 1차로 한다. 타입 불변식 → property test → mutation testing → 다른-계열 최상위 escalation은 토큰 여유가 회복될 때 도입한다.
 
 ## 검수와 승인
