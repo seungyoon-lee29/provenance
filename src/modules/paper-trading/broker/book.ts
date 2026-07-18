@@ -96,8 +96,74 @@ function eventKeyOf(event: BrokerExternalOrderEvent): string {
   return [String(event.connection), String(event.order), event.kind, event.externalIdentity, String(event.revision)].join("|");
 }
 
+export type BrokerBookCommandResult<T> =
+  | T
+  | Readonly<{ status: "conflict" }>
+  | Readonly<{ status: "rejected"; currentRevision: number }>
+  | Readonly<{ status: "suppressed" }>;
+
 export class BrokerPaperBook {
   readonly #accounts = new FencedKeyedStore<AccountState>();
+  /** `${workspace}|${account}` -> append-only account revision (bumped by applied commands AND applied provider facts). */
+  readonly #revisions = new Map<string, number>();
+  /** `${workspace}|${account}|${kind}|${idempotencyKey}` -> receipted outcome (§8 trio). */
+  readonly #receipts = new Map<string, { payload: string; outcome: unknown }>();
+
+  currentRevision(workspace: string, account: BrokerPaperAccountReference): number {
+    return this.#revisions.get(`${workspace}|${String(account)}`) ?? 0;
+  }
+
+  hasAccount(workspace: string, account: BrokerPaperAccountReference): boolean {
+    return this.#accounts.get(workspace, String(account)) !== undefined;
+  }
+
+  /**
+   * §8 user-command path (mirror of the F8 journal): receipt trio first, then
+   * revision CAS, then the caller's semantic section. Only committed outcomes
+   * are receipted and bump the revision; refusals stay side-effect free. The
+   * `act` closure runs the whole account transaction (book mutation + outbox +
+   * pending worklist) in one synchronous section.
+   */
+  command<T extends Readonly<{ status: string }>>(
+    workspace: string,
+    account: BrokerPaperAccountReference,
+    commandKind: string,
+    control: Readonly<{ idempotencyKey: string; expectedRevision: string }>,
+    canonicalPayload: string,
+    act: (nextRevision: number) => Readonly<{ commit: T }> | Readonly<{ refuse: T }>,
+  ): BrokerBookCommandResult<T> {
+    if (this.#accounts.isErased(workspace, 1)) return { status: "suppressed" };
+    const receiptKey = `${workspace}|${String(account)}|${commandKind}|${control.idempotencyKey}`;
+    const prior = this.#receipts.get(receiptKey);
+    if (prior !== undefined) {
+      return prior.payload === canonicalPayload ? (prior.outcome as T) : { status: "conflict" };
+    }
+    const currentRevision = this.currentRevision(workspace, account);
+    if (control.expectedRevision !== String(currentRevision)) return { status: "rejected", currentRevision };
+    const result = act(currentRevision + 1);
+    if ("refuse" in result) return result.refuse;
+    this.#revisions.set(`${workspace}|${String(account)}`, currentRevision + 1);
+    this.#receipts.set(receiptKey, { payload: canonicalPayload, outcome: result.commit });
+    return result.commit;
+  }
+
+  /** Local `requested` mark on the cancellation axis; the confirmed state is terminal. */
+  requestCancelLocal(
+    workspace: string,
+    account: BrokerPaperAccountReference,
+    clientOrder: BrokerClientOrderReference,
+    atEpoch: number,
+  ): "unknown_account" | "unknown_order" | "cancel_pending" | "cancellation_terminal" | undefined {
+    if (this.#accounts.isErased(workspace, atEpoch)) return "unknown_account";
+    const state = this.#accounts.get(workspace, String(account));
+    if (state === undefined) return "unknown_account";
+    const order = state.orders.get(String(clientOrder));
+    if (order === undefined) return "unknown_order";
+    if (order.cancellation === "confirmed") return "cancellation_terminal";
+    if (order.cancellation === "requested") return "cancel_pending";
+    order.cancellation = "requested";
+    return undefined;
+  }
 
   provision(workspace: string, account: BrokerPaperAccountReference, seedCash: readonly PaperMoney[], atEpoch: number): BrokerProvisionOutcome {
     const fresh: AccountState = {
@@ -182,6 +248,7 @@ export class BrokerPaperBook {
     const refusal = this.#fold(state, event);
     if (refusal !== undefined) return { status: "refused", reason: refusal };
     state.events.set(eventKey, body);
+    this.#revisions.set(`${workspace}|${String(account)}`, this.currentRevision(workspace, account) + 1);
     return { status: "applied" };
   }
 
@@ -304,7 +371,10 @@ export class BrokerPaperBook {
     };
   }
 
+  /** SEC-09: shred account state, receipts and revisions behind the fence. */
   eraseWorkspace(workspace: string, fence: number): number {
+    for (const key of [...this.#receipts.keys()]) if (key.startsWith(`${workspace}|`)) this.#receipts.delete(key);
+    for (const key of [...this.#revisions.keys()]) if (key.startsWith(`${workspace}|`)) this.#revisions.delete(key);
     return this.#accounts.eraseSubject(workspace, fence);
   }
 }
