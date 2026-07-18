@@ -65,7 +65,8 @@ const lineage = z.strictObject({
 const manifest = z.strictObject({
   snapshotAsOf: z.string().min(1),
   maxComponentSkewMs: z.number().int().nonnegative(),
-  components: z.array(z.strictObject({ key: z.enum(["positions", "cash", "activity"]), pageCount: z.number().int().nonnegative(), checksum: z.string().min(1) })),
+  // A zero-page (present-but-empty) component folds to an empty checksum — absence-vs-zero, allowed.
+  components: z.array(z.strictObject({ key: z.enum(["positions", "cash", "activity"]), pageCount: z.number().int().nonnegative(), checksum: z.string() })),
 });
 
 const readRequest = z.strictObject({

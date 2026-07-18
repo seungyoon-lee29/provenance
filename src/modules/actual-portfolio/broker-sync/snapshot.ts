@@ -62,7 +62,7 @@ export type BrokerSnapshotView =
   | Readonly<{ status: "expired"; lineageKey: string; snapshotAsOf: string; syncedAtMs: number; frozen: BrokerProjection; safeWatermark: string }>;
 
 /** Deterministic fold of a component's page checksums (order-insensitive by page index). */
-export function foldComponentChecksum(pages: readonly ReceivedPage[]): string {
+export function foldComponentChecksum(pages: readonly Pick<ReceivedPage, "pageIndex" | "checksum">[]): string {
   return [...pages].sort((a, b) => a.pageIndex - b.pageIndex).map((page) => page.checksum).join("|");
 }
 
