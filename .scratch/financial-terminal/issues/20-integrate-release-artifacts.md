@@ -1,13 +1,13 @@
 # 20 - F11 release integration·산출물 완성
 
 Type: implementation
-Status: open
-Triage: ready-for-agent
+Status: claimed
+Triage: ready-for-human
 Depends on: 14, 16, 18, 19
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: claude-main
+Claimed at: 2026-07-19
+Last heartbeat: 2026-07-19 (release infra built; ready-for-human gates recorded)
 
 ## Objective
 
@@ -50,3 +50,28 @@ Last heartbeat: -
 ## Traceability
 
 - [승인 spec](../spec.md) 모든 `UF-*`, `WS-*`, `SEC-*`, `AT-01~12`, §11~16, F11.
+
+## Progress (release infrastructure — autonomous slice)
+
+사용자 스코프 결정(2026-07-19): 패키징+문서+매니페스트(network-off 검증 가능분)를 자율 구현하고, Docker 드릴·실데이터 스크린샷·k6 부하는 ready-for-human으로 기록. F11은 두 guest-public 스크린샷이 허용된 실제 공개 정본 데이터(USD 0 예산·공급자 보류)를 요구해 자율로 완전 resolve 불가 → Status claimed.
+
+### 구현·검증 완료 (전부 network-off)
+
+- **릴리스 ZIP allowlist/SHA-256/secret-free**: `scripts/release/manifest.ts`(순수 분류·fail-closed 카테고리·secret 패턴은 pre-commit 훅과 동일) + `scripts/package-release.ts`(`npm run package:release`). tracked에서 `.scratch/`·`.env*`(example 제외)·`.secrets/`·`.git/`·build/cache 제외, per-file+aggregate SHA-256, binary는 secret-scan skip. `tests/release/release-manifest.test.ts`(5)·`release-zip.test.ts`(1: clean dir unpack==manifest·재해시 무결성·forbidden 0).
+- **릴리스 문서 6종**: `docs/release/{setup,architecture,rights,privacy,backup,release}.md`. `scripts/check-release-docs.ts`(`npm run check:release-docs`: markdown 상대링크 존재 + npm-run stale-contract). `tests/release/release-docs.test.ts`(2).
+- **스크린샷 provenance/rights 매니페스트**: `tests/release/screenshot-manifest.json`(4장·synthetic vs real·secret/PII 제외 선언) + synthetic `paper-workspace.png` 실캡처(`tests/browser/paper-workspace.spec.ts`, 1366×604, SYNTHETIC 마커). `tests/release/screenshot-manifest.test.ts`(4). `explicit-unavailable.png`는 F4에서 기존 캡처.
+- **릴리스 posture**: `tests/release/release-readiness.test.ts`(3: `.env.example` RUN_*_CONTRACT 전부 false·ENABLE_LIVE_TRADING false·free_only·credential 값 공란 = not_run/disabled 정직 기록).
+
+검증: `npm run check` 1,222 tests / 105 files green. `package:release` 359 파일(source 310·docs 30·config 11·docker 3·migration 3·lockfile 2)·zip==manifest·forbidden 0. `check:release-docs` 24문서 0 problem. `package.json`에 `package:release`·`check:release-docs` 스크립트 추가.
+
+### Ready-for-human 게이트 (resolve 전 필요)
+
+1. **production stack 드릴** — `npm run compose:verify`(Docker daemon 필요; compose.yaml/Dockerfile/verify 스크립트 F0 준비됨). fresh start·migration/reapply/rollback·health·worker.
+2. **backup/restore/deletion-suppression 드릴** — 복원 스택에서 erasure fence 재생성 0 확인(모듈 레벨 테스트로 증명, 스택 레벨 확인 필요). docs/release/backup.md.
+3. **§11.3 5분 stress/load** — 부하 도구 미vendored. nominal/stress p95·event loss/duplicate/revision reversal 0.
+4. **두 guest-public 스크린샷** — `guest-desktop-public.png`·`guest-mobile-public.png`, 허용된 실제 공개 정본 데이터 필요(USD 0·공급자 보류).
+
+### Residual
+
+- shared composition root에 broker-sync/actual erasure participant 실등록은 F0/main owner 통합(모듈 레벨 계약 증명 완료, F6~F10 공통 잔여).
+- 배치 기록: `progress/f11-plan.md`.

@@ -24,6 +24,8 @@
     "db:status": "tsx scripts/migrate.ts status",
     "verify:network-off": "tsx scripts/verify-network-off.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
+    "package:release": "tsx scripts/package-release.ts",
+    "check:release-docs": "tsx scripts/check-release-docs.ts",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:public-seam && npm run test:server-seam",
     "check:f1": "npm run check && npm run test:browser && npm run test:performance",
     "check:f2": "npm run check && npm run test:browser && npm run test:performance",

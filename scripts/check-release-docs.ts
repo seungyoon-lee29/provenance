@@ -1,0 +1,59 @@
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+
+/**
+ * F11 doc gate (spec §13.2, AC): every relative Markdown link in the tracked
+ * docs must resolve, and every `npm run <script>` a doc references must exist —
+ * a "stale-contract" guard so docs can't cite a command that was renamed away.
+ */
+
+const ROOT = resolve(import.meta.dirname, "..");
+
+export type DocCheckResult = Readonly<{
+  brokenLinks: readonly Readonly<{ doc: string; link: string }>[];
+  missingScripts: readonly Readonly<{ doc: string; script: string }>[];
+  checkedDocs: number;
+}>;
+
+function trackedMarkdown(): string[] {
+  return execFileSync("git", ["ls-files", "*.md"], { cwd: ROOT, encoding: "utf8" })
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0 && !line.startsWith(".scratch/"));
+}
+
+const LINK = /\[[^\]]*\]\(([^)]+)\)/g;
+const SCRIPT = /npm run ([a-z0-9:_-]+)/g;
+
+export function checkReleaseDocs(): DocCheckResult {
+  const scripts = new Set(Object.keys(JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")).scripts ?? {}));
+  const brokenLinks: { doc: string; link: string }[] = [];
+  const missingScripts: { doc: string; script: string }[] = [];
+  const docs = trackedMarkdown();
+
+  for (const doc of docs) {
+    const content = readFileSync(resolve(ROOT, doc), "utf8");
+    for (const match of content.matchAll(LINK)) {
+      const target = match[1]!.trim();
+      if (/^(https?:|mailto:|#)/.test(target)) continue; // external or in-page anchor
+      const path = target.split("#")[0]!;
+      if (path.length === 0) continue;
+      if (!existsSync(resolve(ROOT, dirname(doc), path))) brokenLinks.push({ doc, link: target });
+    }
+    for (const match of content.matchAll(SCRIPT)) {
+      const script = match[1]!;
+      if (!scripts.has(script)) missingScripts.push({ doc, script });
+    }
+  }
+  return { brokenLinks, missingScripts, checkedDocs: docs.length };
+}
+
+if (import.meta.filename === resolve(process.argv[1] ?? "")) {
+  const result = checkReleaseDocs();
+  for (const { doc, link } of result.brokenLinks) process.stderr.write(`broken link: ${doc} -> ${link}\n`);
+  for (const { doc, script } of result.missingScripts) process.stderr.write(`stale script ref: ${doc} -> npm run ${script}\n`);
+  const failures = result.brokenLinks.length + result.missingScripts.length;
+  process.stdout.write(`check-release-docs: ${result.checkedDocs} docs, ${failures} problem(s)\n`);
+  process.exit(failures === 0 ? 0 : 1);
+}
