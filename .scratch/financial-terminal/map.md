@@ -44,7 +44,8 @@
 
 ## Implementation plan
 
-- **현재 frontier**: [20 - F11 release integration](./issues/20-integrate-release-artifacts.md) (19 F10 resolved; F5·F7·F9·F10 전 dependency resolved → Blocked by None, eligible). F-spine 최장 경로의 마지막 통합 티켓으로 browser/accessibility/performance/load·Docker/ZIP/docs/screenshot gate를 완성한다.
+- **현재 frontier**: [20 - F11 release integration](./issues/20-integrate-release-artifacts.md) — **claimed / ready-for-human**. 자율 검증 가능한 release 인프라(ZIP allowlist+SHA-256+secret-free 패키징, 문서 6종+link/stale-contract checker, screenshot provenance 매니페스트+synthetic paper-workspace 캡처, not_run posture 검사)는 완성(check 1,222/105 green). resolve 전 필요한 4 게이트는 환경/외부 계약이라 ready-for-human: production stack 드릴(Docker daemon), backup/restore 드릴, §11.3 5분 load, 두 guest-public 실데이터 스크린샷(USD 0·공급자 보류). 상세는 `progress/f11-plan.md`.
+- 남은 티켓: [21 - 불변식 검증 adequacy](./issues/21-verify-invariant-adequacy.md)는 F-spine 밖 cross-cutting 품질 backlog(토큰 여유 시), [22 - CI 게이트 도입](./issues/22-add-ci-gate-parity.md)은 원격 저장소·CI 플랫폼 결정(needs-info) 선행 필요.
 - [10 - F1 비로그인 터미널 shell](./issues/10-build-guest-terminal-shell.md) → [11 - F2 chart tracer](./issues/11-build-chart-tracer.md) → [12 - F3 Identity·Provider Connections core·layout](./issues/12-build-identity-provider-layout.md)이 sequential contract spine을 완성했다.
 - P1: [13 - F4 정보 outcome·AI](./issues/13-build-data-outcomes-ai.md) 뒤 [14 - F5 알림·외부 전달](./issues/14-build-alert-delivery-tracer.md), 그리고 [15 - F6 Actual Portfolio baseline](./issues/15-build-actual-portfolio-baseline.md)을 독립 scope로 진행한다.
 - P2: F6 뒤 [16 - F7 포트폴리오 회계](./issues/16-build-portfolio-accounting.md)와 [17 - F8 Internal Paper Trading](./issues/17-build-internal-paper-trading.md)을 병렬화한다.
