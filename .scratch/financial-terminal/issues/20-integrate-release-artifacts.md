@@ -7,7 +7,7 @@ Depends on: 14, 16, 18, 19
 Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-19 (release infra built; ready-for-human gates recorded)
+Last heartbeat: 2026-07-19 (compose:verify 드릴 통과·이식성 회귀 수정)
 
 ## Objective
 
@@ -66,10 +66,12 @@ Last heartbeat: 2026-07-19 (release infra built; ready-for-human gates recorded)
 
 ### Ready-for-human 게이트 (resolve 전 필요)
 
-1. **production stack 드릴** — `npm run compose:verify`(Docker daemon 필요; compose.yaml/Dockerfile/verify 스크립트 F0 준비됨). fresh start·migration/reapply/rollback·health·worker.
+1. **production stack 드릴** — `npm run compose:verify`. **✅ 2026-07-19 실행·통과(4단계)**: pr-check(`npm run check` 이미지 내부)·전체 스택 up --wait(postgres/redis/app/worker Healthy·migrate Exited)·migration-smoke("migration smoke passed")·network-off("network-off harness passed") 전부 green, cleanup으로 컨테이너 0 잔여. **1차 실행이 이번 세션 산출물의 컨테이너 이식성 회귀 6건을 검출**(git·.env.example 부재 → release/isolation 테스트 실패) → fs 스캔 재작성 + git/env 부재 skip으로 수정(커밋 3da2ff4) 후 2차 통과. 드릴이 실제 회귀를 잡은 사례.
 2. **backup/restore/deletion-suppression 드릴** — 복원 스택에서 erasure fence 재생성 0 확인(모듈 레벨 테스트로 증명, 스택 레벨 확인 필요). docs/release/backup.md.
 3. **§11.3 5분 stress/load** — 부하 도구 미vendored. nominal/stress p95·event loss/duplicate/revision reversal 0.
 4. **두 guest-public 스크린샷** — `guest-desktop-public.png`·`guest-mobile-public.png`, 허용된 실제 공개 정본 데이터 필요(USD 0·공급자 보류).
+
+게이트 1 통과로 4개 중 1개 해소. 나머지 3개(backup 드릴·load·실데이터 스크린샷) 대기 → Status claimed 유지.
 
 ### Residual
 
