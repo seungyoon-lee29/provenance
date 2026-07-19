@@ -36,6 +36,14 @@ The compose `migration-smoke` profile runs this against a real PostgreSQL.
    module level in the erasure test suites and must also be confirmed on the
    restored stack (ready-for-human, see [release.md](./release.md)).
 
+> **Current architecture note.** The MVP foundation is the first executable
+> tracer: only `runtime_components` is persisted to PostgreSQL, and every module
+> store (including the erasure fence) is in-memory. Until a persistence layer
+> lands, a `pg_dump`/restore round-trip carries no user or fence state, so the
+> stack-level deletion-suppression drill is not yet meaningful — the invariant
+> stands at the module level. This drill becomes runnable once module state is
+> backed by the database.
+
 ## Rollback
 
 Deploy rollback = redeploy the previous image tag + run `db:rollback` to the

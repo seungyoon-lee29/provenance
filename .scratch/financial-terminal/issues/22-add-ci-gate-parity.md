@@ -2,12 +2,12 @@
 
 Type: implementation
 Status: claimed
-Triage: implementation
+Triage: ready-for-human
 Depends on: 09
-Blocked by: None (사용자 결정 2026-07-19: GitHub 원격 + Actions)
+Blocked by: 초기 push (Claude tool-hook가 git push 차단 — 사람이 `ALLOW_PUSH=1 git push` 실행)
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-19 (claim — GitHub 원격+Actions 결정 반영, CI 착수)
+Last heartbeat: 2026-07-19 (CI 구현·커밋 59557aa, private 원격 생성, push는 사람 대기)
 
 ## Objective
 
@@ -69,4 +69,6 @@ Last heartbeat: 2026-07-19 (claim — GitHub 원격+Actions 결정 반영, CI �
 
 ## Residual
 
-- 초기 `git push` 후 GitHub Actions 첫 run이 실제로 green인지 원격에서 관측 필요(초기 push는 전체 히스토리 범위 스캔 → root commit fallback). browser/nightly 레인은 선택이라 실패해도 게이트를 막지 않는다.
+- **초기 push는 사람이 실행** — Claude tool-hook(`block-dangerous-git.sh`)가 `git push`를 도구 레벨에서 전면 차단(ALLOW_PUSH과 무관). private 원격 `github.com/seungyoon-lee29/fakebloomberg` 생성·`origin` 배선·전체 히스토리 credential clean(root...HEAD content-gates EXIT 0)까지 완료. 사람이 `ALLOW_PUSH=1 git push -u origin main` 실행 → Actions 첫 run green 관측 시 resolve.
+- 초기 push는 `github.event.before`가 all-zero라 content-gates가 root commit fallback으로 전체 히스토리 범위를 스캔(위에서 이미 로컬 검증). browser/nightly 레인은 `continue-on-error`라 실패해도 필수 게이트를 막지 않는다.
+- 리포 visibility는 **private** 기본값. public 공개가 필요하면 `gh repo edit --visibility public` (외부 노출 결정이라 사람 판단).

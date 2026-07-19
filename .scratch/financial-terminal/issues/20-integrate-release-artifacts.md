@@ -67,11 +67,11 @@ Last heartbeat: 2026-07-19 (compose:verify 드릴 통과·이식성 회귀 수�
 ### Ready-for-human 게이트 (resolve 전 필요)
 
 1. **production stack 드릴** — `npm run compose:verify`. **✅ 2026-07-19 실행·통과(4단계)**: pr-check(`npm run check` 이미지 내부)·전체 스택 up --wait(postgres/redis/app/worker Healthy·migrate Exited)·migration-smoke("migration smoke passed")·network-off("network-off harness passed") 전부 green, cleanup으로 컨테이너 0 잔여. **1차 실행이 이번 세션 산출물의 컨테이너 이식성 회귀 6건을 검출**(git·.env.example 부재 → release/isolation 테스트 실패) → fs 스캔 재작성 + git/env 부재 skip으로 수정(커밋 3da2ff4) 후 2차 통과. 드릴이 실제 회귀를 잡은 사례.
-2. **backup/restore/deletion-suppression 드릴** — 복원 스택에서 erasure fence 재생성 0 확인(모듈 레벨 테스트로 증명, 스택 레벨 확인 필요). docs/release/backup.md.
-3. **§11.3 5분 stress/load** — 부하 도구 미vendored. nominal/stress p95·event loss/duplicate/revision reversal 0.
+2. **backup/restore/deletion-suppression 드릴** — **아키텍처상 현재 불성립(2026-07-19 실사)**. 모듈 중 postgres 쿼리를 실행하는 것이 0개이고 postgres에는 `runtime_components` tracer 1행만 있다. F0가 의도적으로 "실행 가능한 첫 tracer"(티켓 09)로 설계돼 erasure fence를 포함한 모든 사용자 상태가 in-memory Map(`session-store.ts:53`). 그래서 `pg_dump→restore` 라운드트립은 tracer 1행만 왕복할 뿐 삭제 억제를 증명하지 못한다(theater). 불변식 자체는 모듈 레벨에서 증명됨(in-memory fence가 restore override). **스택 레벨 실증은 postgres 영속 계층이 있어야 가능하며 이는 F11의 black-box 통합 스코프 밖** — persistence 계층 도입 티켓이 선행돼야 한다. docs/release/backup.md에 현 한계 주석 추가.
+3. **§11.3 5분 stress/load** — 부하 도구 미vendored(사용자 결정 2026-07-19: ready-for-human 유지). k6 nominal/stress + spec §16의 **고정 runner**가 정본이며 hosted runner 수치는 정본이 아니다. 티켓 22 CI의 `nightly-perf` 레인이 `test:performance`를 참고 신호로 돌리되 정본이 아님을 주석에 명시. 모듈별 seam p95(§11.1/11.2)는 이미 통과. nominal/stress p95·event loss/duplicate/revision reversal 0은 정본 환경 필요.
 4. **두 guest-public 스크린샷** — `guest-desktop-public.png`·`guest-mobile-public.png`, 허용된 실제 공개 정본 데이터 필요(USD 0·공급자 보류).
 
-게이트 1 통과로 4개 중 1개 해소. 나머지 3개(backup 드릴·load·실데이터 스크린샷) 대기 → Status claimed 유지.
+게이트 1(production stack 드릴) 통과. 재실사(2026-07-19) 결과 나머지 3개는 자율로 닫을 수 없음이 확정: 게이트 2(backup 드릴)는 **아키텍처상 불성립**(in-memory tracer, postgres 영속 부재 — persistence 계층은 F11 스코프 밖), 게이트 3(load)은 k6+고정 runner 정본 환경 필요(사용자: ready-for-human 유지), 게이트 4(실데이터 스크린샷)는 외부 공개 정본 계약(USD 0·공급자 보류). → Status claimed 유지. 게이트 2는 단순 "드릴 실행 대기"가 아니라 선행 persistence 티켓이 필요한 blocker로 재분류.
 
 ### Residual
 
