@@ -10,6 +10,16 @@ function trackedFiles(): string[] {
   return execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).trim().split("\n").filter((line) => line.length > 0);
 }
 
+/** These checks read the git worktree; a container build has no `.git`/git CLI, so skip there. */
+function hasGit(): boolean {
+  try {
+    execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: ROOT, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 describe("F11 release allowlist classification", () => {
   it("excludes agent state, env secrets and the secret store; keeps the deliverable", () => {
     const { included, excluded, uncategorized } = classifyReleaseFiles([
@@ -48,7 +58,7 @@ describe("F11 release allowlist classification", () => {
   });
 });
 
-describe("F11 release manifest over the real tree", () => {
+describe.skipIf(!hasGit())("F11 release manifest over the real tree", () => {
   it("ships no agent state, env secret, secret store, or vcs metadata", () => {
     const { included, uncategorized } = classifyReleaseFiles(trackedFiles());
     for (const { path } of included) {
