@@ -1,13 +1,13 @@
 # 22 - CI 게이트 도입 (로컬 훅과 동일 게이트의 원격 강제)
 
 Type: implementation
-Status: claimed
-Triage: ready-for-human
+Status: resolved
+Triage: done
 Depends on: 09
-Blocked by: 초기 push (Claude tool-hook가 git push 차단 — 사람이 `ALLOW_PUSH=1 git push` 실행)
+Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-19 (CI 구현·커밋 59557aa, private 원격 생성, push는 사람 대기)
+Last heartbeat: 2026-07-19 (resolved — 초기 push 후 CI 첫 run green 관측)
 
 ## Objective
 
@@ -67,8 +67,15 @@ Last heartbeat: 2026-07-19 (CI 구현·커밋 59557aa, private 원격 생성, pu
 
 - `scripts/gates/content-gates.sh`(신규, 공유 콘텐츠 게이트), `.husky/pre-commit`(리팩터: 공유 스크립트 호출 + `npm run check` 승격), `.github/workflows/ci.yml`(신규), `docs/release/setup.md`(CI 게이트·ALLOW_PUSH 관계 문서화).
 
+## Resolution (2026-07-19)
+
+사람이 `ALLOW_PUSH=1 git push -u origin main` 실행(Claude tool-hook가 push를 도구 레벨에서 차단하기 때문). private 원격 `github.com/seungyoon-lee29/fakebloomberg`에 main push 후 **CI 첫 run(29684491848) conclusion=success 관측**:
+
+- `PR-fast (hook parity)`: ✅ success — content-gates 범위 스캔(초기 push는 `github.event.before` all-zero → root commit fallback으로 전체 히스토리 스캔) + `npm run check` green.
+- `PR-integration (Docker stack, network-off)`: ✅ success — compose:verify 4단계(pr-check·migration-smoke·network-off)가 hosted runner에서 재현.
+- `PR-browser`·`nightly-perf`: skipped — push 이벤트에서 의도된 동작(각각 PR/schedule·dispatch 전용 `if`). 로컬 훅과 동일 게이트가 원격에서 강제됨을 실측 확인.
+
 ## Residual
 
-- **초기 push는 사람이 실행** — Claude tool-hook(`block-dangerous-git.sh`)가 `git push`를 도구 레벨에서 전면 차단(ALLOW_PUSH과 무관). private 원격 `github.com/seungyoon-lee29/fakebloomberg` 생성·`origin` 배선·전체 히스토리 credential clean(root...HEAD content-gates EXIT 0)까지 완료. 사람이 `ALLOW_PUSH=1 git push -u origin main` 실행 → Actions 첫 run green 관측 시 resolve.
-- 초기 push는 `github.event.before`가 all-zero라 content-gates가 root commit fallback으로 전체 히스토리 범위를 스캔(위에서 이미 로컬 검증). browser/nightly 레인은 `continue-on-error`라 실패해도 필수 게이트를 막지 않는다.
-- 리포 visibility는 **private** 기본값. public 공개가 필요하면 `gh repo edit --visibility public` (외부 노출 결정이라 사람 판단).
+- browser/nightly 레인은 PR·schedule에서만 돌며 `continue-on-error`라 실패해도 필수 게이트를 막지 않는다(선택). k6 nominal/stress + 고정 runner p95(§11.3)는 여전히 미vendored — ticket 20 gate 3와 공통 잔여.
+- 리포 visibility는 **private** 기본값. public 공개가 필요하면 `gh repo edit --visibility public`(외부 노출 결정이라 사람 판단).
