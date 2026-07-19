@@ -68,3 +68,28 @@ npm run test:performance
 
 See [release.md](./release.md) for the full gate matrix and the ready-for-human
 operational drills.
+
+## CI gates (remote enforcement)
+
+The local pre-commit hook ([`.husky/pre-commit`](../../.husky/pre-commit)) and
+CI ([`.github/workflows/ci.yml`](../../.github/workflows/ci.yml)) enforce the
+**same gates**, sharing one source so they cannot drift:
+
+- Content gates (whitespace, credential-format scan, `.env.local`/`.secrets`
+  untracked) live only in
+  [`scripts/gates/content-gates.sh`](../../scripts/gates/content-gates.sh) —
+  the hook runs it over the staged diff (`--cached`), CI over the push/PR range.
+- Build gates are the single `npm run check` (typecheck · lint · unit · seams)
+  that both call.
+
+CI lanes mirror spec §16: `PR-fast` (hook parity, required), `PR-integration`
+(`compose:verify` Docker stack, network-off), `PR-browser` and `nightly-perf`
+(optional — hosted runners are not the spec's fixed-runner p95 source of truth).
+No job uses a provider secret (scripted lane only, SEC-05); egress-off is proven
+by the network-off harness, not a runner firewall.
+
+**Push policy is unchanged.** Pushes are blocked by default
+([`.husky/pre-push`](../../.husky/pre-push)); an intentional push is
+`ALLOW_PUSH=1 git push`. CI is a *second* enforcement layer, not a relaxation —
+it re-runs the gates on the remote so a commit that bypassed the local hook
+(different tool, unhooked clone) still fails the same checks.

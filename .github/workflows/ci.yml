@@ -1,0 +1,80 @@
+name: CI
+
+# 로컬 pre-commit 훅과 '동일 게이트'를 원격에서 강제하는 두 번째 층 (ticket 22).
+# 모든 job은 scripted lane만 실행 — provider secret 불필요(SEC-05). 외부 egress 부재는
+# network-off 하네스가 증명한다. push 기본 차단 정책(ALLOW_PUSH=1)은 CI가 약화하지 않는다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 17 * * *" # nightly (UTC) — browser/perf 매트릭스
+
+permissions:
+  contents: read
+
+jobs:
+  pr-fast:
+    name: PR-fast (hook parity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # content-gates 범위 diff에 히스토리 필요
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: content gates (whitespace·credential·secret files — 훅과 한 소스)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          [ -n "$BASE" ] || BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            BASE="$(git rev-list --max-parents=0 HEAD | tail -1)" # fallback: root commit
+          fi
+          sh scripts/gates/content-gates.sh "${BASE}...HEAD"
+      - name: build gates (npm run check — typecheck·lint·test·seams)
+        run: npm run check
+
+  pr-integration:
+    name: PR-integration (Docker stack, network-off)
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: compose:verify (pr-check·migration-smoke·network-off)
+        run: npm run compose:verify
+
+  pr-browser:
+    name: PR-browser (Playwright desktop/mobile) [optional]
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true # optional — runner 비용, guest shell 회귀 신호용
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: browser tracer (webServer 자동 기동)
+        run: npm run test:browser
+
+  nightly-perf:
+    name: nightly performance (§11 p95) [optional]
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    continue-on-error: true # hosted runner는 spec의 '고정 runner' 정본이 아님 — 참고 신호
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: performance suite
+        run: npm run test:performance

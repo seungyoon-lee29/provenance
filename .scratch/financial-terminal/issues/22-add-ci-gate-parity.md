@@ -1,13 +1,13 @@
 # 22 - CI 게이트 도입 (로컬 훅과 동일 게이트의 원격 강제)
 
 Type: implementation
-Status: open
-Triage: needs-info
+Status: claimed
+Triage: implementation
 Depends on: 09
-Blocked by: 원격 저장소·CI 플랫폼 미정 (사용자 결정 필요)
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Blocked by: None (사용자 결정 2026-07-19: GitHub 원격 + Actions)
+Owner: claude-main
+Claimed at: 2026-07-19
+Last heartbeat: 2026-07-19 (claim — GitHub 원격+Actions 결정 반영, CI 착수)
 
 ## Objective
 
@@ -34,3 +34,39 @@ Last heartbeat: -
 ## Traceability
 
 - 발단: 2026-07-17 하네스 리뷰에서 "게이트 전부 로컬 훅 = CI 부재가 가장 약한 층" 지적. AGENTS.md 하한(훅 우회 금지)의 원격 집행 층.
+
+## Answer (구현)
+
+사용자 결정(2026-07-19): 원격 저장소 = GitHub, 플랫폼 = GitHub Actions. §11.3 부하는 별도(ready-for-human).
+
+### 한 소스 공유 (드리프트 금지)
+
+- **콘텐츠 게이트**(whitespace·credential 포맷 스캔·`.env.local`/`.secrets` 미추적)를 `scripts/gates/content-gates.sh` **한 곳**에만 정의하고 diff 범위를 인자로 받게 했다. 훅은 `--cached`(staged), CI는 `<base>...HEAD`(push/PR 범위)로 같은 스크립트를 호출한다. credential 패턴 리터럴은 자기 정규식과 매칭되지 않아(예: `sk-ant-` 뒤 `[`) 스크립트 자신을 커밋해도 스캔에 걸리지 않는다(기존 훅과 동일 성질).
+- **빌드 게이트**는 단일 `npm run check`(typecheck·lint·test·seams)로, 훅과 CI가 같은 package.json 스크립트를 호출한다. 훅을 기존 `typecheck+test`에서 `npm run check`로 승격해 lint·seam까지 **완전 parity**를 만들었다(비용: 로컬 커밋에 lint+2 seam tsx 추가, test는 이미 전체 실행 중이라 한계비용 작음).
+
+### CI 레인 (spec §16 매핑, `.github/workflows/ci.yml`)
+
+- `PR-fast`(**필수**): content-gates 범위 스캔 + `npm run check`. `fetch-depth: 0`으로 범위 diff 히스토리 확보. push(main)+PR 모두.
+- `PR-integration`(**필수**, PR/push): `npm run compose:verify` — pr-check·migration-smoke·network-off Docker 스택. 지난 세션 컨테이너 이식성 회귀를 잡은 레인.
+- `PR-browser`(**선택**, `continue-on-error`): Playwright desktop/mobile(webServer 자동 기동). runner 비용 고려.
+- `nightly-perf`(**선택**, schedule+manual): `test:performance`. **hosted runner는 spec의 '고정 runner' p95 정본이 아님**을 주석에 명시 — 참고 신호용. k6 nominal/stress는 여전히 미vendored(ticket 20 gate 3와 동일 잔여).
+
+### 안전·정책
+
+- **secret 0**: 어떤 job도 provider secret을 쓰지 않는다(scripted lane만, SEC-05). `permissions: contents: read` 최소권한. egress-off는 network-off 하네스가 증명(runner 방화벽 아님).
+- **push 정책 불변**: `.husky/pre-push`의 기본 차단(`ALLOW_PUSH=1`)은 유지. CI는 완화가 아니라 **두 번째 층** — 훅을 우회한 커밋(다른 도구·미설치 클론)도 원격에서 같은 게이트에 걸린다. setup.md에 관계 문서화.
+
+### 검증
+
+- `content-gates.sh --cached`가 스테이징된 신규 파일(자기 자신 포함) 위에서 EXIT 0 — 자기매칭·비밀 없음 확인.
+- `npm run check`: typecheck OK, lint 0 error, **1234 tests / 109 files pass**, seams 실행.
+- `check:release-docs`: 30 docs / 0 problem(신규 setup.md 링크 전부 resolve).
+- 원격 push 후 실제 Actions run green은 원격 생성·초기 push 뒤 관측(아래 Residual).
+
+## Changed files
+
+- `scripts/gates/content-gates.sh`(신규, 공유 콘텐츠 게이트), `.husky/pre-commit`(리팩터: 공유 스크립트 호출 + `npm run check` 승격), `.github/workflows/ci.yml`(신규), `docs/release/setup.md`(CI 게이트·ALLOW_PUSH 관계 문서화).
+
+## Residual
+
+- 초기 `git push` 후 GitHub Actions 첫 run이 실제로 green인지 원격에서 관측 필요(초기 push는 전체 히스토리 범위 스캔 → root commit fallback). browser/nightly 레인은 선택이라 실패해도 게이트를 막지 않는다.

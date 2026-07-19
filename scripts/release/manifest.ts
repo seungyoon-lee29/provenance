@@ -44,6 +44,7 @@ const CATEGORY_RULES: readonly CategoryRule[] = [
   { test: (p) => p.startsWith("db/") || p === "scripts/migrate.ts", category: "migration" },
   { test: (p) => p.startsWith("docs/") || /^[A-Z0-9_]+\.md$/.test(p) || p.endsWith("/manifest.json") || p.startsWith("dist/release/"), category: "docs" },
   { test: (p) => p.startsWith("src/") || p.startsWith("tests/") || p.startsWith("scripts/") || p.startsWith("fixtures/"), category: "source" },
+  { test: (p) => p.startsWith(".github/"), category: "ci" }, // CI workflows — remote gate infra, like .husky/ hooks
   {
     test: (p) =>
       p === ".gitignore" || p === ".env.example" || p.startsWith(".husky/") || p === "tsconfig.json"
