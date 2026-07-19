@@ -26,6 +26,7 @@
     "verify:migrations": "tsx scripts/verify-migrations.ts",
     "package:release": "tsx scripts/package-release.ts",
     "check:release-docs": "tsx scripts/check-release-docs.ts",
+    "test:mutation": "stryker run",
     "check": "npm run typecheck && npm run lint && npm run test && npm run test:public-seam && npm run test:server-seam",
     "check:f1": "npm run check && npm run test:browser && npm run test:performance",
     "check:f2": "npm run check && npm run test:browser && npm run test:performance",
@@ -47,6 +48,8 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
     "@types/node": "^22.0.0",
     "@types/pg": "8.20.0",
     "@types/react": "19.2.17",

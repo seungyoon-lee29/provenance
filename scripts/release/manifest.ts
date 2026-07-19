@@ -47,8 +47,9 @@ const CATEGORY_RULES: readonly CategoryRule[] = [
   {
     test: (p) =>
       p === ".gitignore" || p === ".env.example" || p.startsWith(".husky/") || p === "tsconfig.json"
-      || p === "next.config.ts" || p === "next-env.d.ts" || p === "vitest.config.ts" || p === "eslint.config.mjs"
-      || p.startsWith("playwright") && p.endsWith(".ts"),
+      || p === "next.config.ts" || p === "next-env.d.ts"
+      || /^[a-z0-9.-]*\.config\.(ts|mjs|js)$/.test(p) // root vitest/eslint/stryker/playwright configs
+      || (p.startsWith("playwright") && p.endsWith(".ts")),
     category: "config",
   },
 ];

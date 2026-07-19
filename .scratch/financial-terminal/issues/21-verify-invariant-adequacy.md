@@ -1,13 +1,14 @@
 # 21 - 불변식 검증 adequacy: property test + mutation
 
 Type: implementation
-Status: claimed
+Status: resolved
 Triage: ready-for-agent
 Depends on: None
 Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-19 (property 축 완성)
+Last heartbeat: 2026-07-19 (resolved)
+Resolved at: 2026-07-19
 
 ## Objective
 
@@ -73,3 +74,43 @@ fast-check 4.9.0 devDep 추가. 불변식 4종을 standing property test로 상�
 ## 남은 것 (mutation 자동화 축)
 
 AC2(핵심 module mutation score 기준선 + 미만 실패 게이트)는 Stryker 도입 필요. Stryker 전체 실행은 1,233 테스트 × mutant로 무거워(수십 분~시간) 예산 시퀀싱상 별도 판단 필요. 핵심 불변식은 위 수동 물리 mutation으로 이미 adequacy 실증. → 사용자와 스코프 확인 후 진행(좁은 범위 도입 vs CI/nightly 이관).
+
+## Progress (mutation 축 — 2026-07-19) + resolve
+
+Stryker 9.6.1 + vitest-runner 도입(사용자 스코프 결정: 좁은 범위). `stryker.config.mjs`로 안전 최상위 순수 정책 2파일을 mutate 대상으로:
+- `src/composition/runtime-policy.ts` (no-live/paid fail-closed 부팅 게이트)
+- `src/platform/provider-transport/network-policy.ts` (egress/SSRF 가드)
+
+**baseline mutation score 67.17%** (runtime-policy 68.36 / network-policy 63.39, 313 killed / 120 survived / 33 no-cov, 21초). `thresholds.break=60`으로 **회귀 게이트**(안전 가드 약화 시 score 하락→exit 1). `npm run test:mutation` lane(무거운 전체 실행이라 로컬 `check`엔 미편입, CI/nightly 적합).
+
+Stryker가 실제 gap 검출: `network-policy.ts:57` `addresses.some(!public)`→`.every(!public)` mutant survive = 내 SSRF property가 단일 사설 IP만 쳐서 "공인+사설 혼합(DNS rebinding)" 케이스 미커버 → 혼합-address property 추가로 kill. fast-check 전역 seed 고정(`tests/setup/fast-check.ts`, seed 0x5eed)으로 mutation score 결정론화(랜덤 seed면 게이트 flaky).
+
+survived 120 대부분은 runtime-policy.ts의 인접 정책(vault/identity/delivery/credential) — 이 티켓의 no-live 불변식 범위 밖(F0 unit-test 영역).
+
+## Answer
+
+example 스위트의 불변식 adequacy를 standing oracle로 상시화했다. **property 축**: no-live-route·egress-off·money-conservation(broker book 파생 예약 항등+overspend 0)·actual/paper 격리(구조 import 0) 4종을 fast-check property로 걸고(11→12 tests, `check` 자동 편입), 각 가드를 물리 mutation으로 kill 실증. **mutation 축**: Stryker를 안전 최상위 2 module(no-live·egress)에 좁게 도입, baseline 67.17% 기록+break=60 회귀 게이트+seed 고정 결정론화. Stryker가 내 SSRF property의 rebinding gap을 검출해 보강까지 유도.
+
+## Changed files
+
+- `tests/property/{egress-off,no-live-route,money-conservation,actual-paper-isolation}.property.test.ts` (12 property).
+- `tests/setup/fast-check.ts`(seed 고정) + `vitest.config.ts`(setupFiles).
+- `stryker.config.mjs`(좁은 범위 mutate+break 게이트) + `package.json`(fast-check·stryker devDep, `test:mutation`).
+- 커밋: 3bacf86(property 축) → <mutation 축>.
+
+## Validation
+
+- `npm run check` 1,234 tests / 109 files green(property 12 포함).
+- `npm run test:mutation` 67.17% > break 60 → exit 0. 결정론(seed 고정) 확인.
+- 물리 mutation load-bearing: isPublicNetworkAddress 무력화→egress RED, ENABLE_LIVE_TRADING throw 제거→no-live RED, overspend 가드 무력화→money RED(약한 초기 항등 property는 seed-초과 property 추가로 kill), some→every mutant→혼합 property로 kill. 전부 restore green.
+
+## Review
+
+- 자가 적대: Stryker가 property의 실제 gap(SSRF rebinding, some→every)을 검출 → property 보강. 초기 money 항등 property가 랜덤이 seed 경계를 못 쳐 mutation survive → 명시적 경계 property 추가.
+- 티켓 dry-run(2026-07-16)의 적대 정정(actual/paper "shared calc 없음"은 과함) 반영 — 구조 import 격리만 assert.
+
+## Residual risks
+
+- **mutation 범위 좁음**: AC 예시 module(identity/vault/portfolio/accounting) 미포함. 안전 최상위(no-live·egress)만 도입. 확장은 후속(전체 Stryker는 무거워 CI/nightly lane 적합). baseline 67.17%도 인접 정책 미커버로 낮음(불변식 자체는 property로 커버).
+- **mutation 게이트 로컬 미편입**: `test:mutation`은 별도 lane(21초). CI 도입(ticket 22)에서 nightly 편입 권장.
+- property numRuns 100(fast-check 기본): 더 넓은 탐색은 numRuns 상향 여지(seed 고정 유지).

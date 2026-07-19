@@ -50,4 +50,14 @@ describe("egress-off invariant", () => {
       }),
     );
   });
+
+  it("rejects an origin resolving to ANY private address, even mixed with public ones (rebinding)", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.domain(), privateIpv4, fc.integer({ min: 0, max: 2 }), async (host, ip, position) => {
+        const addresses = ["8.8.8.8", "1.1.1.1", "9.9.9.9"];
+        addresses.splice(position, 0, ip); // a single private address among public ones
+        await expect(assertPublicRoute(`https://${host}`, "/v1/x", async () => addresses)).rejects.toThrow();
+      }),
+    );
+  });
 });
