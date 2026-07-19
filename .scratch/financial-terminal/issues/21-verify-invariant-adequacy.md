@@ -1,13 +1,13 @@
 # 21 - 불변식 검증 adequacy: property test + mutation
 
 Type: implementation
-Status: open
-Triage: needs-triage
+Status: claimed
+Triage: ready-for-agent
 Depends on: None
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: claude-main
+Claimed at: 2026-07-19
+Last heartbeat: 2026-07-19 (property 축 완성)
 
 ## Objective
 
@@ -58,3 +58,18 @@ example 기반 스위트가 실제로 도메인 불변식 위반을 잡는지 �
 **단서(이 티켓이 존재하는 이유)**: no-live·actual-paper가 성립하는 건 부분적으로 **F6~F10 미구현이라 위반할 코드가 아직 없어서**다(provisional). storage/route 격리는 해당 모듈이 지어질 때 재점검해야 하므로, 일회성 점검이 아니라 **standing property test**로 승격해야 한다.
 
 **적대 검증(pipeline run `wf_147d7f31`)에서 나온 정정**: actual-paper 불변식 문구 "shared calculation logic 없음"은 설계 보장보다 **과하다** — issue 04:7은 *순수 계산 규칙 구현의 재사용은 허용*하고, 금지하는 건 공유 **ledger/aggregate/storage/mode/order-interface**다. 따라서 standing property test는 후자(공유 저장·집계·mode·주문 인터페이스 없음)를 assert해야 하며, "shared calc 없음"을 걸면 설계가 의도적으로 허용한 것에 오탐이 난다. (이 항목만 verify confidence medium.)
+
+## Progress (property 축 — 2026-07-19)
+
+fast-check 4.9.0 devDep 추가. 불변식 4종을 standing property test로 상시화(`tests/property/`, `tests/**/*.test.ts`라 `npm run check`에 자동 편입 = AC3):
+
+- **egress-off** (`egress-off.property.test.ts`, 4): 임의 사설/예약 IPv4·IPv6 → `isPublicNetworkAddress` false, 임의 non-HTTPS origin·사설 resolve(DNS SSRF) → `assertPublicRoute` throw. 컨테이너 레벨 `verify:network-off`를 순수함수 property로 승격·보강.
+- **no-live-route** (`no-live-route.property.test.ts`, 3): 임의 environment에서 `ENABLE_LIVE_TRADING=true`·비어있지 않은 paid adapter/route/schedule → `loadRuntimeConfig` throw(baseline은 4 env 전부 clean load).
+- **money-conservation** (`money-conservation.property.test.ts`, 2): broker book 파생 예약 항등(reserved == Σ accepted cost, balance 불변, refuse는 상태변화 0) + seed 초과 단일 buy는 refuse·reserved 0(overspend 없음).
+- **actual/paper 격리** (`actual-paper-isolation.property.test.ts`, 2): 두 모듈 트리 상호 import 0(구조 불변; 적대 정정대로 공유 ledger/storage/mode/order-interface 금지이지 순수 계산 재사용 금지 아님). branded type 비호환은 tsc가 컴파일 게이트로 추가 강제.
+
+검증: 11 property test green, `npm run check` 1,233 tests / 109 files green. **물리 mutation으로 load-bearing 확인**: isPublicNetworkAddress 무력화→egress 3 RED, ENABLE_LIVE_TRADING throw 제거→no-live 1 RED, submitLocal overspend 가드 무력화→money 1 RED(초기 항등 property는 랜덤이 seed 경계를 못 쳐 survive→명시적 seed-초과 property 추가로 kill). 전부 restore green.
+
+## 남은 것 (mutation 자동화 축)
+
+AC2(핵심 module mutation score 기준선 + 미만 실패 게이트)는 Stryker 도입 필요. Stryker 전체 실행은 1,233 테스트 × mutant로 무거워(수십 분~시간) 예산 시퀀싱상 별도 판단 필요. 핵심 불변식은 위 수동 물리 mutation으로 이미 adequacy 실증. → 사용자와 스코프 확인 후 진행(좁은 범위 도입 vs CI/nightly 이관).
