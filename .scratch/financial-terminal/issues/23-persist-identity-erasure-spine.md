@@ -7,12 +7,13 @@ Depends on: 09
 Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-19 (슬라이스 1 완료 — PersonalCache async 포트+계약 스위트, 1238 green)
+Last heartbeat: 2026-07-19 (슬라이스 2 완료 — PgPersonalCache + migration, compose pg lane green)
 
 ## Progress
 
-- **슬라이스 1(완료)**: `PersonalCacheRepository<T>` async 포트 도입(pg가 요구하는 async seam) + `PersonalCacheStore`가 in-memory impl로 구현 + 파라미터화 `tests/persistence/personal-cache-contract.ts`(양쪽 impl oracle, codex IMPORTANT #6 대응) + fence 단조성 계약 명시 추가. 기존 F4 oracle async화(behavior-preserving). check 1238/110 green. `src/platform/persistence` UoW는 다중 store 원자 erase가 필요한 Identity 슬라이스에서 도입(PersonalCache 단일 op엔 불필요 — YAGNI).
-- **다음 슬라이스**: pg impl of PersonalCacheRepository + migration(계약 스위트를 pg에 대해 red-first) → Identity(accounts·sessions·fence·receipt) + UoW + 원자 erase + 전-workspace cascade(기존 코드 잠재 SEC-09 버그: identity-service.ts가 viewer workspace만 fence) → backup 드릴.
+- **슬라이스 1(완료)**: `PersonalCacheRepository<T>` async 포트 + `PersonalCacheStore` in-memory impl + 파라미터화 계약 스위트(양쪽 impl oracle) + fence 단조성 계약. 기존 F4 oracle async화. check green.
+- **슬라이스 2(완료)**: `PgPersonalCache`(pg impl) + `db/migrations/0002_personal_cache`(fence·entry 테이블) + `withTransaction`(UoW seed, `src/platform/persistence/pg.ts`). **설계 결정 #1(TOCTOU) 실装**: write·erase 양쪽이 fence row `SELECT … FOR UPDATE`를 entry 조작 前에 잡아 직렬화 → race 시 entry가 fence 아래로 절대 안 남음. fence는 `GREATEST`로 monotonic. pg가 **in-memory와 동일 계약 스위트 통과** + 25회 race 동시성 테스트 통과(compose persistence-integration lane, 실 postgres). `verify-migrations.ts`를 N-migration 안전하게 일반화("down 후 재-up 성공"이 롤백 완전성 검증 — 하드코딩 테이블 체크 제거). compose:verify 5단계 green(잔여 컨테이너 0), CI PR-integration 자동 포함.
+- **다음 슬라이스**: Identity(accounts·sessions·fence·revoke/erasure receipt) pg 이관 + UoW 원자 erase + **전-workspace cascade**(기존 코드 잠재 SEC-09 버그: identity-service.ts:123이 viewer workspace만 fence) + idempotency `UNIQUE(idempotency_key)` 단독 → backup 드릴(post-erase 라운드트립 + stale-restore).
 
 ## Objective
 

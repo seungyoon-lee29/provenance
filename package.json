@@ -24,6 +24,7 @@
     "db:status": "tsx scripts/migrate.ts status",
     "verify:network-off": "tsx scripts/verify-network-off.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
+    "test:persistence-pg": "vitest run tests/persistence/personal-cache.pg.test.ts",
     "package:release": "tsx scripts/package-release.ts",
     "check:release-docs": "tsx scripts/check-release-docs.ts",
     "test:mutation": "stryker run",

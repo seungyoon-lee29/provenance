@@ -149,6 +149,20 @@ services:
         condition: service_healthy
     networks: [runtime]
 
+  persistence-integration:
+    profiles: [verify]
+    build: .
+    command: ["npm", "run", "test:persistence-pg"]
+    environment:
+      <<: *runtime-environment
+      PG_INTEGRATION: "1"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks: [runtime]
+
 networks:
   ingress:
   runtime:

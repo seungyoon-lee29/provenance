@@ -30,20 +30,27 @@ async function main(): Promise<void> {
 
   const smokeUrl = new URL(baseUrl);
   smokeUrl.pathname = `/${smokeDatabase}`;
+  const status = async (): Promise<{ applied: string[]; pending: string[] }> =>
+    JSON.parse(await runMigration("status", smokeUrl.toString())) as { applied: string[]; pending: string[] };
   try {
     await runMigration("up", smokeUrl.toString());
-    const firstStatus = JSON.parse(await runMigration("status", smokeUrl.toString())) as { applied: string[]; pending: string[] };
-    if (firstStatus.applied.length !== 1 || firstStatus.pending.length !== 0) throw new Error("fresh migration did not apply exactly once");
+    const first = await status();
+    if (first.pending.length !== 0 || first.applied.length < 1) throw new Error("fresh migration did not apply cleanly");
+    const total = first.applied.length;
+
     await runMigration("up", smokeUrl.toString());
-    const secondStatus = JSON.parse(await runMigration("status", smokeUrl.toString())) as { applied: string[]; pending: string[] };
-    if (secondStatus.applied.length !== 1 || secondStatus.pending.length !== 0) throw new Error("migration reapply was not idempotent");
+    const second = await status();
+    if (second.applied.length !== total || second.pending.length !== 0) throw new Error("migration reapply was not idempotent");
+
     await runMigration("down", smokeUrl.toString());
-    const smoke = new Client({ connectionString: smokeUrl.toString() });
-    await smoke.connect();
-    const rollback = await smoke.query<{ relation: string | null }>("SELECT to_regclass('public.runtime_components') AS relation");
-    await smoke.end();
-    if (rollback.rows[0]?.relation !== null) throw new Error("migration rollback left foundation table behind");
+    const rolledBack = await status();
+    if (rolledBack.applied.length !== total - 1 || rolledBack.pending.length !== 1) throw new Error("rollback did not roll back exactly the latest migration");
+
+    // Re-applying the rolled-back migration must succeed — which it only does if
+    // `down` fully dropped its objects (a plain CREATE TABLE would otherwise conflict).
     await runMigration("up", smokeUrl.toString());
+    const restored = await status();
+    if (restored.applied.length !== total || restored.pending.length !== 0) throw new Error("re-apply after rollback failed (incomplete down migration)");
   } finally {
     const cleanup = new Client({ connectionString: baseUrl.toString() });
     await cleanup.connect();
