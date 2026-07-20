@@ -90,3 +90,16 @@ MEDIUM 2 live-smoke, MEDIUM 1 best-effort+residual) → 재검증 green.
 - **MEDIUM 1 스트리밍 캡**: Content-Length 없는 청크 응답은 미캡(base가 KIS로 pin돼 실위협 낮음).
 - **위젯 브라우저 QA**: 로그인 세션에서 위젯 렌더 시각 확인 미수행(라우트 데이터 경로는 실측).
 - 실시간 SSE·해외/선물·주문·휴장일 캘린더는 이월(티켓 24/25 범위).
+
+## Verification — 실 KIS end-to-end 라이브 스모크 (2026-07-21)
+
+위 residual의 **running-server KIS→라우트 통합**과 **위젯 브라우저 QA**를 실측 종결:
+- 독립 pg(migrate) + `IDENTITY_PERSISTENCE=postgres` + `LOCAL_PROVIDER_CREDENTIAL_MODE=single_owner`
+  + 실 KIS(.env.local) + `RUN_KIS_PAPER_READ_CONTRACT=true`로 dev 부팅.
+- peek seam으로 이메일 로그인 자동화 → workspace id 확보 → owner 설정 후 재부팅(pg 세션 생존).
+- owner 세션 `/api/market?symbol=005930` → **available, 244,000 KRW, priceBasis eod, freshness stale,
+  venue KRX, asOf 2026-07-20T06:30Z(=15:30 KST 전일 마감), audience personal**(공용 유출 0).
+- 실브라우저 `/workspace` 위젯 렌더 확인(스크린샷): 삼성전자 244,000·SK하이닉스(000660) 1,764,000,
+  인터랙티브 조회 live. 프론트↔백엔드 일치는 위젯을 `InformationOutcome<MarketObservation>` 계약
+  타입 소비로 리팩터해 컴파일러 강제(커밋 4286c77).
+- 폐장 시간대라 정직하게 stale/eod. 실시간 틱은 개장(09:00 KST) 후. 개인용 잔여 = 티켓 29(휴장일)뿐.
