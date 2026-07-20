@@ -29,41 +29,41 @@ describe("withDeadline (§11.3 no infinite spinner)", () => {
 });
 
 describe("PersonalCacheStore + erasure participant (SEC-09)", () => {
-  it("shreds behind the fence and suppresses late/restore writes", () => {
+  it("shreds behind the fence and suppresses late/restore writes", async () => {
     const store = new PersonalCacheStore<string>();
-    expect(store.write("ws-a", "quote:AAA", "101.25", 1)).toBe(true);
-    expect(store.write("ws-a", "research:r1", "summary", 1)).toBe(true);
-    expect(store.read("ws-a", "quote:AAA")).toBe("101.25");
-    expect(store.size("ws-a")).toBe(2);
+    expect(await store.write("ws-a", "quote:AAA", "101.25", 1)).toBe(true);
+    expect(await store.write("ws-a", "research:r1", "summary", 1)).toBe(true);
+    expect(await store.read("ws-a", "quote:AAA")).toBe("101.25");
+    expect(await store.size("ws-a")).toBe(2);
 
-    const receipt = store.eraseWorkspace("ws-a", 5);
+    const receipt = await store.eraseWorkspace("ws-a", 5);
     expect(receipt.shredded).toBe(2);
-    expect(store.read("ws-a", "quote:AAA")).toBeUndefined();
-    expect(store.isErased("ws-a", 5)).toBe(true);
+    expect(await store.read("ws-a", "quote:AAA")).toBeUndefined();
+    expect(await store.isErased("ws-a", 5)).toBe(true);
 
     // late worker result / backup restore at an old epoch → suppressed.
-    expect(store.write("ws-a", "quote:AAA", "101.25", 3)).toBe(false);
-    expect(store.read("ws-a", "quote:AAA")).toBeUndefined();
+    expect(await store.write("ws-a", "quote:AAA", "101.25", 3)).toBe(false);
+    expect(await store.read("ws-a", "quote:AAA")).toBeUndefined();
     // a genuinely new post-erasure authorized epoch may write again.
-    expect(store.write("ws-a", "quote:BBB", "9.9", 6)).toBe(true);
-    expect(store.read("ws-a", "quote:BBB")).toBe("9.9");
+    expect(await store.write("ws-a", "quote:BBB", "9.9", 6)).toBe(true);
+    expect(await store.read("ws-a", "quote:BBB")).toBe("9.9");
   });
 
-  it("isolates workspaces: erasing A does not fence B", () => {
+  it("isolates workspaces: erasing A does not fence B", async () => {
     const store = new PersonalCacheStore<string>();
-    store.write("ws-a", "k", "va", 1);
-    store.write("ws-b", "k", "vb", 1);
-    store.eraseWorkspace("ws-a", 9);
-    expect(store.read("ws-a", "k")).toBeUndefined();
-    expect(store.read("ws-b", "k")).toBe("vb");
-    expect(store.isErased("ws-b", 1)).toBe(false);
+    await store.write("ws-a", "k", "va", 1);
+    await store.write("ws-b", "k", "vb", 1);
+    await store.eraseWorkspace("ws-a", 9);
+    expect(await store.read("ws-a", "k")).toBeUndefined();
+    expect(await store.read("ws-b", "k")).toBe("vb");
+    expect(await store.isErased("ws-b", 1)).toBe(false);
   });
 
   it("both FinancialInformation and ResearchAssistant participants shred behind one fence, with receipts", async () => {
     const financial = new PersonalCacheStore<string>();
     const research = new PersonalCacheStore<string>();
-    financial.write("ws-a", "follow:AAA", "cache", 1);
-    research.write("ws-a", "job:r1", "result", 1);
+    await financial.write("ws-a", "follow:AAA", "cache", 1);
+    await research.write("ws-a", "job:r1", "result", 1);
 
     const receipts: Array<Readonly<{ label: string; workspace: string; shredded: number; fence: number }>> = [];
     const participants: readonly ErasureParticipant[] = [
@@ -75,13 +75,13 @@ describe("PersonalCacheStore + erasure participant (SEC-09)", () => {
       await participant.erase({ accountReference: "account:a1", workspaceReference: "ws-a", scope: "account", fence: 7 });
     }
 
-    expect(financial.read("ws-a", "follow:AAA")).toBeUndefined();
-    expect(research.read("ws-a", "job:r1")).toBeUndefined();
+    expect(await financial.read("ws-a", "follow:AAA")).toBeUndefined();
+    expect(await research.read("ws-a", "job:r1")).toBeUndefined();
     expect(receipts.map((r) => r.label).sort()).toEqual(["financial-information", "research-assistant"]);
     expect(receipts.every((r) => r.shredded === 1 && r.fence === 7)).toBe(true);
     // restore suppression holds for both after erasure.
-    expect(financial.write("ws-a", "follow:AAA", "cache", 2)).toBe(false);
-    expect(research.write("ws-a", "job:r1", "result", 2)).toBe(false);
+    expect(await financial.write("ws-a", "follow:AAA", "cache", 2)).toBe(false);
+    expect(await research.write("ws-a", "job:r1", "result", 2)).toBe(false);
   });
 });
 

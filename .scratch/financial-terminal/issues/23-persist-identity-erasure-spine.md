@@ -1,13 +1,18 @@
 # 23 - Persistence seam (P1): Identity·PersonalCache 영속 + 삭제억제 드릴
 
 Type: implementation
-Status: open
+Status: claimed
 Triage: ready-for-agent
 Depends on: 09
 Blocked by: None
-Owner: unclaimed
-Claimed at: -
-Last heartbeat: -
+Owner: claude-main
+Claimed at: 2026-07-19
+Last heartbeat: 2026-07-19 (슬라이스 1 완료 — PersonalCache async 포트+계약 스위트, 1238 green)
+
+## Progress
+
+- **슬라이스 1(완료)**: `PersonalCacheRepository<T>` async 포트 도입(pg가 요구하는 async seam) + `PersonalCacheStore`가 in-memory impl로 구현 + 파라미터화 `tests/persistence/personal-cache-contract.ts`(양쪽 impl oracle, codex IMPORTANT #6 대응) + fence 단조성 계약 명시 추가. 기존 F4 oracle async화(behavior-preserving). check 1238/110 green. `src/platform/persistence` UoW는 다중 store 원자 erase가 필요한 Identity 슬라이스에서 도입(PersonalCache 단일 op엔 불필요 — YAGNI).
+- **다음 슬라이스**: pg impl of PersonalCacheRepository + migration(계약 스위트를 pg에 대해 red-first) → Identity(accounts·sessions·fence·receipt) + UoW + 원자 erase + 전-workspace cascade(기존 코드 잠재 SEC-09 버그: identity-service.ts가 viewer workspace만 fence) → backup 드릴.
 
 ## Objective
 
