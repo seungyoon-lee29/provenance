@@ -89,6 +89,10 @@ export function buildWorkspaceViewer(input: Readonly<{
 
 export type IssuedSession = Readonly<{ proof: SessionProof; viewer: WorkspaceViewerContextShape }>;
 
+/** Durable idempotency receipts for the destructive commands (ticket 23 slice 3b-iii-b). */
+export type ReceiptKind = "revoke" | "erase";
+export type StoredReceipt = Readonly<{ payloadHash: string; outcome: unknown }>;
+
 /**
  * Persistence seam for the Identity spine (ticket 23). The in-memory impl below and a pg impl
  * (slice 3b-iii) must satisfy the SAME parameterized contract suite so their null/ordering/fence/
@@ -116,6 +120,15 @@ export interface IdentityStore {
   isErasedAccount(accountReference: string): Promise<boolean>;
   fenceFor(accountReference: string): Promise<number>;
   accountState(accountReference: string): Promise<AccountState | undefined>;
+  /**
+   * Durable idempotency receipts for revoke/erasure. Keyed by (kind, proofHash, idempotencyKey) —
+   * the command shreds its own session, so a retry carries a now-dead proof that can never be
+   * re-resolved to an account; the receipt must be findable pre-resolve by the proof hash it was
+   * issued under. `payloadHash` is stored separately (never in the key) so the caller can replay on
+   * a match and reject a same-key/different-payload retry as a side-effect-free conflict (SEC design #3).
+   */
+  getReceipt(kind: ReceiptKind, proofHash: string, idempotencyKey: string): Promise<StoredReceipt | undefined>;
+  putReceipt(kind: ReceiptKind, proofHash: string, idempotencyKey: string, payloadHash: string, outcome: unknown): Promise<void>;
 }
 
 /**
@@ -131,6 +144,7 @@ export class IdentitySessionStore implements IdentityStore {
   readonly #accounts = new Map<string, AccountRecord>();
   readonly #sessions = new Map<string, SessionRecord>();
   readonly #erasedAccounts = new Map<string, number>(); // accountReference → monotonic deletion fence
+  readonly #receipts = new Map<string, StoredReceipt>(); // `${kind}:${proofHash}:${idempotencyKey}` → receipt
   #globalFence = 0;
 
   constructor(
@@ -352,5 +366,14 @@ export class IdentitySessionStore implements IdentityStore {
 
   async accountState(accountReference: string): Promise<AccountState | undefined> {
     return this.#account(accountReference)?.state;
+  }
+
+  async getReceipt(kind: ReceiptKind, proofHash: string, idempotencyKey: string): Promise<StoredReceipt | undefined> {
+    return this.#receipts.get(`${kind}:${proofHash}:${idempotencyKey}`);
+  }
+
+  async putReceipt(kind: ReceiptKind, proofHash: string, idempotencyKey: string, payloadHash: string, outcome: unknown): Promise<void> {
+    const key = `${kind}:${proofHash}:${idempotencyKey}`;
+    if (!this.#receipts.has(key)) this.#receipts.set(key, { payloadHash, outcome }); // first-writer-wins, mirrors pg ON CONFLICT DO NOTHING
   }
 }

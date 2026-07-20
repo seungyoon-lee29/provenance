@@ -25,13 +25,10 @@ export interface ErasureParticipant {
   erase(context: Readonly<{ accountReference: string; workspaceReference: string; scope: "workspace" | "account"; fence: number }>): Promise<void>;
 }
 
-type RevokeReceipt = { canonicalHash: string; outcome: SessionOutcome };
-type ErasureReceipt = { canonicalHash: string; outcome: ErasureCommandOutcome };
-
 export class IdentityService {
+  // Short-lived challenges stay ephemeral by design (ticket 23 decision #4); the durable revoke/
+  // erasure receipts moved to the IdentityStore port so they survive a restart.
   readonly #reauth = new Map<string, { accountReference: string; expiresAtMs: number }>();
-  readonly #revokeReceipts = new Map<string, RevokeReceipt>();
-  readonly #erasureReceipts = new Map<string, ErasureReceipt>();
 
   constructor(
     private readonly store: IdentityStore,
@@ -64,12 +61,12 @@ export class IdentityService {
 
   async revokeSession(command: Readonly<{ scope: "current" | "all" }>, control: MutationControl, sessionProof: SessionProof): Promise<SessionOutcome> {
     // Bind the receipt to this proof so two accounts reusing an idempotencyKey string never collide.
-    const receiptKey = `${hashProof(sessionProof.value)}:${control.idempotencyKey}`;
+    const proofHash = hashProof(sessionProof.value);
     const canonicalHash = hashProof(`revoke ${command.scope}`);
-    const prior = this.#revokeReceipts.get(receiptKey);
+    const prior = await this.store.getReceipt("revoke", proofHash, control.idempotencyKey);
     if (prior !== undefined) {
       // idempotency short-circuits before resolve so an at-least-once retry with a now-dead session still replays.
-      return prior.canonicalHash === canonicalHash ? prior.outcome : { kind: "SessionOutcome", status: "conflict" };
+      return prior.payloadHash === canonicalHash ? (prior.outcome as SessionOutcome) : { kind: "SessionOutcome", status: "conflict" };
     }
     const viewer = await this.store.resolve(sessionProof);
     if (viewer.kind !== "workspace") return { kind: "SessionOutcome", status: "rejected" };
@@ -83,7 +80,7 @@ export class IdentityService {
     else await this.store.revokeAll(accountReference);
     const revision = await this.store.bumpSecurityRevision(accountReference);
     const outcome: SessionOutcome = { kind: "SessionOutcome", status: "revoked", revision: brandReference<string, "Revision">(String(revision)) };
-    this.#revokeReceipts.set(receiptKey, { canonicalHash, outcome });
+    await this.store.putReceipt("revoke", proofHash, control.idempotencyKey, canonicalHash, outcome);
     return outcome;
   }
 
@@ -109,13 +106,13 @@ export class IdentityService {
     control: MutationControl,
     sessionProof: SessionProof,
   ): Promise<ErasureCommandOutcome> {
-    const receiptKey = `${hashProof(sessionProof.value)}:${control.idempotencyKey}`;
+    const proofHash = hashProof(sessionProof.value);
     const canonicalHash = hashProof(`erase ${command.scope}`);
-    const prior = this.#erasureReceipts.get(receiptKey);
+    const prior = await this.store.getReceipt("erase", proofHash, control.idempotencyKey);
     if (prior !== undefined) {
       // idempotency short-circuits before resolve: the command shreds this very session, so a retry
       // carries a now-dead proof — it must still replay the original receipt, not fail.
-      return prior.canonicalHash === canonicalHash ? prior.outcome : { kind: "ErasureCommandOutcome", status: "conflict" };
+      return prior.payloadHash === canonicalHash ? (prior.outcome as ErasureCommandOutcome) : { kind: "ErasureCommandOutcome", status: "conflict" };
     }
     const viewer = await this.store.resolve(sessionProof);
     if (viewer.kind !== "workspace") return { kind: "ErasureCommandOutcome", status: "denied" };
@@ -147,7 +144,10 @@ export class IdentityService {
       fence: String(fence),
       revision: brandReference<string, "Revision">(String(revision)),
     };
-    this.#erasureReceipts.set(receiptKey, { canonicalHash, outcome });
+    // fence-first: the deletion fence is already durably committed above, so a crash before this
+    // receipt persists still leaves the erasure enforced (reads suppressed). Restart replay of the
+    // exact outcome is best-effort until the cross-module UnitOfWork (P2) makes the two atomic.
+    await this.store.putReceipt("erase", proofHash, control.idempotencyKey, canonicalHash, outcome);
     return outcome;
   }
 }

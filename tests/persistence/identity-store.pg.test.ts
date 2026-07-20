@@ -10,7 +10,7 @@ import { identityStoreContract } from "./identity-store-contract";
 const PG = process.env.PG_INTEGRATION === "1";
 
 async function reset(pool: Pool): Promise<void> {
-  await pool.query("TRUNCATE identity_session, identity_account_fence, identity_account_workspace, identity_account CASCADE");
+  await pool.query("TRUNCATE identity_receipt, identity_session, identity_account_fence, identity_account_workspace, identity_account CASCADE");
   await pool.query("ALTER SEQUENCE identity_fence_seq RESTART WITH 1");
 }
 
@@ -67,5 +67,18 @@ describe.skipIf(!PG)("PgIdentityStore (real postgres)", () => {
     const afterErase = new PgIdentityStore(pool, clock, new SequenceEntropy("after"));
     expect((await afterErase.resolve(issued.proof)).kind).toBe("guest");
     expect(await afterErase.isErasedAccount(account.accountReference)).toBe(true);
+  });
+
+  it("a command receipt survives a process restart: a retry on a fresh store replays it (no re-execution)", async () => {
+    await reset(pool);
+    const writer = new PgIdentityStore(pool, new IdentityTestClock(1_000_000), new SequenceEntropy("rcpt-writer"));
+    await writer.putReceipt("erase", "proof-hash-1", "idem-1", "payload-1", { kind: "ErasureCommandOutcome", status: "accepted", fence: "1" });
+
+    // A fresh instance (proxy for a restart) finds the persisted receipt by its pre-resolve coordinates.
+    const rebooted = new PgIdentityStore(pool, new IdentityTestClock(1_000_000), new SequenceEntropy("rcpt-reboot"));
+    expect(await rebooted.getReceipt("erase", "proof-hash-1", "idem-1")).toEqual({
+      payloadHash: "payload-1",
+      outcome: { kind: "ErasureCommandOutcome", status: "accepted", fence: "1" },
+    });
   });
 });

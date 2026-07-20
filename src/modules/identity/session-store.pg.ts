@@ -13,6 +13,8 @@ import {
   type AccountState,
   type IdentityStore,
   type IssuedSession,
+  type ReceiptKind,
+  type StoredReceipt,
 } from "./session-store";
 
 type AccountRow = {
@@ -335,5 +337,23 @@ export class PgIdentityStore implements IdentityStore {
   async accountState(accountReference: string): Promise<AccountState | undefined> {
     const row = (await this.pool.query<{ state: string }>("SELECT state FROM identity_account WHERE account_reference = $1", [accountReference])).rows[0];
     return row ? (row.state as AccountState) : undefined;
+  }
+
+  async getReceipt(kind: ReceiptKind, proofHash: string, idempotencyKey: string): Promise<StoredReceipt | undefined> {
+    const row = (await this.pool.query<{ payload_hash: string; outcome: unknown }>(
+      "SELECT payload_hash, outcome FROM identity_receipt WHERE kind = $1 AND proof_hash = $2 AND idempotency_key = $3",
+      [kind, proofHash, idempotencyKey],
+    )).rows[0];
+    return row ? { payloadHash: row.payload_hash, outcome: row.outcome } : undefined;
+  }
+
+  async putReceipt(kind: ReceiptKind, proofHash: string, idempotencyKey: string, payloadHash: string, outcome: unknown): Promise<void> {
+    // The (kind, proof_hash, idempotency_key) PK makes a re-put a no-op (first-writer-wins) — the
+    // replay-vs-conflict decision is the caller's, via payload_hash. Never double-inserts.
+    await this.pool.query(
+      `INSERT INTO identity_receipt (kind, proof_hash, idempotency_key, payload_hash, outcome)
+       VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+      [kind, proofHash, idempotencyKey, payloadHash, JSON.stringify(outcome)],
+    );
   }
 }

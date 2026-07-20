@@ -151,5 +151,29 @@ export function identityStoreContract(label: string, makeStore: MakeIdentityStor
       expect(next).toBe(base + 1);
       expect(await store.accountSecurityRevision(account.accountReference)).toBe(next);
     });
+
+    it("persists command receipts keyed by (kind, proofHash, idempotencyKey); other coordinates are isolated", async () => {
+      const { store } = await fresh();
+      expect(await store.getReceipt("revoke", "proofX", "k1")).toBeUndefined();
+      await store.putReceipt("revoke", "proofX", "k1", "payloadA", { kind: "SessionOutcome", status: "revoked" });
+      expect(await store.getReceipt("revoke", "proofX", "k1")).toEqual({
+        payloadHash: "payloadA",
+        outcome: { kind: "SessionOutcome", status: "revoked" },
+      });
+      // A receipt is bound to all three coordinates — a different kind, key, or proof never replays it.
+      expect(await store.getReceipt("erase", "proofX", "k1")).toBeUndefined();
+      expect(await store.getReceipt("revoke", "proofX", "k2")).toBeUndefined();
+      expect(await store.getReceipt("revoke", "proofY", "k1")).toBeUndefined();
+    });
+
+    it("receipt writes are first-writer-wins: a re-put on the same key never overwrites (no double-insert)", async () => {
+      const { store } = await fresh();
+      await store.putReceipt("erase", "proofX", "k1", "payloadA", { status: "accepted", n: 1 });
+      await store.putReceipt("erase", "proofX", "k1", "payloadB", { status: "accepted", n: 2 }); // ignored
+      expect(await store.getReceipt("erase", "proofX", "k1")).toEqual({
+        payloadHash: "payloadA",
+        outcome: { status: "accepted", n: 1 },
+      });
+    });
   });
 }
