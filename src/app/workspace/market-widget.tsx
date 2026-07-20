@@ -2,33 +2,32 @@
 
 import { useEffect, useState } from "react";
 
+import type { MarketObservation } from "@/modules/financial-information/data/contracts";
+import type { InformationOutcome } from "@/shared/contracts/information-outcome";
+
 // Minimal personal-quote widget (ticket 26-c). Consumes /api/market and renders a value ONLY on an
 // available outcome (F1 discipline: no fabricated numbers); otherwise it shows provenance-free status.
-type Outcome = Readonly<{
-  status: "available" | "unavailable" | "failed";
-  reason?: string;
-  value?: Readonly<{ symbol: string; last: number; currency: string; change: number; changePercent: number; priceBasis: string }>;
-  provider?: string;
-  freshness?: string;
-  asOf?: string;
-}>;
+// The parsed body IS the backend contract type — so the compiler, not a hand-rolled shape, guarantees
+// the widget and /api/market stay in sync (a `network_error` sentinel covers transport/non-2xx).
+type MarketOutcome = InformationOutcome<MarketObservation>;
 
 export function MarketWidget({ initialSymbol = "005930" }: Readonly<{ initialSymbol?: string }>) {
   const [symbol, setSymbol] = useState(initialSymbol);
   const [query, setQuery] = useState(initialSymbol);
   // Tag each result with the query it answers so loading is DERIVED (no synchronous reset in the effect).
-  const [result, setResult] = useState<{ forQuery: string; data: Outcome } | undefined>(undefined);
+  const [result, setResult] = useState<{ forQuery: string; data: MarketOutcome | "network_error" } | undefined>(undefined);
 
   useEffect(() => {
     let active = true;
-    void fetch(`/api/market?symbol=${encodeURIComponent(query)}`)
-      .then((response) => (response.ok ? (response.json() as Promise<Outcome>) : ({ status: "failed" } as Outcome)))
-      .then((data) => {
+    void (async () => {
+      try {
+        const response = await fetch(`/api/market?symbol=${encodeURIComponent(query)}`);
+        const data: MarketOutcome | "network_error" = response.ok ? ((await response.json()) as MarketOutcome) : "network_error";
         if (active) setResult({ forQuery: query, data });
-      })
-      .catch(() => {
-        if (active) setResult({ forQuery: query, data: { status: "failed" } });
-      });
+      } catch {
+        if (active) setResult({ forQuery: query, data: "network_error" });
+      }
+    })();
     return () => {
       active = false;
     };
@@ -59,7 +58,9 @@ export function MarketWidget({ initialSymbol = "005930" }: Readonly<{ initialSym
 
       {outcome === undefined ? (
         <p aria-live="polite">불러오는 중...</p>
-      ) : outcome.status === "available" && outcome.value !== undefined ? (
+      ) : outcome === "network_error" ? (
+        <p data-role="market-unavailable">일시적으로 불러올 수 없습니다.</p>
+      ) : outcome.status === "available" ? (
         <div data-role="market-value">
           <p style={{ margin: "0 0 4px", fontSize: "1.25rem" }}>
             <span data-role="market-last">{outcome.value.last.toLocaleString()}</span> {outcome.value.currency}{" "}
@@ -73,10 +74,10 @@ export function MarketWidget({ initialSymbol = "005930" }: Readonly<{ initialSym
             {outcome.provider} · {outcome.asOf}
           </p>
         </div>
+      ) : outcome.status === "unavailable" ? (
+        <p data-role="market-unavailable">표시할 수 없음: {outcome.reason}</p>
       ) : (
-        <p data-role="market-unavailable">
-          {outcome.status === "unavailable" ? `표시할 수 없음: ${outcome.reason ?? "no_data"}` : "일시적으로 불러올 수 없습니다."}
-        </p>
+        <p data-role="market-unavailable">일시적으로 불러올 수 없습니다.</p>
       )}
     </section>
   );
