@@ -310,6 +310,52 @@ describe("KIS session freshness (ticket 25 — codex HIGH 2)", () => {
   });
 });
 
+describe("KIS holiday freshness (ticket 29 — 평일 휴장일 실시간 위조 봉쇄)", () => {
+  // Generous residual so a prev close many days back still surfaces (stale) for a deterministic assert.
+  const SESSION_POLICY: ObservationExpiryPolicy = {
+    kind: "residual",
+    declaredDelayMs: 60_000,
+    softResidualMs: 15 * 60_000,
+    hardResidualMs: 30 * 24 * 3_600_000,
+  };
+  async function readAt(iso: string) {
+    const { http } = stubHttp();
+    const info = createKisMarketInformation({
+      http,
+      clock: { now: () => Date.parse(iso), sleep: () => new Promise<void>(() => {}) },
+      config: { ...CONFIG, policy: SESSION_POLICY },
+    });
+    return info.read(query("005930"), ownerViewer()).result;
+  }
+
+  // Each is a WEEKDAY at 10:00 KST (inside 09:00–15:30) that faked `trade` before the fix.
+  it.each([
+    ["신정", "2026-01-01T01:00:00Z"],
+    ["설날", "2026-02-17T01:00:00Z"],
+    ["삼일절 대체(3/1 일)", "2026-03-02T01:00:00Z"],
+    ["지방선거", "2026-06-03T01:00:00Z"],
+    ["연말 폐장", "2026-12-31T01:00:00Z"],
+  ])("weekday holiday %s at 10:00 KST → eod, never a fabricated realtime trade", async (_name, iso) => {
+    const outcome = await readAt(iso);
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.priceBasis).toBe("eod");
+    expect(outcome.freshness).not.toBe("realtime");
+  });
+
+  it("9/28(월)은 거래일 — 추석 연휴 9/26이 토요일이라 대체 없음 → trade", async () => {
+    const outcome = await readAt("2026-09-28T01:00:00Z"); // Mon 10:00 KST
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.priceBasis).toBe("trade");
+  });
+
+  it("step-back가 설날 블록+주말을 건너뜀: 2/19 08:00 KST 개장전 → 직전 마감은 2/13(금)", async () => {
+    const outcome = await readAt("2026-02-18T23:00:00Z"); // 2026-02-19 08:00 KST, before open
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.priceBasis).toBe("eod");
+    expect(outcome.asOf.startsWith("2026-02-13")).toBe(true);
+  });
+});
+
 describe("KIS deadline & concurrency (slice 6 — codex blockers)", () => {
   it("a hanging transport resolves to a timeout outcome by the data deadline (no infinite spinner)", async () => {
     const http: KisHttp = () => new Promise(() => {}); // never resolves

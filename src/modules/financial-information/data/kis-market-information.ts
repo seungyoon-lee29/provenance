@@ -14,6 +14,7 @@ import type {
 import { applyObservationFreshness, OBSERVATION_POLICY_VERSION } from "./observation-freshness";
 import { apiRequiredOutcome, classifyProviderFailure } from "./outcome-classification";
 import { DATA_DEADLINE_MS, deadlineTimeoutOutcome, withDeadline, type Sleep } from "./deadline";
+import { KRX_HOLIDAYS, KRX_HOLIDAY_YEARS } from "./krx-holidays";
 
 /**
  * KIS 모의투자(:29443) REST 현재가 어댑터 (ticket 24). Implements the F4 `MarketInformation`
@@ -94,30 +95,47 @@ function businessFailure(msgCd: string | undefined, nowMs: number): ProviderFail
   return { kind: "upstream" };
 }
 
-// KRX regular continuous session: Mon–Fri 09:00–15:30 KST (UTC+9, no DST). inquire-price carries no
-// as-of timestamp, so freshness is derived from the wall clock: in-session the quote is a live trade
-// (asOf = now); off-session KIS returns the previous close, so asOf = the last session close and the
-// basis is eod — the freshness machine then ages it honestly instead of faking a realtime trade.
-// ponytail: weekday+time only; KRX holidays would need a holiday feed (documented residual, ticket 25).
+// KRX regular continuous session: Mon–Fri 09:00–15:30 KST (UTC+9, no DST), excluding holidays.
+// inquire-price carries no as-of timestamp, so freshness is derived from the wall clock: in-session the
+// quote is a live trade (asOf = now); off-session (weekend / holiday / before-open / after-close) KIS
+// returns the previous close, so asOf = the last trading session's close and the basis is eod — the
+// freshness machine then ages it honestly instead of faking a realtime trade.
 const KST_OFFSET_MS = 9 * 3_600_000;
 const SESSION_OPEN_MIN = 9 * 60;
 const SESSION_CLOSE_MIN = 15 * 60 + 30;
 
+// `kst` is a Date whose UTC getters read the KST wall clock (nowMs already offset by KST_OFFSET_MS).
+function krxDateKey(kst: Date): string {
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(kst.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+// Closed = weekend, or a KRX holiday in a covered year. Outside covered years only weekends are known
+// (the holiday list is a per-year static bundle) — there it under-marks holidays rather than fabricating.
+function isKrxClosed(kst: Date): boolean {
+  const dow = kst.getUTCDay(); // 0=Sun … 6=Sat, in KST
+  if (dow === 0 || dow === 6) return true;
+  if (!KRX_HOLIDAY_YEARS.has(kst.getUTCFullYear())) return false;
+  return KRX_HOLIDAYS.has(krxDateKey(kst));
+}
+
 function krxSessionAsOf(nowMs: number): { asOfMs: number; basis: MarketObservation["priceBasis"] } {
   const kst = new Date(nowMs + KST_OFFSET_MS); // UTC getters now read the KST wall clock
-  const dow = kst.getUTCDay(); // 0=Sun … 6=Sat, in KST
   const minute = kst.getUTCHours() * 60 + kst.getUTCMinutes();
-  const isWeekday = dow >= 1 && dow <= 5;
-  if (isWeekday && minute >= SESSION_OPEN_MIN && minute < SESSION_CLOSE_MIN) {
+  const inSession = !isKrxClosed(kst) && minute >= SESSION_OPEN_MIN && minute < SESSION_CLOSE_MIN;
+  if (inSession) {
     return { asOfMs: nowMs, basis: "trade" };
   }
-  // Most recent session close: today 15:30 KST if today is a weekday past close, else step back to
-  // the previous weekday's 15:30 (skipping the weekend).
+  // Most recent session close: today 15:30 KST if today is a trading day past close, else step back to
+  // the previous trading day's 15:30 (skipping weekends AND holidays).
   let closeWallMs = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 15, 30);
-  if (!(isWeekday && minute >= SESSION_CLOSE_MIN)) {
-    for (let back = 1; back <= 7; back++) {
+  const todayClosedAfterSession = !isKrxClosed(kst) && minute >= SESSION_CLOSE_MIN;
+  if (!todayClosedAfterSession) {
+    for (let back = 1; back <= 10; back++) {
       const probe = new Date(closeWallMs - back * 86_400_000);
-      if (probe.getUTCDay() >= 1 && probe.getUTCDay() <= 5) {
+      if (!isKrxClosed(probe)) {
         closeWallMs -= back * 86_400_000;
         break;
       }
