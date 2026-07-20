@@ -58,6 +58,44 @@ describe("runtime policy", () => {
     }))).toThrow("KIS process-global credentials require a KIS contract opt-in");
   });
 
+  it("derives kisMarketEnabled only for single_owner with KIS creds + the paper-read contract", () => {
+    const enabled = loadRuntimeConfig(environment({
+      LOCAL_PROVIDER_CREDENTIAL_MODE: "single_owner",
+      LOCAL_PROVIDER_OWNER_WORKSPACE_ID: "workspace-1",
+      KIS_APP_KEY: "k",
+      KIS_APP_SECRET: "s",
+      RUN_KIS_PAPER_READ_CONTRACT: "true",
+    }));
+    expect(enabled.kisMarketEnabled).toBe(true);
+
+    // default (no creds) → disabled
+    expect(loadRuntimeConfig(environment()).kisMarketEnabled).toBe(false);
+
+    // creds + contract but contract_only (no owner workspace to scope to) → disabled
+    expect(loadRuntimeConfig(environment({
+      KIS_APP_KEY: "k",
+      KIS_APP_SECRET: "s",
+      RUN_KIS_PAPER_READ_CONTRACT: "true",
+    })).kisMarketEnabled).toBe(false);
+  });
+
+  it("pins KIS_REST_BASE to an official KIS origin (credential-destination allowlist)", () => {
+    const single = {
+      LOCAL_PROVIDER_CREDENTIAL_MODE: "single_owner",
+      LOCAL_PROVIDER_OWNER_WORKSPACE_ID: "workspace-1",
+      KIS_APP_KEY: "k",
+      KIS_APP_SECRET: "s",
+      RUN_KIS_PAPER_READ_CONTRACT: "true",
+    };
+    // an arbitrary host would exfiltrate appkey/appsecret on the token POST → rejected fail-closed
+    expect(() => loadRuntimeConfig(environment({ ...single, KIS_REST_BASE: "https://attacker.example" }))).toThrow("KIS_REST_BASE");
+    // the two official KIS REST origins are allowed and resolve into kisMarketBase
+    const paper = loadRuntimeConfig(environment({ ...single, KIS_REST_BASE: "https://openapivts.koreainvestment.com:29443" }));
+    expect(paper.kisMarketBase).toBe("https://openapivts.koreainvestment.com:29443");
+    // unset → defaults to the paper origin, never an arbitrary host
+    expect(loadRuntimeConfig(environment(single)).kisMarketBase).toBe("https://openapivts.koreainvestment.com:29443");
+  });
+
   it("requires single_owner to be immutable development scope", () => {
     expect(() => loadRuntimeConfig(environment({ LOCAL_PROVIDER_CREDENTIAL_MODE: "single_owner" }))).toThrow();
     expect(() => loadRuntimeConfig(environment({

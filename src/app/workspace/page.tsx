@@ -5,6 +5,7 @@ import { devWorkspaceProof, isDevWorkspaceMode, openWorkspaceLayout } from "@/mo
 import { identityServer } from "@/composition/identity-server";
 import { SESSION_COOKIE } from "@/composition/session-cookie";
 import { AccountPanel } from "./account-panel";
+import { MarketWidget } from "./market-widget";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,10 @@ export default async function WorkspacePage() {
     <main style={{ padding: "12px", boxSizing: "border-box" }}>
       <h1 style={{ fontSize: "1.1rem", margin: "0 0 8px" }}>워크스페이스 레이아웃</h1>
       {account !== undefined ? (
-        <AccountPanel accountReference={account.accountReference} vaultDisabled={account.vaultDisabled} />
+        <>
+          <AccountPanel accountReference={account.accountReference} vaultDisabled={account.vaultDisabled} />
+          <MarketWidget />
+        </>
       ) : null}
       <WorkspaceLayout initial={initial} persistUrl="/api/workspace/layout" />
     </main>

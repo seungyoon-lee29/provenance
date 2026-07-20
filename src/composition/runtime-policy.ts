@@ -28,6 +28,7 @@ const baseRuntimeSchema = z.object({
   ALPACA_API_SECRET_KEY: z.string().optional(),
   KIS_APP_KEY: z.string().optional(),
   KIS_APP_SECRET: z.string().optional(),
+  KIS_REST_BASE: z.string().optional(),
   GOOGLE_IDENTITY_ENABLED: booleanFlagSchema,
   GOOGLE_IDENTITY_CLIENT_ID: z.string().optional(),
   GOOGLE_IDENTITY_CLIENT_SECRET: z.string().optional(),
@@ -55,6 +56,10 @@ export type RuntimeConfig = Readonly<{
   providerBillingMode: "free_only";
   localProviderCredentialMode: "contract_only" | "single_owner";
   localProviderOwnerWorkspaceId?: string;
+  /** true only when the KIS personal market provider can be wired: single_owner + owner workspace + KIS creds + paper-read contract. */
+  kisMarketEnabled: boolean;
+  /** The credential destination — pinned to an official KIS REST origin, never an arbitrary host. */
+  kisMarketBase: string;
   identityPersistence: "memory" | "postgres";
   credentialVaultProvider: "disabled" | "local" | "kms" | "secret_manager";
   credentialLocalKeyringFile: string;
@@ -67,6 +72,17 @@ export type RuntimeConfig = Readonly<{
 
 function isConfigured(value: string | undefined): boolean {
   return value !== undefined && value.trim().length > 0;
+}
+
+// The only hosts the KIS credentials may ever be sent to (token POST carries appkey/appsecret). An
+// arbitrary KIS_REST_BASE would exfiltrate them, so the destination is pinned, not merely defaulted.
+const ALLOWED_KIS_BASES = ["https://openapivts.koreainvestment.com:29443", "https://openapi.koreainvestment.com:9443"] as const;
+const DEFAULT_KIS_BASE = ALLOWED_KIS_BASES[0]; // 모의(paper) — the paper-read contract's server
+
+function assertKisBase(parsed: z.infer<typeof baseRuntimeSchema>): void {
+  if (isConfigured(parsed.KIS_REST_BASE) && !ALLOWED_KIS_BASES.includes(parsed.KIS_REST_BASE!.trim() as (typeof ALLOWED_KIS_BASES)[number])) {
+    throw new Error("KIS_REST_BASE must be an official KIS REST origin");
+  }
 }
 
 function assertCanonicalOrigin(value: string, environment: AppEnvironment): void {
@@ -200,6 +216,7 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
   assertCanonicalOrigin(parsed.APP_PUBLIC_ORIGIN, parsed.APP_ENVIRONMENT);
   assertNoPaidComposition(parsed);
   assertCredentialPolicy(parsed);
+  assertKisBase(parsed);
   assertVaultPolicy(parsed);
   assertIdentityPolicy(parsed);
   assertDeliveryPolicy(parsed);
@@ -212,6 +229,13 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
     providerBillingMode: parsed.PROVIDER_BILLING_MODE,
     localProviderCredentialMode: parsed.LOCAL_PROVIDER_CREDENTIAL_MODE,
     ...(isConfigured(parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID) ? { localProviderOwnerWorkspaceId: parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID } : {}),
+    kisMarketEnabled:
+      parsed.RUN_KIS_PAPER_READ_CONTRACT &&
+      isConfigured(parsed.KIS_APP_KEY) &&
+      isConfigured(parsed.KIS_APP_SECRET) &&
+      parsed.LOCAL_PROVIDER_CREDENTIAL_MODE === "single_owner" &&
+      isConfigured(parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID),
+    kisMarketBase: isConfigured(parsed.KIS_REST_BASE) ? parsed.KIS_REST_BASE!.trim() : DEFAULT_KIS_BASE,
     identityPersistence: parsed.IDENTITY_PERSISTENCE,
     credentialVaultProvider: parsed.CREDENTIAL_VAULT_PROVIDER,
     credentialLocalKeyringFile: parsed.CREDENTIAL_LOCAL_KEYRING_FILE,
