@@ -16,7 +16,9 @@ import type { WorkspaceViewerContext } from "../src/shared/contracts/viewer-cont
 const RUN = process.env.KIS_CONTRACT === "1";
 
 const OWNER = brandReference<string, "WorkspaceReference">("workspace:contract-owner");
-const POLICY: ObservationExpiryPolicy = { kind: "residual", declaredDelayMs: 900_000, softResidualMs: 900_000, hardResidualMs: 3_600_000 };
+// Lenient hard limit so the value surfaces regardless of session (off-hours it is a stale prev close,
+// still an available observation) — the live assertion is "a KRW value comes back", not its freshness.
+const POLICY: ObservationExpiryPolicy = { kind: "residual", declaredDelayMs: 900_000, softResidualMs: 900_000, hardResidualMs: 30 * 24 * 3_600_000 };
 
 // Thin real transport — the IO boundary the network-off suite injects a stub for.
 const realHttp: KisHttp = async (req) => {

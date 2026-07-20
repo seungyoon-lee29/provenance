@@ -94,6 +94,38 @@ function businessFailure(msgCd: string | undefined, nowMs: number): ProviderFail
   return { kind: "upstream" };
 }
 
+// KRX regular continuous session: Mon–Fri 09:00–15:30 KST (UTC+9, no DST). inquire-price carries no
+// as-of timestamp, so freshness is derived from the wall clock: in-session the quote is a live trade
+// (asOf = now); off-session KIS returns the previous close, so asOf = the last session close and the
+// basis is eod — the freshness machine then ages it honestly instead of faking a realtime trade.
+// ponytail: weekday+time only; KRX holidays would need a holiday feed (documented residual, ticket 25).
+const KST_OFFSET_MS = 9 * 3_600_000;
+const SESSION_OPEN_MIN = 9 * 60;
+const SESSION_CLOSE_MIN = 15 * 60 + 30;
+
+function krxSessionAsOf(nowMs: number): { asOfMs: number; basis: MarketObservation["priceBasis"] } {
+  const kst = new Date(nowMs + KST_OFFSET_MS); // UTC getters now read the KST wall clock
+  const dow = kst.getUTCDay(); // 0=Sun … 6=Sat, in KST
+  const minute = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  const isWeekday = dow >= 1 && dow <= 5;
+  if (isWeekday && minute >= SESSION_OPEN_MIN && minute < SESSION_CLOSE_MIN) {
+    return { asOfMs: nowMs, basis: "trade" };
+  }
+  // Most recent session close: today 15:30 KST if today is a weekday past close, else step back to
+  // the previous weekday's 15:30 (skipping the weekend).
+  let closeWallMs = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 15, 30);
+  if (!(isWeekday && minute >= SESSION_CLOSE_MIN)) {
+    for (let back = 1; back <= 7; back++) {
+      const probe = new Date(closeWallMs - back * 86_400_000);
+      if (probe.getUTCDay() >= 1 && probe.getUTCDay() <= 5) {
+        closeWallMs -= back * 86_400_000;
+        break;
+      }
+    }
+  }
+  return { asOfMs: closeWallMs - KST_OFFSET_MS, basis: "eod" };
+}
+
 async function fetchQuote({ http, config }: KisDeps, token: string, symbol: string): Promise<KisHttpResponse> {
   return http({
     method: "GET",
@@ -110,7 +142,7 @@ async function fetchQuote({ http, config }: KisDeps, token: string, symbol: stri
   });
 }
 
-function toObservation(symbol: string, output: Record<string, unknown>) {
+function toObservation(symbol: string, output: Record<string, unknown>, basis: MarketObservation["priceBasis"]) {
   const evidenceReference = brandReference<string, "EvidenceReference">(`evidence:f4:${symbol}:${FEED}`);
   const value: MarketObservation = {
     symbol,
@@ -118,7 +150,7 @@ function toObservation(symbol: string, output: Record<string, unknown>) {
     currency: "KRW",
     change: toNumber(output.prdy_vrss),
     changePercent: toNumber(output.prdy_ctrt),
-    priceBasis: "trade",
+    priceBasis: basis,
     evidenceReference,
   };
   return { value, evidenceReference };
@@ -177,8 +209,9 @@ export function createKisMarketInformation(deps: KisDeps): MarketInformation {
         const msgCd = typeof body.msg_cd === "string" ? body.msg_cd : undefined;
         return classifyProviderFailure({ failure: businessFailure(msgCd, nowMs), provider: PROVIDER, feed: FEED, occurredAt });
       }
-      const { value, evidenceReference } = toObservation(query.symbol, body.output ?? {});
-      const asOf = occurredAt;
+      const session = krxSessionAsOf(nowMs);
+      const { value, evidenceReference } = toObservation(query.symbol, body.output ?? {}, session.basis);
+      const asOf = new Date(session.asOfMs).toISOString();
       const available: AvailableInformation<MarketObservation> = {
         status: "available",
         value,
@@ -187,7 +220,7 @@ export function createKisMarketInformation(deps: KisDeps): MarketInformation {
         feed: FEED,
         venue: "KRX",
         asOf,
-        receivedAt: asOf,
+        receivedAt: occurredAt,
         freshness: "realtime",
         licenseScope: { audience: "personal", purposes: ["personal_display"], validUntil: config.licenseValidUntil },
         policyVersion: OBSERVATION_POLICY_VERSION,

@@ -16,7 +16,7 @@ import type { WorkspaceViewerContext } from "../src/shared/contracts/viewer-cont
 // exercise the adapter's real parsing → normalization → InformationOutcome mapping.
 
 const OWNER = brandReference<string, "WorkspaceReference">("workspace:owner");
-const NOW = Date.parse("2026-07-20T15:00:00.000Z");
+const NOW = Date.parse("2026-07-21T01:00:00.000Z"); // Tue 10:00 KST — inside the KRX session (live/trade)
 
 // asOf is taken as receipt time for the (timestamp-less) snapshot; declaredDelay 0 ⇒ realtime.
 const POLICY: ObservationExpiryPolicy = { kind: "residual", declaredDelayMs: 0, softResidualMs: 60_000, hardResidualMs: 300_000 };
@@ -246,6 +246,67 @@ describe("KIS error mapping (slice 4)", () => {
     expect(outcome.degradation.code).toBe("invalid_response");
     // never surfaces a value, least of all a fabricated 0.
     expect("value" in outcome && (outcome as { value?: unknown }).value).toBeFalsy();
+  });
+});
+
+describe("KIS session freshness (ticket 25 — codex HIGH 2)", () => {
+  // Generous residual policy so off-session prev-close surfaces as STALE (not dropped), letting us
+  // assert priceBasis/freshness deterministically.
+  const SESSION_POLICY: ObservationExpiryPolicy = {
+    kind: "residual",
+    declaredDelayMs: 60_000,
+    softResidualMs: 15 * 60_000,
+    hardResidualMs: 7 * 24 * 3_600_000,
+  };
+
+  async function readAt(iso: string) {
+    const { http } = stubHttp();
+    const info = createKisMarketInformation({
+      http,
+      clock: { now: () => Date.parse(iso), sleep: () => new Promise<void>(() => {}) },
+      config: { ...CONFIG, policy: SESSION_POLICY },
+    });
+    return info.read(query("005930"), ownerViewer()).result;
+  }
+
+  it("in-session (Tue 10:00 KST) → realtime / trade", async () => {
+    const outcome = await readAt("2026-07-21T01:00:00Z");
+    expect(outcome.status).toBe("available");
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.freshness).toBe("realtime");
+    expect(outcome.value.priceBasis).toBe("trade");
+  });
+
+  it("after close (Tue 17:00 KST) → eod, and NOT realtime (prev close is not a live trade)", async () => {
+    const outcome = await readAt("2026-07-21T08:00:00Z");
+    expect(outcome.status).toBe("available");
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.priceBasis).toBe("eod");
+    expect(outcome.freshness).not.toBe("realtime");
+    expect(outcome.value.last).toBe(244_000); // value still surfaced, just honestly aged
+  });
+
+  it("weekend (Sat 12:00 KST) → eod, not realtime", async () => {
+    const outcome = await readAt("2026-07-25T03:00:00Z");
+    expect(outcome.status).toBe("available");
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.priceBasis).toBe("eod");
+    expect(outcome.freshness).not.toBe("realtime");
+  });
+
+  it("session boundaries are half-open [09:00, 15:30): open tick is trade, close tick is eod", async () => {
+    const open = await readAt("2026-07-21T00:00:00Z"); // exactly 09:00 KST
+    const close = await readAt("2026-07-21T06:30:00Z"); // exactly 15:30 KST
+    if (open.status !== "available" || close.status !== "available") throw new Error("unreachable");
+    expect(open.value.priceBasis).toBe("trade");
+    expect(close.value.priceBasis).toBe("eod");
+  });
+
+  it("before the open (Tue 08:00 KST) → eod (previous weekday close, not today)", async () => {
+    const outcome = await readAt("2026-07-20T23:00:00Z"); // Tue 08:00 KST
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.priceBasis).toBe("eod");
+    expect(outcome.freshness).not.toBe("realtime");
   });
 });
 
