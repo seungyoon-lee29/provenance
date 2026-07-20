@@ -7,7 +7,7 @@ Depends on: 09
 Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-20 (슬라이스 3b-iv[backup 드릴 — pg_dump/psql 왕복 2 시나리오, gate-2 종결] 완료 — compose backup-drill 레인 green(실 pg); 다음 3b-v[codex 적대 재리뷰 → resolve])
+Last heartbeat: 2026-07-20 (3b-v codex 적대 재리뷰 완료 → **판정 BLOCK, resolve 보류**. 핵심 blocker: F1 러닝 스택 pg 미배선(in-memory+participants 없음, 핵심 AC 미충족), F7 크래시 시 participant PII 잔류(SEC-09). 나머지는 IMPORTANT로 하향. 남은 슬라이스 3b-vi[composition 배선]·3b-vii[erasure intent journal, P1/P2 판단 필요]·3b-viii[concurrency 하향분+드릴 claim 하향]. 상세는 Gates 섹션)
 
 ## Progress
 
@@ -86,6 +86,14 @@ Last heartbeat: 2026-07-20 (슬라이스 3b-iv[backup 드릴 — pg_dump/psql �
 트랜잭션 포트·스키마 컨벤션은 P2+ 돈 티켓들이 상속하므로 **아키텍처 gate** 적용: red-first TDD → 포트/스키마 설계 리뷰 → **다른 계열(codex) 적대 리뷰** → 판정. 이관 자체는 공개 동작 불변이라 기존 module 테스트가 회귀 oracle.
 
 - **설계 v1 적대 리뷰 완료(2026-07-19, codex 다른 계열)**: FATAL 2(stale-backup 복원·fence-first TOCTOU) + CRITICAL 3(idempotency 유니크 오명세·identity receipt 미영속·전 workspace 캐스케이드 누락) + IMPORTANT 2(pg 공유 contract suite·주입 clock). 7건 전부 위 Requirements/AC/Design decisions에 반영 → **설계 v2**. 구현 후 코드 대상 재-적대 리뷰는 별도.
+
+- **코드 적대 재리뷰 완료(2026-07-20, codex 다른 계열, 6f867f9..362b07f 대상) → 판정: BLOCK, resolve 보류**. codex FATAL 4 + CRITICAL 3. 메인(claude)이 코드 대조·트리아지한 결과:
+  - **[진짜 blocker, in-scope] F1 — 러닝 스택이 pg 미배선**: `identity-server.ts:86,95`가 `IdentitySessionStore`(in-memory)를 조립하고 `IdentityService`를 **participants 없이**(기본 `[]`) 생성 → 영속·erasure 캐스케이드가 앱에 도달 안 함. AC "러닝 스택엔 pg 배선"·"프로세스 재시작 생존 스택 통합" **미충족**. 지금까지 슬라이스(3b-i~iv)는 포트/impl/드릴만 만들었고 composition 배선은 미착수였음(회귀 아님, 미완). → **슬라이스 3b-vi**: composition을 pg pool로 조건 배선(network-off/unit은 in-memory 유지, `IdentitySingleton.store` 타입을 `IdentityStore`로 확장) + PersonalCache/Notification participant 배선 + **실 앱 표면 재시작 통합 테스트**.
+  - **[진짜 gap, SEC-09] F7 — 크래시 시 participant PII 잔류**: erase가 identity fence를 durable 커밋한 뒤 participant cleanup·receipt 영속화 前 크래시 시, 재시도는 세션 shred라 `denied` 반환하고 participant 재실행 안 됨 → `personal_cache_entry` PII가 물리적으로 잔존(뷰어 발급은 불가해 도달불가지만 물리 삭제는 미완). fence-first는 identity fence만 원자 보장, participant는 비원자. → **슬라이스 3b-vii**: 재개 가능한 durable erasure intent journal(크래시 후 recovery가 participant 완료까지 재조정). *P2 교차-모듈 UoW와 겹침 — 이 티켓 P1에서 닫을지/claim 낮추고 P2 이관할지 사용자 판단 필요.*
+  - **[진짜, but 일시적 read-race·durable hole 아님 — FATAL→IMPORTANT 하향]** F4/F5: `resolve()`·`switchWorkspace`가 세션 row 비락 읽기 → revoke/erase와의 read-committed 경합 시 방금 revoke된 세션이 1회 resolve/rotate될 수 있음. 단, 단조 fence가 durable 백스톱(erase 커밋 후 모든 후속 resolve는 guest). switchWorkspace의 stale `revoked=false` 회전은 좁지만 revoke-escape라 저비용 수정 가치 있음(세션 row `FOR UPDATE`). → **슬라이스 3b-viii**.
+  - **[진짜, 효과는 멱등 — CRITICAL→IMPORTANT 하향]** F6: `getReceipt→work→putReceipt` 비원자 → 동시 동일-key 재시도 이중 실행 가능. revokeAll/erase는 효과 멱등(단조)이라 무해하나 strict "재실행 0" AC는 concurrency에서 미충족. claim-first 예약으로 폐쇄. → 3b-viii.
+  - **[claim 무결성, 메인도 사전 flag]** F2/F3 — 드릴 restore-dominance가 자기충족적: `mergeFenceForward`가 JS 변수의 high-water를 재주입하고 독립 삭제 원장/복원 도구가 출하 안 됨. 드릴은 **절차**를 실증할 뿐 operator end-to-end 복원을 증명하지 않음. "gate-2 종결" claim은 과함 → "**gate-2 절차 실증, 독립 삭제 원장은 P2**"로 하향. F3(capture 3-read 비스냅샷)은 드릴 단일스레드라 미노출이나 절차로는 단일 txn 캡처가 옳음. → 3b-viii.
+  - **[codex도 SAFE 확인]** migration SQL/PK/no-credential-plaintext/rollback(0004 down→re-up)·주입 clock·missed-await 0.
 
 ## Out of scope
 
