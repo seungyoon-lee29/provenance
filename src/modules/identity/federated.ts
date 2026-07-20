@@ -10,7 +10,7 @@ import type {
   InternalRoute,
   SessionOutcome,
 } from "./contracts";
-import type { IdentitySessionStore } from "./session-store";
+import type { IdentityStore } from "./session-store";
 
 const INTENT_TTL_MS = 10 * 60 * 1000; // SEC-07: ≤10 minute expiry
 const CLOCK_SKEW_MS = 60 * 1000;
@@ -111,7 +111,7 @@ export class FederatedSignInService {
   readonly #intents = new Map<string, IntentRecord>();
 
   constructor(
-    private readonly store: IdentitySessionStore,
+    private readonly store: IdentityStore,
     private readonly clock: IdentityClock,
     private readonly entropy: EntropySource,
     private readonly config: FederatedConfig,

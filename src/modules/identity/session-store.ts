@@ -6,8 +6,10 @@ import type { GuestViewerContext, ViewerContext } from "../../shared/contracts/v
 import type { EntropySource, IdentityClock, SessionProof, WorkspaceViewerContextShape } from "./contracts";
 
 // ponytail: fixed session windows; make them per-policy knobs when a real policy engine lands.
-const ABSOLUTE_EXPIRY_MS = 12 * 60 * 60 * 1000;
-const IDLE_EXPIRY_MS = 30 * 60 * 1000;
+// Exported so every IdentityStore impl (in-memory, pg) honours the SAME expiry policy and the
+// contract suite can assert it without hard-coding the window.
+export const ABSOLUTE_EXPIRY_MS = 12 * 60 * 60 * 1000;
+export const IDLE_EXPIRY_MS = 30 * 60 * 1000;
 
 export type AccountState = "active" | "suspended" | "closed";
 
@@ -43,6 +45,35 @@ export function hashProof(value: string): string {
 export type IssuedSession = Readonly<{ proof: SessionProof; viewer: WorkspaceViewerContextShape }>;
 
 /**
+ * Persistence seam for the Identity spine (ticket 23). The in-memory impl below and a pg impl
+ * (slice 3b-iii) must satisfy the SAME parameterized contract suite so their null/ordering/fence/
+ * expiry semantics cannot silently diverge. Consumers (IdentityService, challenge, federated,
+ * composition) depend on this interface, so the running stack can swap in the pg impl.
+ */
+export interface IdentityStore {
+  ensureEmailAccount(email: string): Promise<AccountRecord>;
+  createPendingEmailAccount(email: string): Promise<AccountRecord>;
+  findEmailAccount(email: string): Promise<AccountRecord | undefined>;
+  markEmailVerified(accountReference: string): Promise<void>;
+  ensureFederatedAccount(identityKey: string): Promise<AccountRecord>;
+  primaryWorkspace(account: AccountRecord): Promise<string>;
+  issueSession(accountReference: AccountReference | string, workspaceReference: WorkspaceReference | string): Promise<IssuedSession>;
+  resolve(proof: SessionProof): Promise<ViewerContext>;
+  revokeCurrent(proof: SessionProof): Promise<boolean>;
+  revokeAll(accountReference: string): Promise<void>;
+  switchWorkspace(proof: SessionProof, workspaceReference: string): Promise<IssuedSession | undefined>;
+  addWorkspace(accountReference: string, workspaceReference: string): Promise<void>;
+  workspacesOf(accountReference: string): Promise<string[]>;
+  accountSecurityRevision(accountReference: string): Promise<number>;
+  bumpSecurityRevision(accountReference: string): Promise<number>;
+  setAccountState(accountReference: string, state: AccountState): Promise<void>;
+  erase(accountReference: string): Promise<number>;
+  isErasedAccount(accountReference: string): Promise<boolean>;
+  fenceFor(accountReference: string): Promise<number>;
+  accountState(accountReference: string): Promise<AccountState | undefined>;
+}
+
+/**
  * In-memory, hash-only session + account registry (network-off lane).
  * SEC-01: only this store mints a Viewer Context. SEC-08: proofs are opaque, stored as hashes,
  * and bound to session generation + account authorization epoch.
@@ -51,7 +82,7 @@ export type IssuedSession = Readonly<{ proof: SessionProof; viewer: WorkspaceVie
  * the in-memory backing resolves synchronously under the hood. Private helpers stay sync until
  * their state moves to postgres.
  */
-export class IdentitySessionStore {
+export class IdentitySessionStore implements IdentityStore {
   readonly #accounts = new Map<string, AccountRecord>();
   readonly #sessions = new Map<string, SessionRecord>();
   readonly #erasedAccounts = new Map<string, number>(); // accountReference → monotonic deletion fence

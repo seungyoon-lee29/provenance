@@ -16,7 +16,7 @@ import type {
 } from "./contracts";
 import { EmailChallengeService } from "./email-challenge";
 import { FederatedSignInService, type FederatedProvider } from "./federated";
-import { IdentitySessionStore, hashProof } from "./session-store";
+import { hashProof, type IdentityStore } from "./session-store";
 
 const REAUTH_TTL_MS = 5 * 60 * 1000;
 
@@ -34,7 +34,7 @@ export class IdentityService {
   readonly #erasureReceipts = new Map<string, ErasureReceipt>();
 
   constructor(
-    private readonly store: IdentitySessionStore,
+    private readonly store: IdentityStore,
     private readonly clock: IdentityClock,
     private readonly entropy: EntropySource,
     private readonly challenge: EmailChallengeService,
