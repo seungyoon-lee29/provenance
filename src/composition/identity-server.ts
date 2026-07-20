@@ -10,10 +10,12 @@ import { EmailChallengeService } from "@/modules/identity/email-challenge";
 import { FederatedSignInService } from "@/modules/identity/federated";
 import type { FederatedConfig, FederatedExchangeResult, FederatedProvider } from "@/modules/identity/federated";
 import { IdentityService } from "@/modules/identity/identity-service";
-import { IdentitySessionStore } from "@/modules/identity/session-store";
+import type { IdentityStore } from "@/modules/identity/session-store";
 import { createProviderConnectionsCore } from "@/modules/provider-connections/core/provider-connections-core";
 import type { ProviderConnectionsCore } from "@/modules/provider-connections/core/provider-connections-core";
 import { CredentialKeyring, CredentialVault, loadLocalCredentialKeyring } from "@/platform/credential-vault";
+import { getDatabasePool } from "@/platform/runtime/dependencies";
+import { assembleIdentityStores } from "./identity-assembly";
 import { loadRuntimeConfig } from "./runtime-policy";
 import type { RuntimeConfig } from "./runtime-policy";
 
@@ -52,7 +54,7 @@ function scriptedAdapters(): Readonly<Record<FederatedProvider, { exchange: () =
 export type IdentitySingleton = Readonly<{
   config: RuntimeConfig;
   identity: IdentityService;
-  store: IdentitySessionStore;
+  store: IdentityStore;
   challenge: EmailChallengeService;
   connections: ProviderConnectionsCore;
   vaultDisabled: boolean;
@@ -83,7 +85,14 @@ function buildVault(config: RuntimeConfig): { vault: CredentialVault; disabled: 
 
 function build(): IdentitySingleton {
   const config = loadRuntimeConfig(process.env);
-  const store = new IdentitySessionStore(realClock, realEntropy);
+  // postgres wiring makes the identity spine + personal-cache erasure survive a restart and shred
+  // atomically (ticket 23 slice 3b-vi); memory keeps the network-off lane. The pool is only touched
+  // when postgres is selected, so the in-memory lane never opens a connection.
+  const { store, participants } = assembleIdentityStores(config.identityPersistence, {
+    ...(config.identityPersistence === "postgres" ? { pool: getDatabasePool() } : {}),
+    clock: realClock,
+    entropy: realEntropy,
+  });
   const challenge = new EmailChallengeService(store, realClock, realEntropy);
   const federated = new FederatedSignInService(
     store,
@@ -92,7 +101,7 @@ function build(): IdentitySingleton {
     scriptedFederatedConfig(config.publicOrigin),
     scriptedAdapters(),
   );
-  const identity = new IdentityService(store, realClock, realEntropy, challenge, federated);
+  const identity = new IdentityService(store, realClock, realEntropy, challenge, federated, participants);
   const { vault, disabled } = buildVault(config);
   let sequence = 0;
   const connections = createProviderConnectionsCore({

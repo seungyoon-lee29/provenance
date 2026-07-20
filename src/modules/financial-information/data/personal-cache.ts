@@ -1,3 +1,4 @@
+import type { Executor } from "../../../platform/persistence/pg";
 import type { ErasureParticipant } from "../../identity/identity-service";
 
 /**
@@ -17,8 +18,12 @@ export interface PersonalCacheRepository<T> {
   write(workspace: string, key: string, value: T, atEpoch: number): Promise<boolean>;
   read(workspace: string, key: string): Promise<T | undefined>;
   size(workspace: string): Promise<number>;
-  /** Bump the fence past `fence` and shred every entry. Returns how many were shredded (the receipt count). */
-  eraseWorkspace(workspace: string, fence: number): Promise<Readonly<{ shredded: number }>>;
+  /**
+   * Bump the fence past `fence` and shred every entry. Returns how many were shredded (the receipt
+   * count). `tx` (ticket 23 slice 3b-vi) lets the pg impl join the identity erase transaction so the
+   * deletion fence and this shred commit atomically — no PII residue behind a committed fence.
+   */
+  eraseWorkspace(workspace: string, fence: number, tx?: Executor): Promise<Readonly<{ shredded: number }>>;
   /** True when the given epoch is fenced out (a restore at this epoch would be suppressed). */
   isErased(workspace: string, atEpoch: number): Promise<boolean>;
 }
@@ -58,7 +63,7 @@ export class PersonalCacheStore<T> implements PersonalCacheRepository<T> {
     return Promise.resolve(this.#size(workspace));
   }
 
-  eraseWorkspace(workspace: string, fence: number): Promise<Readonly<{ shredded: number }>> {
+  eraseWorkspace(workspace: string, fence: number, _tx?: Executor): Promise<Readonly<{ shredded: number }>> {
     const shredded = this.#size(workspace);
     this.#fence.set(workspace, Math.max(this.#fenceOf(workspace), fence));
     this.#entries.delete(workspace);
@@ -82,8 +87,8 @@ export function personalCacheErasureParticipant(
 ): ErasureParticipant & { readonly receipts: typeof receipts } {
   return {
     receipts,
-    async erase(context) {
-      const { shredded } = await store.eraseWorkspace(context.workspaceReference, context.fence);
+    async erase(context, tx) {
+      const { shredded } = await store.eraseWorkspace(context.workspaceReference, context.fence, tx);
       receipts.push({ label, workspace: context.workspaceReference, shredded, fence: context.fence });
     },
   };

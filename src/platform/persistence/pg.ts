@@ -19,3 +19,16 @@ export async function withTransaction<T>(pool: Pool, fn: (client: PoolClient) =>
     client.release();
   }
 }
+
+/**
+ * Opaque unit-of-work handle threaded through the atomic erase boundary (ticket 23 slice 3b-vi).
+ * The pg store impls carry the enclosing transaction's PoolClient; the in-memory impls pass
+ * `undefined`. Callers never inspect it — they only relay it to the participating store methods so
+ * the identity deletion fence and the participant cache shred commit (or roll back) as one.
+ */
+export type Executor = unknown;
+
+/** Run `fn` on an injected transaction client when present, else in a fresh one-shot transaction. */
+export function withExecutor<T>(pool: Pool, tx: Executor, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  return tx === undefined ? withTransaction(pool, fn) : fn(tx as PoolClient);
+}

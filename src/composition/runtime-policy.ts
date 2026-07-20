@@ -9,6 +9,7 @@ const baseRuntimeSchema = z.object({
   PROVIDER_BILLING_MODE: z.literal("free_only"),
   LOCAL_PROVIDER_CREDENTIAL_MODE: z.enum(["contract_only", "single_owner"]),
   LOCAL_PROVIDER_OWNER_WORKSPACE_ID: z.string().optional(),
+  IDENTITY_PERSISTENCE: z.enum(["memory", "postgres"]).default("memory"),
   CREDENTIAL_VAULT_PROVIDER: z.enum(["disabled", "local", "kms", "secret_manager"]),
   CREDENTIAL_LOCAL_KEYRING_FILE: z.string().default(".secrets/credential-keyring.json"),
   CREDENTIAL_VAULT_KMS_KEY_REF: z.string().optional(),
@@ -54,6 +55,7 @@ export type RuntimeConfig = Readonly<{
   providerBillingMode: "free_only";
   localProviderCredentialMode: "contract_only" | "single_owner";
   localProviderOwnerWorkspaceId?: string;
+  identityPersistence: "memory" | "postgres";
   credentialVaultProvider: "disabled" | "local" | "kms" | "secret_manager";
   credentialLocalKeyringFile: string;
   syntheticProviderEnabled: boolean;
@@ -210,6 +212,7 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
     providerBillingMode: parsed.PROVIDER_BILLING_MODE,
     localProviderCredentialMode: parsed.LOCAL_PROVIDER_CREDENTIAL_MODE,
     ...(isConfigured(parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID) ? { localProviderOwnerWorkspaceId: parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID } : {}),
+    identityPersistence: parsed.IDENTITY_PERSISTENCE,
     credentialVaultProvider: parsed.CREDENTIAL_VAULT_PROVIDER,
     credentialLocalKeyringFile: parsed.CREDENTIAL_LOCAL_KEYRING_FILE,
     syntheticProviderEnabled: parsed.ENABLE_SYNTHETIC_PROVIDER,

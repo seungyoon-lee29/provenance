@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 
-import { withTransaction } from "../../../platform/persistence/pg";
+import { withExecutor, withTransaction, type Executor } from "../../../platform/persistence/pg";
 import type { PersonalCacheRepository } from "./personal-cache";
 
 /**
@@ -46,8 +46,8 @@ export class PgPersonalCache implements PersonalCacheRepository<string> {
     return Number(result.rows[0]?.count ?? "0");
   }
 
-  eraseWorkspace(workspace: string, fence: number): Promise<Readonly<{ shredded: number }>> {
-    return withTransaction(this.pool, async (client) => {
+  eraseWorkspace(workspace: string, fence: number, tx?: Executor): Promise<Readonly<{ shredded: number }>> {
+    return withExecutor(this.pool, tx, async (client) => {
       // Lock the fence row FIRST (before deleting entries) so a concurrent write
       // either lands before the lock (and is then shredded here) or reads the
       // raised fence after and is suppressed — never survives below the fence.

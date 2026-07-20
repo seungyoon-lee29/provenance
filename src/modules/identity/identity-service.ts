@@ -1,4 +1,5 @@
 import { brandReference } from "../../shared/contracts/brands";
+import type { Executor } from "../../platform/persistence/pg";
 import type { MutationControl } from "../../shared/contracts/mutation-control";
 import type { ViewerContext } from "../../shared/contracts/viewer-context";
 import type {
@@ -20,9 +21,16 @@ import { hashProof, type IdentityStore } from "./session-store";
 
 const REAUTH_TTL_MS = 5 * 60 * 1000;
 
-/** Source modules (ProviderConnections, portfolio, …) that must erase their own state behind the fence. */
+/**
+ * Source modules (ProviderConnections, portfolio, …) that must erase their own state behind the
+ * fence. `tx` (ticket 23 slice 3b-vi) is the identity erase transaction: a participant given it must
+ * run its shred on that transaction so the deletion fence and the shred commit atomically.
+ */
 export interface ErasureParticipant {
-  erase(context: Readonly<{ accountReference: string; workspaceReference: string; scope: "workspace" | "account"; fence: number }>): Promise<void>;
+  erase(
+    context: Readonly<{ accountReference: string; workspaceReference: string; scope: "workspace" | "account"; fence: number }>,
+    tx?: Executor,
+  ): Promise<void>;
 }
 
 export class IdentityService {
@@ -126,16 +134,22 @@ export class IdentityService {
       return { kind: "ErasureCommandOutcome", status: "rejected", revision: brandReference<string, "Revision">(String(currentRevision)) };
     }
 
-    // Commit the monotonic fence + durable intent FIRST, then collect module receipts behind it.
-    const fence = await this.store.erase(accountReference);
-    // Account-scope erasure must fence EVERY workspace the account owns, not just the
-    // viewer's current one (SEC-09) — else other workspaces' personal data survives.
-    const targetWorkspaces = command.scope === "account" ? await this.store.workspacesOf(accountReference) : [workspaceReference];
-    for (const participant of this.participants) {
-      for (const ws of targetWorkspaces) {
-        await participant.erase({ accountReference, workspaceReference: ws, scope: command.scope, fence });
+    // The deletion fence AND every participant's cache shred commit as ONE transaction (slice 3b-vi):
+    // a crash mid-erase rolls the whole thing back, so no PII ever survives physically behind an
+    // already-committed fence. On success the fence is durable and all reads are suppressed together.
+    const fence = await this.store.withUnitOfWork(async (tx) => {
+      const committedFence = await this.store.erase(accountReference, tx);
+      // Account-scope erasure must fence EVERY workspace the account owns, not just the viewer's
+      // current one (SEC-09). Read the set INSIDE the transaction, after erase has locked the account
+      // row, so a concurrently-added workspace cannot slip past a stale pre-transaction snapshot.
+      const targetWorkspaces = command.scope === "account" ? await this.store.workspacesOf(accountReference, tx) : [workspaceReference];
+      for (const participant of this.participants) {
+        for (const ws of targetWorkspaces) {
+          await participant.erase({ accountReference, workspaceReference: ws, scope: command.scope, fence: committedFence }, tx);
+        }
       }
-    }
+      return committedFence;
+    });
     const revision = await this.store.bumpSecurityRevision(accountReference);
     const outcome: ErasureCommandOutcome = {
       kind: "ErasureCommandOutcome",

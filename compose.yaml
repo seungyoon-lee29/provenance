@@ -3,6 +3,7 @@ x-runtime-environment: &runtime-environment
   APP_PUBLIC_ORIGIN: http://localhost:3000
   PROVIDER_BILLING_MODE: free_only
   LOCAL_PROVIDER_CREDENTIAL_MODE: contract_only
+  IDENTITY_PERSISTENCE: postgres
   CREDENTIAL_VAULT_PROVIDER: disabled
   ENABLE_SYNTHETIC_PROVIDER: "false"
   ENABLE_LIVE_TRADING: "false"

@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from "pg";
 
 import type { AccountReference, WorkspaceReference } from "../../shared/contracts";
 import type { GuestViewerContext, ViewerContext } from "../../shared/contracts/viewer-context";
-import { withTransaction } from "../../platform/persistence/pg";
+import { withExecutor, withTransaction, type Executor } from "../../platform/persistence/pg";
 import type { EntropySource, IdentityClock, SessionProof } from "./contracts";
 import {
   ABSOLUTE_EXPIRY_MS,
@@ -282,8 +282,10 @@ export class PgIdentityStore implements IdentityStore {
     );
   }
 
-  async workspacesOf(accountReference: string): Promise<string[]> {
-    return this.#workspacesOf(this.pool, accountReference);
+  async workspacesOf(accountReference: string, tx?: Executor): Promise<string[]> {
+    // Given the erase transaction's client, read within it (after the account FOR UPDATE lock) so a
+    // stale pre-transaction snapshot cannot drop a workspace from the SEC-09 cascade.
+    return this.#workspacesOf((tx as PoolClient | undefined) ?? this.pool, accountReference);
   }
 
   async accountSecurityRevision(accountReference: string): Promise<number> {
@@ -303,8 +305,14 @@ export class PgIdentityStore implements IdentityStore {
     await this.pool.query("UPDATE identity_account SET state = $2, authorization_epoch = authorization_epoch + 1 WHERE account_reference = $1", [accountReference, state]);
   }
 
-  async erase(accountReference: string): Promise<number> {
-    return withTransaction(this.pool, async (client) => {
+  // One transaction the erasure command drives so the identity fence and every participant's cache
+  // shred commit together (ticket 23 slice 3b-vi). Store methods given this client join the txn.
+  withUnitOfWork<T>(fn: (tx: Executor) => Promise<T>): Promise<T> {
+    return withTransaction(this.pool, (client) => fn(client));
+  }
+
+  async erase(accountReference: string, tx?: Executor): Promise<number> {
+    return withExecutor(this.pool, tx, async (client) => {
       // Lock the account row first so a concurrent issueSession serializes behind this erase.
       const acct = await client.query("SELECT account_reference FROM identity_account WHERE account_reference = $1 FOR UPDATE", [accountReference]);
       if ((acct.rowCount ?? 0) === 0) return 0;

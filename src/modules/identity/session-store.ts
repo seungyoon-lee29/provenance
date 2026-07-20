@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { brandReference } from "../../shared/contracts/brands";
 import type { AccountReference, WorkspaceReference } from "../../shared/contracts";
 import type { GuestViewerContext, ViewerContext } from "../../shared/contracts/viewer-context";
+import type { Executor } from "../../platform/persistence/pg";
 import type { EntropySource, IdentityClock, SessionProof, WorkspaceViewerContextShape } from "./contracts";
 
 // ponytail: fixed session windows; make them per-policy knobs when a real policy engine lands.
@@ -112,11 +113,25 @@ export interface IdentityStore {
   revokeAll(accountReference: string): Promise<void>;
   switchWorkspace(proof: SessionProof, workspaceReference: string): Promise<IssuedSession | undefined>;
   addWorkspace(accountReference: string, workspaceReference: string): Promise<void>;
-  workspacesOf(accountReference: string): Promise<string[]>;
+  /**
+   * Every workspace the account owns — the account-scope erasure cascade target (SEC-09). Accepts
+   * the erase transaction (`tx`) so the cascade reads the set INSIDE the fenced transaction, after
+   * the account row is locked, rather than from a stale pre-transaction snapshot (ticket 23 3b-vi).
+   */
+  workspacesOf(accountReference: string, tx?: Executor): Promise<string[]>;
   accountSecurityRevision(accountReference: string): Promise<number>;
   bumpSecurityRevision(accountReference: string): Promise<number>;
   setAccountState(accountReference: string, state: AccountState): Promise<void>;
-  erase(accountReference: string): Promise<number>;
+  /**
+   * Run `fn` in one atomic unit of work (ticket 23 slice 3b-vi). The pg impl opens a single
+   * transaction and hands its client through `tx`; the in-memory impl runs `fn` directly with an
+   * undefined `tx`. The erasure command uses this to commit the identity deletion fence and every
+   * participant's cache shred together — a crash mid-erase leaves zero durable partial state (no
+   * physical PII residue behind an already-committed fence). Store methods that accept `tx` join
+   * the caller's transaction; passed no `tx`, they open their own.
+   */
+  withUnitOfWork<T>(fn: (tx: Executor) => Promise<T>): Promise<T>;
+  erase(accountReference: string, tx?: Executor): Promise<number>;
   isErasedAccount(accountReference: string): Promise<boolean>;
   fenceFor(accountReference: string): Promise<number>;
   accountState(accountReference: string): Promise<AccountState | undefined>;
@@ -315,7 +330,7 @@ export class IdentitySessionStore implements IdentityStore {
   }
 
   /** Every workspace owned by the account — the cascade target for account-scope erasure (SEC-09). */
-  async workspacesOf(accountReference: string): Promise<string[]> {
+  async workspacesOf(accountReference: string, _tx?: Executor): Promise<string[]> {
     return [...(this.#account(accountReference)?.workspaces ?? [])];
   }
 
@@ -342,7 +357,13 @@ export class IdentitySessionStore implements IdentityStore {
    * session rows. The fence is durable coordinator state — a later restore that re-activates the
    * account row is still overridden by the fence in `#liveSession`.
    */
-  async erase(accountReference: string): Promise<number> {
+  // In-memory has no transaction to open: run the unit of work directly. RAM is all-or-nothing per
+  // process, so the durable-atomicity the pg impl provides is vacuous here (a crash loses it all).
+  withUnitOfWork<T>(fn: (tx: Executor) => Promise<T>): Promise<T> {
+    return fn(undefined);
+  }
+
+  async erase(accountReference: string, _tx?: Executor): Promise<number> {
     const account = this.#account(accountReference);
     if (account === undefined) return 0;
     this.#globalFence += 1;
