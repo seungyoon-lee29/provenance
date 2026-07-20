@@ -42,6 +42,51 @@ export function hashProof(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/**
+ * SEC-08 session liveness — the single predicate BOTH the in-memory and pg impls apply, so the
+ * revoked/fence/epoch/expiry semantics can never diverge. Expiry is judged on the injected clock's
+ * `nowMs` (never SQL now()). `isFenced` short-circuits any session of an erased account, so a stale
+ * backup restore that re-activates the account row can never resurrect the session.
+ */
+export function sessionIsLive(input: Readonly<{
+  revoked: boolean;
+  epochAtIssue: number;
+  absoluteExpiryMs: number;
+  lastSeenAtMs: number;
+  accountState: AccountState | undefined;
+  accountAuthorizationEpoch: number | undefined;
+  isFenced: boolean;
+  nowMs: number;
+}>): boolean {
+  if (input.revoked || input.isFenced) return false;
+  if (input.accountState !== "active") return false;
+  if (input.epochAtIssue !== input.accountAuthorizationEpoch) return false;
+  if (input.nowMs > input.absoluteExpiryMs || input.nowMs - input.lastSeenAtMs > IDLE_EXPIRY_MS) return false;
+  return true;
+}
+
+/** The Workspace Viewer Context shape both impls mint (SEC-01: only the store issues one). */
+export function buildWorkspaceViewer(input: Readonly<{
+  workspaceReference: string;
+  accountReference: string;
+  sessionReference: string;
+  generation: number;
+  authorizationEpoch: number;
+  membershipRevision: number;
+  requestId: string;
+}>): WorkspaceViewerContextShape {
+  return {
+    kind: "workspace",
+    requestId: input.requestId,
+    workspaceReference: brandReference<string, "WorkspaceReference">(input.workspaceReference),
+    accountReference: brandReference<string, "AccountReference">(input.accountReference),
+    sessionReference: brandReference<string, "SessionReference">(input.sessionReference),
+    sessionGeneration: brandReference<string, "SessionGeneration">(String(input.generation)),
+    accountAuthorizationEpoch: brandReference<string, "AccountAuthorizationEpoch">(String(input.authorizationEpoch)),
+    membershipRevision: brandReference<string, "MembershipRevision">(String(input.membershipRevision)),
+  };
+}
+
 export type IssuedSession = Readonly<{ proof: SessionProof; viewer: WorkspaceViewerContextShape }>;
 
 /**
@@ -154,16 +199,15 @@ export class IdentitySessionStore implements IdentityStore {
   }
 
   #viewer(session: SessionRecord, account: AccountRecord, requestId: string): WorkspaceViewerContextShape {
-    return {
-      kind: "workspace",
+    return buildWorkspaceViewer({
+      workspaceReference: session.workspaceReference,
+      accountReference: account.accountReference,
+      sessionReference: session.sessionReference,
+      generation: session.generation,
+      authorizationEpoch: account.authorizationEpoch,
+      membershipRevision: account.membershipRevision,
       requestId,
-      workspaceReference: brandReference<string, "WorkspaceReference">(session.workspaceReference),
-      accountReference: brandReference<string, "AccountReference">(account.accountReference),
-      sessionReference: brandReference<string, "SessionReference">(session.sessionReference),
-      sessionGeneration: brandReference<string, "SessionGeneration">(String(session.generation)),
-      accountAuthorizationEpoch: brandReference<string, "AccountAuthorizationEpoch">(String(account.authorizationEpoch)),
-      membershipRevision: brandReference<string, "MembershipRevision">(String(account.membershipRevision)),
-    };
+    });
   }
 
   async issueSession(accountReference: AccountReference | string, workspaceReference: WorkspaceReference | string): Promise<IssuedSession> {
@@ -193,13 +237,19 @@ export class IdentitySessionStore implements IdentityStore {
 
   #liveSession(proof: SessionProof): { record: SessionRecord; account: AccountRecord } | undefined {
     const record = this.#sessions.get(hashProof(proof.value));
-    if (record === undefined || record.revoked) return undefined;
-    if (this.#erasedAccounts.has(record.accountReference)) return undefined; // monotonic fence overrides any restore
+    if (record === undefined) return undefined;
     const account = this.#account(record.accountReference);
-    if (account === undefined || account.state !== "active") return undefined;
-    if (record.epochAtIssue !== account.authorizationEpoch) return undefined;
-    const now = this.clock.now();
-    if (now > record.absoluteExpiryMs || now - record.lastSeenAtMs > IDLE_EXPIRY_MS) return undefined;
+    const live = sessionIsLive({
+      revoked: record.revoked,
+      epochAtIssue: record.epochAtIssue,
+      absoluteExpiryMs: record.absoluteExpiryMs,
+      lastSeenAtMs: record.lastSeenAtMs,
+      accountState: account?.state,
+      accountAuthorizationEpoch: account?.authorizationEpoch,
+      isFenced: this.#erasedAccounts.has(record.accountReference), // monotonic fence overrides any restore
+      nowMs: this.clock.now(),
+    });
+    if (!live || account === undefined) return undefined;
     return { record, account };
   }
 
