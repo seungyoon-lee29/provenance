@@ -163,6 +163,18 @@ services:
         condition: service_healthy
     networks: [runtime]
 
+  backup-drill:
+    profiles: [verify]
+    build: .
+    command: ["npm", "run", "verify:backup-drill"]
+    environment: *runtime-environment
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks: [runtime]
+
 networks:
   ingress:
   runtime:

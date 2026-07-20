@@ -1,5 +1,9 @@
 FROM node:22-alpine
 
+# postgresql17-client: pg_dump/psql for the SEC-09 backup/restore drill (matches the postgres:17 server).
+# ponytail: added to the shared image; split into a drill-only stage if a hardened prod image ever ships.
+RUN apk add --no-cache postgresql17-client
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./
