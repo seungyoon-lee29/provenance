@@ -14,6 +14,18 @@ async function reset(pool: Pool): Promise<void> {
   await pool.query("ALTER SEQUENCE identity_fence_seq RESTART WITH 1");
 }
 
+// Poll until a backend is parked on an ungranted lock — i.e. switchWorkspace is blocked on the
+// account FOR UPDATE a holder connection owns. Makes the revoke-escape race deterministic instead of
+// relying on scheduler luck (which could leave the dangerous interleaving unexercised).
+async function waitForLockWaiter(pool: Pool): Promise<void> {
+  for (let i = 0; i < 400; i++) {
+    const r = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted");
+    if ((r.rows[0]?.n ?? 0) > 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error("expected switchWorkspace to block on the account lock");
+}
+
 describe.skipIf(!PG)("PgIdentityStore (real postgres)", () => {
   let pool: Pool;
   beforeAll(() => {
@@ -67,6 +79,38 @@ describe.skipIf(!PG)("PgIdentityStore (real postgres)", () => {
     const afterErase = new PgIdentityStore(pool, clock, new SequenceEntropy("after"));
     expect((await afterErase.resolve(issued.proof)).kind).toBe("guest");
     expect(await afterErase.isErasedAccount(account.accountReference)).toBe(true);
+  });
+
+  it("closes the switchWorkspace revoke-escape: a revoke committed while a switch is parked wins", async () => {
+    await reset(pool);
+    const store = new PgIdentityStore(pool, new IdentityTestClock(1_000_000), new SequenceEntropy("escape"));
+    const account = await store.ensureEmailAccount("escape@example.com");
+    const ws1 = await store.primaryWorkspace(account);
+    const ws2 = "workspace:escape-2";
+    await store.addWorkspace(account.accountReference, ws2);
+    const issued = await store.issueSession(account.accountReference, ws1);
+
+    const holder = await pool.connect();
+    let switchPromise: ReturnType<typeof store.switchWorkspace> = Promise.resolve(undefined);
+    try {
+      // Hold the account row lock so the switch parks AFTER its unlocked preview read but BEFORE the
+      // locked session re-read — deterministically forcing the exact window the fix targets.
+      await holder.query("BEGIN");
+      await holder.query("SELECT 1 FROM identity_account WHERE account_reference = $1 FOR UPDATE", [account.accountReference]);
+      switchPromise = store.switchWorkspace(issued.proof, ws2);
+      await waitForLockWaiter(pool); // the switch is now parked on the account lock, past its preview
+
+      // Revoke commits while the switch is parked; releasing the lock lets the switch's locked re-read run.
+      expect(await store.revokeCurrent(issued.proof)).toBe(true);
+      await holder.query("COMMIT");
+    } finally {
+      holder.release();
+    }
+
+    // Reverting the FOR UPDATE re-read would rotate the stale revoked=false preview into a live session;
+    // with it, the switch observes revoked=true under lock and refuses. No session escapes the revoke.
+    expect(await switchPromise).toBeUndefined();
+    expect((await store.resolve(issued.proof)).kind).toBe("guest");
   });
 
   it("a command receipt survives a process restart: a retry on a fresh store replays it (no re-execution)", async () => {

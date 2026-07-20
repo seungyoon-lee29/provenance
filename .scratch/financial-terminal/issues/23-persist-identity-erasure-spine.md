@@ -1,13 +1,13 @@
 # 23 - Persistence seam (P1): Identity·PersonalCache 영속 + 삭제억제 드릴
 
 Type: implementation
-Status: claimed
-Triage: ready-for-agent
+Status: resolved
+Triage: done
 Depends on: 09
 Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-20 (사용자 스코프 결정: **3b-vii[erasure intent journal] → P2 이관**. 근거: durable PII 표면이 증명적으로 {Identity, PersonalCache}뿐(migration = identity_*·personal_cache_*·runtime_components[PII 없음]; Notification은 in-memory Map = 백업 잔류 0). F7이 지목한 물리 잔류는 **별도 journal이 아니라 이 티켓이 이미 명세한 "한 pg 트랜잭션(executor 주입)"으로 닫는다** — in-scope 두 store 모두 pg라 한 txn 공유 가능. journal은 "한 txn 공유 불가한 교차-모듈(P2 돈 클러스터)" participant에만 정당. erasure는 동기 요청/응답이라 크래시 시 호출자 재시도로 충분(autonomous recovery 불요, 현 AC에 없음). → 착수: 3b-vi[composition pg 게이트 + participant 배선 + **erase 원자화** + 재시작 통합 테스트] → 3b-viii[concurrency 하향분 + 드릴 claim 하향 + residual 문구] → codex 적대 재리뷰. 상세는 Gates 섹션. **[2026-07-20 갱신] 3b-vi 완료: codex 적대 재리뷰 PASS + compose:verify 전 레인 실 pg green, 커밋 체크포인트. 다음 = 3b-viii.**)
+Last heartbeat: 2026-07-20 (사용자 스코프 결정: **3b-vii[erasure intent journal] → P2 이관**. 근거: durable PII 표면이 증명적으로 {Identity, PersonalCache}뿐(migration = identity_*·personal_cache_*·runtime_components[PII 없음]; Notification은 in-memory Map = 백업 잔류 0). F7이 지목한 물리 잔류는 **별도 journal이 아니라 이 티켓이 이미 명세한 "한 pg 트랜잭션(executor 주입)"으로 닫는다** — in-scope 두 store 모두 pg라 한 txn 공유 가능. journal은 "한 txn 공유 불가한 교차-모듈(P2 돈 클러스터)" participant에만 정당. erasure는 동기 요청/응답이라 크래시 시 호출자 재시도로 충분(autonomous recovery 불요, 현 AC에 없음). → 착수: 3b-vi[composition pg 게이트 + participant 배선 + **erase 원자화** + 재시작 통합 테스트] → 3b-viii[concurrency 하향분 + 드릴 claim 하향 + residual 문구] → codex 적대 재리뷰. 상세는 Gates 섹션. **[2026-07-20 갱신] 3b-vi 완료: codex 적대 재리뷰 PASS + compose:verify 전 레인 실 pg green, 커밋 체크포인트. 다음 = 3b-viii.** **[2026-07-20 RESOLVED] 3b-viii 완료(switchWorkspace revoke-escape 봉쇄·드릴 claim 하향, #2 claim-first는 accepted-residual), codex 3b-viii BLOCK(테스트 유효성)→결정론 테스트로 교체·오라클 실증, compose:verify 최종 green. 3b-vii→P2. Resolution 섹션 참조.**)
 
 ## Progress
 
@@ -27,7 +27,13 @@ Last heartbeat: 2026-07-20 (사용자 스코프 결정: **3b-vii[erasure intent 
     - **[IMPORTANT, 부분수용]** atomicity 테스트가 서비스 층 우회(seam 직접). 단 `identity-composition.pg.test.ts`가 이미 서비스 경로(`requestAdministrativeErasure`)를 pg로 검증 — codex 저평가. 다중-ws pg 케이스 추가로 서비스-경로 커버리지 강화.
     - **[NIT]** claim 문구: SEC-09 종결은 in-scope 한정으로 정직하나, 위 순서 수정 전까진 pg도 완전치 않다는 지적 — 수정으로 해소.
     - **Residual(YAGNI)**: `addWorkspace`는 fence-미가드지만 런타임 호출자 부재. 향후 런타임 workspace-추가가 배선되면 **fenced 계정 add 거부**를 반드시 넣어야 계정-스코프 캐스케이드가 완전. Notification participant 미배선(in-memory·durable 잔류 0)도 residual.
-    - 수정 후 재검증: `npm run check` 1244 green + **compose:verify 전 레인 green**(persistence-integration 24 tests 실 pg — 다중-ws 계정 erase 캐스케이드 +1, migration-smoke, backup-drill SEC-09 gate-2 2종, network-off), 좀비 0. **3b-vi = codex PASS + 실 pg 검증 완료.**
+    - 수정 후 재검증: `npm run check` 1244 green + **compose:verify 전 레인 green**(persistence-integration 24 tests 실 pg — 다중-ws 계정 erase 캐스케이드 +1, migration-smoke, backup-drill SEC-09 gate-2 2종, network-off), 좀비 0. **3b-vi = codex PASS + 실 pg 검증 완료(커밋 54c7618).**
+
+- **슬라이스 3b-viii(codex 하향분 처리)**:
+  - **[#1 switchWorkspace revoke-escape — 수정]** 위협 재분석: `switchWorkspace`·`revokeCurrent` 둘 다 동일 세션 proof(홀더 본인)를 요구 → 홀더가 자기 revoke를 self-race하는 것이고 교차-행위자 revoke(revokeAll)는 account epoch+account 잠금으로 이미 차단. 실 권한상승은 아니나 auth 경로 방어심화로 수정. `switchWorkspace`가 계정 잠금 **후** 세션 row를 `FOR UPDATE`로 재읽기(account→session 순 = erase와 동일, 데드락 없음) → 동시 revokeCurrent가 flip한 `revoked`를 관측해 revoke된 세션이 새 live 세션으로 회전 못 함.
+  - **3b-viii codex 적대 재리뷰(2026-07-20, 다른 계열 GPT) → 판정 BLOCK(테스트 유효성만)**. 프로덕션 코드는 PASS 확인: 락 순서(account→session) erase와 호환 데드락 0, `preview`는 account_reference 획득에만·이후 전부 잠금 `session` 사용(stale-read 0), READ COMMITTED+FOR UPDATE 재읽기로 escape 창 0, 크로스액터(revokeAll/erase account-first) 무영향. **유일 finding(IMPORTANT)**: 25회 Promise.all race가 위험 인터리빙을 강제 못 해 FOR UPDATE 재읽기를 되돌려도 vacuously green 가능 → **결정론 테스트로 교체**: account 락 홀더로 switch를 preview 직후·locked 재읽기 직전에 park(`pg_locks NOT granted` 배리어)시키고 그 사이 revoke 커밋을 강제, `switched === undefined` 무조건 검증(vacuous 분기 없음). **오라클 유효성 실증**(일회용 pg): fixed=green, switchWorkspace revert(HEAD 구버전)=**red**(stale 세션 generation 2로 회전 escape 검출), 좀비 0.
+  - **[#2 claim-first receipt — accepted-residual]** codex 자신이 CRITICAL→IMPORTANT 하향하며 "효과 멱등·무해"(revokeAll/erase 단조) 확인. `getReceipt→work→putReceipt` 비원자로 동시 동일-key 재시도가 이중 실행될 수 있으나 효과는 멱등이라 상태 오염 0. 무해한 race에 2-phase 예약 machinery는 비례성 밖(ponytail) → **accepted-residual**. strict "재실행 0"의 concurrency 보장은 P2 교차-모듈 UoW에서 receipt를 트랜잭션 안으로 넣을 때 자연 종결.
+  - **[#3 드릴 claim 하향 — 수정]** `scripts/backup-drill.ts` 헤더에 스코프 정직 문구 추가: 드릴은 이관된 store(Identity+PersonalCache)에 대해 restore **절차**를 실증하며, JS 메모리 캡처 high-water를 재주입할 뿐 shipped operator 삭제 원장이 아님 → gate-2 property 실증이지 operator end-to-end 아님. 독립 삭제 원장+복원 도구 = P2.
 
 ## Objective
 
@@ -101,6 +107,18 @@ Last heartbeat: 2026-07-20 (사용자 스코프 결정: **3b-vii[erasure intent 
   - **[진짜, 효과는 멱등 — CRITICAL→IMPORTANT 하향]** F6: `getReceipt→work→putReceipt` 비원자 → 동시 동일-key 재시도 이중 실행 가능. revokeAll/erase는 효과 멱등(단조)이라 무해하나 strict "재실행 0" AC는 concurrency에서 미충족. claim-first 예약으로 폐쇄. → 3b-viii.
   - **[claim 무결성, 메인도 사전 flag]** F2/F3 — 드릴 restore-dominance가 자기충족적: `mergeFenceForward`가 JS 변수의 high-water를 재주입하고 독립 삭제 원장/복원 도구가 출하 안 됨. 드릴은 **절차**를 실증할 뿐 operator end-to-end 복원을 증명하지 않음. "gate-2 종결" claim은 과함 → "**gate-2 절차 실증, 독립 삭제 원장은 P2**"로 하향. F3(capture 3-read 비스냅샷)은 드릴 단일스레드라 미노출이나 절차로는 단일 txn 캡처가 옳음. → 3b-viii.
   - **[codex도 SAFE 확인]** migration SQL/PK/no-credential-plaintext/rollback(0004 down→re-up)·주입 clock·missed-await 0.
+
+## Resolution (2026-07-20)
+
+**Answer**: Identity(accounts·sessions·erasure fence·revoke/erasure receipt) + PersonalCache(entries·fence)를 postgres로 이관하고, 러닝 스택(`identity-server.ts`)이 `IDENTITY_PERSISTENCE=postgres`일 때 pg 백엔드 + PersonalCache erasure participant를 **공유 pool 하나**로 배선하도록 만들었다. SEC-09 물리 잔류(F7)는 별도 recovery journal이 아니라 **erase를 한 pg 트랜잭션으로 원자화**(identity deletion fence + 전-workspace personal-cache shred, executor 주입)해 닫았다 — durable PII 표면이 증명적으로 {Identity, PersonalCache}뿐(둘 다 pg)이라 한 txn으로 100% 커버, crash 시 전체 롤백으로 잔류 0. 트랜잭션 포트·스키마 컨벤션(append-only·단조 revision·idempotency 단독키+payload_hash·fence-first)은 P2 돈 티켓이 상속한다.
+
+**Changed files**: `src/platform/persistence/pg.ts`(Executor·withExecutor), `src/modules/identity/{session-store.ts,session-store.pg.ts,identity-service.ts}`(withUnitOfWork·tx? 관통·원자 erase·switchWorkspace FOR UPDATE 재읽기), `src/modules/financial-information/data/{personal-cache.ts,personal-cache.pg.ts}`(eraseWorkspace tx?), `src/composition/{identity-assembly.ts(신규),identity-server.ts,runtime-policy.ts}`(pg 게이트·participant 배선), `compose.yaml`·`package.json`(레인·앵커), `scripts/backup-drill.ts`(claim 정직 문구), `tests/persistence/{erase-atomicity.pg.test.ts(신규),identity-composition.pg.test.ts(신규),identity-store.pg.test.ts}`. 커밋 54c7618(3b-vi) + 본 커밋(3b-viii).
+
+**Validation**: `npm run check` 1244 green(typecheck·lint·test·seam 2종). **compose:verify 전 레인 실 pg green** — persistence-integration 25 tests(원자 erase 롤백/커밋, 다중-ws 계정 캐스케이드, 재시작 생존, TOCTOU race, revoke-escape 결정론), migration-smoke, **backup-drill SEC-09 gate-2 2종(post-erase·stale-restore dominance)**, network-off, pr-check. 좀비 0. 결정론 escape 테스트는 오라클 유효성 실증(fixed=green, revert=red).
+
+**Review**: red-first TDD → codex 적대 재리뷰 2회(다른 계열 GPT). 3b-vi = **PASS**(workspacesOf txn-밖 TOCTOU 1건 IMPORTANT 수정). 3b-viii = **BLOCK(테스트 유효성만, 프로덕션 PASS)** → 결정론 테스트로 교체·실증. 상세는 Gates 섹션.
+
+**Residual risks**: (1) 재개형 erasure intent journal = P2(동기 요청/응답이라 현 AC 불요, 교차-모듈 돈 클러스터에서 필요). (2) NotificationCenter participant 미배선(in-memory·durable/backup 잔류 0). (3) claim-first receipt 미구현(효과 멱등·무해, P2에서 receipt를 txn 안으로). (4) `addWorkspace` fence-미가드지만 런타임 호출자 0 — 향후 런타임 workspace-추가 배선 시 fenced 계정 add 거부 필수. (5) 돈 원장·outbox·event·vault ciphertext 영속 = P2. (6) 드릴은 gate-2 절차 실증이지 operator end-to-end 아님(독립 삭제 원장 P2).
 
 ## Out of scope
 

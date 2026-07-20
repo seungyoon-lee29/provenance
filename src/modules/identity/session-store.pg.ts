@@ -220,9 +220,15 @@ export class PgIdentityStore implements IdentityStore {
   async switchWorkspace(proof: SessionProof, workspaceReference: string): Promise<IssuedSession | undefined> {
     const sessionHash = hashProof(proof.value);
     return withTransaction(this.pool, async (client) => {
-      const session = (await client.query<SessionRow>("SELECT * FROM identity_session WHERE session_hash = $1", [sessionHash])).rows[0];
+      // Preview the session (unlocked) only to find its account, then lock the account, then re-read
+      // the session UNDER LOCK. account→session lock order matches erase (no deadlock), and the locked
+      // re-read observes a concurrent revokeCurrent that flipped `revoked` — closing the revoke-escape
+      // where a just-revoked session rotated into a fresh live one (ticket 23 slice 3b-viii).
+      const preview = (await client.query<{ account_reference: string }>("SELECT account_reference FROM identity_session WHERE session_hash = $1", [sessionHash])).rows[0];
+      if (preview === undefined) return undefined;
+      const account = (await client.query<AccountRow>("SELECT * FROM identity_account WHERE account_reference = $1 FOR UPDATE", [preview.account_reference])).rows[0];
+      const session = (await client.query<SessionRow>("SELECT * FROM identity_session WHERE session_hash = $1 FOR UPDATE", [sessionHash])).rows[0];
       if (session === undefined) return undefined;
-      const account = (await client.query<AccountRow>("SELECT * FROM identity_account WHERE account_reference = $1 FOR UPDATE", [session.account_reference])).rows[0];
       const fenced = ((await client.query("SELECT 1 FROM identity_account_fence WHERE account_reference = $1", [session.account_reference])).rowCount ?? 0) > 0;
       const live = sessionIsLive({
         revoked: session.revoked,

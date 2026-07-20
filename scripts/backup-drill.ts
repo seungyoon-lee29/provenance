@@ -27,6 +27,11 @@ import { PgPersonalCache } from "../src/modules/financial-information/data/perso
  * The forward-only fence merge is the documented restore procedure this drill exercises and asserts —
  * a naive `psql < stale_dump` alone would drop the fence and resurrect the data, which the drill proves
  * is closed by the merge step.
+ *
+ * Scope honesty (ticket 23 slice 3b-viii): this proves the restore PROCEDURE holds for the migrated
+ * stores (Identity + PersonalCache). It re-injects a high-water captured in this script's own memory
+ * rather than from a shipped, operator-driven deletion ledger — so it demonstrates gate-2's property,
+ * not an end-to-end operator restore. An independent deletion ledger + restore tooling is P2.
  */
 
 const exec = promisify(execFile);
