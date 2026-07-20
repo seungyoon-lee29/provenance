@@ -18,41 +18,61 @@ Last heartbeat: -
 ## Owned scope
 
 - 신규 `src/platform/persistence/**`: Unit-of-work 트랜잭션 포트 + repository 베이스(append-only·revision·idempotency·fence 헬퍼). in-memory와 pg 두 구현.
-- `src/modules/identity/session-store.ts`(+연관 identity 저장 필드)를 repository 포트에 의존하도록 리팩터 — **공개 동작 불변**, backing만 교체.
-- `src/modules/financial-information/data/personal-cache.ts` 동일 리팩터.
-- 신규 migration(`db/migrations/000N_*`): identity/personal-cache 테이블 + fence 테이블.
-- `tests/persistence/**` 통합 테스트 + compose `backup-drill` 프로파일과 드릴 스크립트.
-- shared composition/index/spec 변경 요청은 F0/main owner에게 낸다(직접 편집 금지).
+- `src/modules/identity/session-store.ts`(accounts·sessions·`#erasedAccounts` fence) + `identity-service.ts`의 **내구 재시도 상태**(`#revokeReceipts`·`#erasureReceipts`)를 repository 포트에 의존하도록 리팩터 — **공개 동작 불변**, backing만 교체. `#reauth`·federated `#intents`는 단기 challenge라 ephemeral 유지(아래 설계 결정에서 명시).
+- `src/modules/financial-information/data/personal-cache.ts`(entries + workspace 단위 fence) 동일 리팩터.
+- 신규 migration(`db/migrations/000N_*`): identity/personal-cache/receipt 테이블 + fence 테이블.
+- `tests/persistence/**`: 양쪽 impl에 도는 파라미터화 store-contract suite + pg 동시성/재시작 통합 테스트 + compose `backup-drill` 프로파일과 드릴 스크립트.
+- 단일 main owner가 composition/`db`/migration을 통합한다(이 저장소는 별도 F0 owner가 없음 — F-레인 티켓의 "요청만" 문구는 적용 안 함). shared **spec** 변경만 별도 승인 경유.
 
 ## Requirements
 
-- **Unit-of-work 트랜잭션 포트**: 범위 내 원자 연산(예: 계정 생성·세션 발급, erase 시 fence 증가+shred+참여 store 정리)이 **한 pg 트랜잭션**으로 커밋된다. 부분 실패는 half-write를 남기지 않는다. store 메서드는 실행자(executor/tx)를 주입받는다.
-- **스키마 컨벤션(P2+가 상속)**: append-only 테이블은 `(scope, revision)` 유니크로 단조 revision·optimistic conflict/rejected를 보존한다. idempotency는 `(workspace, module, account, kind, idempotency-key)` + canonical payload hash 유니크로 same/same=receipt·same/different=conflict를 보존한다. fence는 단조 값 테이블이며 모든 write가 **fence 선검사**(fence-first, SEC-09) 후 진행한다.
-- **Identity 이관**: accounts·sessions·`erased_accounts`(단조 삭제 fence)를 postgres로. session lookup은 여전히 fence로 가려지고, generation/authorization epoch·workspace switch·deletion fence 의미가 보존된다. restore로 계정 row가 재활성돼도 fence가 override한다.
-- **PersonalCache 이관**: entries + fence. soft/hard expiry 의미(시각 기반)와 erasure fence를 보존한다.
+- **Unit-of-work 트랜잭션 포트**: 범위 내 원자 연산(계정 생성·세션 발급, erase 시 fence 증가+shred+참여 store 정리+**계정 소유 모든 workspace의 cache fence 캐스케이드**, revoke/erasure receipt 기록)이 **한 pg 트랜잭션**으로 커밋된다. 부분 실패는 half-write를 남기지 않는다. store 메서드는 실행자(executor/tx)를 주입받는다.
+- **동시성 봉쇄(명세 필수)**: fence-first는 그냥 두면 pg에서 TOCTOU다(READ COMMITTED 하에 writer가 fence=0 읽고, 동시 erase가 fence=1 커밋·shred하면 writer가 그 뒤 삽입). fence row를 `SELECT … FOR UPDATE`로 잠근 뒤 compare-and-write를 원자화하거나 SERIALIZABLE + **필수 재시도**로 닫는다. 어느 쪽인지 설계 결정에 확정하고 **동시 erase↔write 테스트**로 증명한다.
+- **스키마 컨벤션(P2+가 상속)**:
+  - append-only: `(scope, revision)` 유니크로 단조 revision·optimistic conflict/rejected 보존.
+  - idempotency: **`UNIQUE(workspace, module, account, kind, idempotency_key)` 단독 제약**(payload hash는 포함하지 않음) + 별도 `payload_hash` 컬럼. 삽입 충돌 시 저장된 hash와 원자 비교 → 같으면 기존 receipt 반환, 다르면 **side-effect 없는 conflict**. (hash를 유니크 키에 넣으면 same-key/different-payload가 conflict가 아니라 이중 삽입·이중 실행이 된다 — 금지.)
+  - fence: 단조 값 테이블, 모든 write가 fence 선검사(fence-first, SEC-09) 후 진행.
+- **Identity 이관**: accounts·sessions·`erased_accounts`(단조 삭제 fence) + revoke/erasure **receipt**를 postgres로. session lookup은 fence로 가려지고, generation/authorization epoch·workspace switch·deletion fence 의미가 보존된다. **재시작 후 동일 revoke/erasure 재시도가 저장된 receipt를 찾아 재실행하지 않는다**(멱등성 재시작 생존).
+- **PersonalCache 이관**: entries + workspace 단위 fence. soft/hard expiry는 **주입 앱 clock** 타임스탬프로 판정(SQL `now()` 금지 — 결정론). 계정 erase는 그 계정이 소유한 **모든 workspace**의 cache fence를 캐스케이드한다.
 - **이관 안 한 store는 포트 뒤 in-memory 구현 유지**: 돈 원장·outbox·event 등은 이번엔 in-memory 그대로(같은 포트의 in-memory impl). 앱은 계속 뜨고 network-off CI는 green.
-- **backup/restore/deletion 드릴**: compose `backup-drill` 프로파일이 seed→erase→`pg_dump`→clean db restore→migrate→**(a) 삭제된 계정·cache 부재, (b) fence row 존재, (c) 재생성 시도가 fence로 억제됨**을 스택에서 실증한다.
+- **backup/restore/deletion 드릴**: compose `backup-drill` 프로파일이 두 시나리오를 실증한다.
+  1. **post-erase 라운드트립**: seed→erase→`pg_dump`→clean db restore→migrate→(삭제 계정·복수 workspace cache 부재, fence row 존재, 재생성 억제).
+  2. **stale-backup 복원(FATAL 방어)**: erase **이전** 스냅샷을 복원해도 삭제 데이터가 부활하지 않음 — fence가 restore를 dominate. 이를 위해 fence는 restore가 high-water 아래로 되돌릴 수 없어야 한다(설계 결정: fence를 forward-only 병합하거나, fence high-water보다 낮은 백업 복원을 거부). 드릴이 이 경로를 assert한다.
 - **secret at rest 하한**: 어떤 테이블에도 credential 평문 컬럼 금지. (vault ciphertext 영속은 P2 — 이 티켓은 건드리지 않음.)
 
 ## Interface contract
 
 - 새 공개 port: `persistence`의 `UnitOfWork`(typed repository 접근 + `withTransaction`). 모듈은 이 포트에 생성자 주입으로 의존한다.
-- Identity·PersonalCache store는 **in-memory impl(기존 단위 테스트의 행동 oracle)** 과 **pg impl(러닝 스택)** 두 구현을 갖고, composition root가 러닝 스택엔 pg를, 단위 테스트엔 in-memory를 배선한다.
+- Identity·PersonalCache store는 **in-memory impl** 과 **pg impl** 두 구현을 갖는다. 둘 다 **동일한 파라미터화 store-contract suite**를 통과해야 한다 — "기존 단위 테스트=oracle"은 in-memory만 검증하므로, pg의 null/ordering/constraint/동시성 시맨틱이 조용히 갈라지는 걸 막는다(compose:verify가 잡았던 "로컬 통과·컨테이너 실패" 부류 방지). composition root가 러닝 스택엔 pg를, 단위 테스트엔 in-memory를 배선한다.
 - 모듈의 **공개 outcome(receipt·conflict·rejected·fence 의미)은 변경 없음** — 기존 module 단위 테스트가 회귀 oracle로 그대로 통과해야 한다.
 - 실제 hosting/Live Trading은 호출하지 않는다. 이관 대상은 Identity·PersonalCache로 한정한다.
 
 ## Acceptance criteria
 
-- Identity·PersonalCache 상태가 **실제 pg에 대해 프로세스 재시작을 넘어 생존**한다(스택 통합 테스트).
+- Identity(accounts·sessions·fence·revoke/erasure receipt)·PersonalCache 상태가 **실제 pg에 대해 프로세스 재시작을 넘어 생존**한다(스택 통합 테스트). 재시작 후 revoke/erasure 재시도가 저장된 receipt를 반환(재실행 0).
 - 범위 내 원자 연산이 **한 pg 트랜잭션**으로 커밋된다 — 주입 실패점에서 half-write 0.
-- SEC-09 fence: erase→재시작/restore 후 대상 계정·cache가 부재하고 재생성이 억제된다.
-- **스택 레벨 backup/restore/deletion-suppression 드릴 통과**(compose `backup-drill`) — F11 gate 2의 스택 증명(이관된 store 한정).
-- 기존 전체 단위 테스트 green(in-memory impl 행동 불변), `npm run check`·`compose:verify`(network-off 포함) green, 신규 pg 통합 테스트 green.
+- **동시 erase↔write**에서 fence-first race가 봉쇄됨 — erase 커밋 뒤 write는 fence에 걸려 억제(TOCTOU 삽입 0).
+- idempotency: same-key/same-payload=기존 receipt, **same-key/different-payload=side-effect 없는 conflict**(이중 삽입 0).
+- 계정 erase가 그 계정 소유 **모든 workspace**의 cache를 억제한다(단일 viewer workspace만이 아님).
+- SEC-09 fence 드릴 2종 통과(compose `backup-drill`): **(1) post-erase 라운드트립** 삭제 부재+fence 존재+재생성 억제, **(2) stale-backup 복원**에서 삭제 데이터 부활 0 — F11 gate 2의 스택 증명(이관된 store 한정).
+- 기존 전체 단위 테스트 green(in-memory impl 행동 불변) **+ 동일 contract suite가 pg impl에서도 green**, `npm run check`·`compose:verify`(network-off 포함) green.
+- pg 만료 경계가 주입 clock으로 결정론적(SQL `now()` 미사용).
 - 어떤 테이블에도 secret 평문 없음, `git diff --cached --check`·secret scan·clean worktree 통과.
+
+## Design decisions (red-first에 확정)
+
+구현 첫 슬라이스에서 아래를 명시적으로 정하고 테스트로 고정한다(codex 적대 리뷰가 지목한 미명세 지점):
+
+1. **격리수준 + fence-first race 봉쇄**: `SELECT … FOR UPDATE`(fence row 잠금)+compare-and-write 원자화 **또는** SERIALIZABLE+필수 재시도 중 택1. 동시 erase↔write 테스트로 증명.
+2. **fence의 restore dominance**: stale-backup 복원이 삭제 데이터를 부활시키지 못하도록 fence를 forward-only 병합하거나 fence high-water 아래 백업 복원을 거부. 드릴 시나리오 2로 증명.
+3. **idempotency 제약**: `UNIQUE(workspace, module, account, kind, idempotency_key)` 단독 + `payload_hash` 원자 비교(hash를 유니크 키에 넣지 않음).
+4. **ephemeral 경계**: `#reauth`·federated `#intents`는 단기 challenge라 재시작 시 무효화가 정당 → ephemeral 유지(의도적 결정, 누락 아님). revoke/erasure receipt는 영속(멱등성).
 
 ## Gates (risk-proportional)
 
-트랜잭션 포트·스키마 컨벤션은 P2+ 돈 티켓들이 상속하므로 **아키텍처 gate**를 적용한다: red-first TDD → 포트/스키마 설계 리뷰 → **다른 계열(codex) 적대 리뷰**(트랜잭션 경계·fence-first race·revision/idempotency 유니크 충돌·restore가 fence를 우회하는 경로) → 판정. 이관 자체는 공개 동작 불변이라 기존 module 테스트가 회귀 oracle.
+트랜잭션 포트·스키마 컨벤션은 P2+ 돈 티켓들이 상속하므로 **아키텍처 gate** 적용: red-first TDD → 포트/스키마 설계 리뷰 → **다른 계열(codex) 적대 리뷰** → 판정. 이관 자체는 공개 동작 불변이라 기존 module 테스트가 회귀 oracle.
+
+- **설계 v1 적대 리뷰 완료(2026-07-19, codex 다른 계열)**: FATAL 2(stale-backup 복원·fence-first TOCTOU) + CRITICAL 3(idempotency 유니크 오명세·identity receipt 미영속·전 workspace 캐스케이드 누락) + IMPORTANT 2(pg 공유 contract suite·주입 clock). 7건 전부 위 Requirements/AC/Design decisions에 반영 → **설계 v2**. 구현 후 코드 대상 재-적대 리뷰는 별도.
 
 ## Out of scope
 
