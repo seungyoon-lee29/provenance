@@ -119,6 +119,28 @@ describe("identity service — administrative erasure (SEC-09)", () => {
     expect(svc.resolve(secondary.proof).kind).toBe("guest");
   });
 
+  it("account-scope erasure cascades the fence to EVERY workspace of the account (SEC-09)", async () => {
+    const erasedWorkspaces: string[] = [];
+    const participant: ErasureParticipant = {
+      erase: async ({ workspaceReference }) => { erasedWorkspaces.push(workspaceReference); },
+    };
+    const { store, svc } = build(new IdentityTestClock(), [participant]);
+    const account = store.ensureEmailAccount("a@example.com");
+    const primaryWs = store.primaryWorkspace(account);
+    const secondWs = "workspace:second";
+    store.addWorkspace(account.accountReference, secondWs);
+    const primary = store.issueSession(account.accountReference, primaryWs);
+
+    const proof = svc.beginReauthentication(primary.proof);
+    if (proof === undefined) throw new Error("expected reauth proof");
+    const rev = store.accountSecurityRevision(account.accountReference);
+    await svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, control("e", rev), primary.proof);
+
+    // A multi-workspace account's personal data lives in every workspace; erasing the
+    // account must fence them all, not just the viewer's current workspace.
+    expect([...erasedWorkspaces].sort()).toEqual([primaryWs, secondWs].sort());
+  });
+
   it("denies erasure without a valid reauthentication proof", async () => {
     const { store, svc } = build();
     const account = store.ensureEmailAccount("a@example.com");

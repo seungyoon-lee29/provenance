@@ -215,6 +215,11 @@ export class IdentitySessionStore {
     this.#account(accountReference)?.workspaces.add(workspaceReference);
   }
 
+  /** Every workspace owned by the account — the cascade target for account-scope erasure (SEC-09). */
+  workspacesOf(accountReference: string): string[] {
+    return [...(this.#account(accountReference)?.workspaces ?? [])];
+  }
+
   accountSecurityRevision(accountReference: string): number {
     return this.#account(accountReference)?.securityRevision ?? 0;
   }

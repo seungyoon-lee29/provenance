@@ -131,8 +131,13 @@ export class IdentityService {
 
     // Commit the monotonic fence + durable intent FIRST, then collect module receipts behind it.
     const fence = this.store.erase(accountReference);
+    // Account-scope erasure must fence EVERY workspace the account owns, not just the
+    // viewer's current one (SEC-09) — else other workspaces' personal data survives.
+    const targetWorkspaces = command.scope === "account" ? this.store.workspacesOf(accountReference) : [workspaceReference];
     for (const participant of this.participants) {
-      await participant.erase({ accountReference, workspaceReference, scope: command.scope, fence });
+      for (const ws of targetWorkspaces) {
+        await participant.erase({ accountReference, workspaceReference: ws, scope: command.scope, fence });
+      }
     }
     const revision = this.store.bumpSecurityRevision(accountReference);
     const outcome: ErasureCommandOutcome = {
