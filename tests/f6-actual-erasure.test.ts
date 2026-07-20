@@ -117,15 +117,15 @@ describe("AT-11-style coordinator integration for ActualPortfolio", () => {
     const journal = new ActualJournal(() => NOW);
     const erasure = new ActualPortfolioErasure({ journal, stores: [] });
     const { store, svc } = buildIdentity([erasure]);
-    const account = store.ensureEmailAccount("erase-actual@example.com");
-    const workspaceReference = store.primaryWorkspace(account);
+    const account = await store.ensureEmailAccount("erase-actual@example.com");
+    const workspaceReference = await store.primaryWorkspace(account);
     const subject = String(workspaceReference);
     journal.append(subject, openingCommand(), control("k1", 0));
 
-    const session = store.issueSession(account.accountReference, workspaceReference);
-    const proof = svc.beginReauthentication(session.proof);
+    const session = await store.issueSession(account.accountReference, workspaceReference);
+    const proof = await svc.beginReauthentication(session.proof);
     if (proof === undefined) throw new Error("expected reauth proof");
-    const revision = store.accountSecurityRevision(account.accountReference);
+    const revision = await store.accountSecurityRevision(account.accountReference);
     const outcome = await svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, mutation("e-actual", revision), session.proof);
     expect(outcome.status).toBe("accepted");
     if (outcome.status !== "accepted") throw new Error("unreachable");

@@ -46,6 +46,10 @@ export type IssuedSession = Readonly<{ proof: SessionProof; viewer: WorkspaceVie
  * In-memory, hash-only session + account registry (network-off lane).
  * SEC-01: only this store mints a Viewer Context. SEC-08: proofs are opaque, stored as hashes,
  * and bound to session generation + account authorization epoch.
+ *
+ * Public methods are async so a pg-backed impl (ticket 23) is a drop-in behind the same seam;
+ * the in-memory backing resolves synchronously under the hood. Private helpers stay sync until
+ * their state moves to postgres.
  */
 export class IdentitySessionStore {
   readonly #accounts = new Map<string, AccountRecord>();
@@ -66,15 +70,15 @@ export class IdentitySessionStore {
     return this.#accounts.get(accountReference);
   }
 
-  ensureEmailAccount(email: string): AccountRecord {
-    return this.findEmailAccount(email) ?? this.#createAccount({ emailKey: email.trim().toLowerCase(), emailVerified: true });
+  async ensureEmailAccount(email: string): Promise<AccountRecord> {
+    return (await this.findEmailAccount(email)) ?? this.#createAccount({ emailKey: email.trim().toLowerCase(), emailVerified: true });
   }
 
-  createPendingEmailAccount(email: string): AccountRecord {
+  async createPendingEmailAccount(email: string): Promise<AccountRecord> {
     return this.#createAccount({ emailKey: email.trim().toLowerCase(), emailVerified: false });
   }
 
-  findEmailAccount(email: string): AccountRecord | undefined {
+  async findEmailAccount(email: string): Promise<AccountRecord | undefined> {
     const emailKey = email.trim().toLowerCase();
     for (const account of this.#accounts.values()) {
       if (account.emailKey === emailKey) return account;
@@ -82,12 +86,12 @@ export class IdentitySessionStore {
     return undefined;
   }
 
-  markEmailVerified(accountReference: string): void {
+  async markEmailVerified(accountReference: string): Promise<void> {
     const account = this.#account(accountReference);
     if (account !== undefined) account.emailVerified = true;
   }
 
-  ensureFederatedAccount(identityKey: string): AccountRecord {
+  async ensureFederatedAccount(identityKey: string): Promise<AccountRecord> {
     for (const account of this.#accounts.values()) {
       if (account.identityKey === identityKey) return account; // erased account survives as a closed tombstone
     }
@@ -112,7 +116,7 @@ export class IdentitySessionStore {
     return account;
   }
 
-  primaryWorkspace(account: AccountRecord): string {
+  async primaryWorkspace(account: AccountRecord): Promise<string> {
     const first = [...account.workspaces][0];
     if (first === undefined) throw new Error("account has no workspace");
     return first;
@@ -131,7 +135,7 @@ export class IdentitySessionStore {
     };
   }
 
-  issueSession(accountReference: AccountReference | string, workspaceReference: WorkspaceReference | string): IssuedSession {
+  async issueSession(accountReference: AccountReference | string, workspaceReference: WorkspaceReference | string): Promise<IssuedSession> {
     const account = this.#account(String(accountReference));
     if (account === undefined) throw new Error("unknown account");
     if (account.state !== "active" || this.#erasedAccounts.has(account.accountReference)) throw new Error("account cannot receive a session");
@@ -168,7 +172,7 @@ export class IdentitySessionStore {
     return { record, account };
   }
 
-  resolve(proof: SessionProof): ViewerContext {
+  async resolve(proof: SessionProof): Promise<ViewerContext> {
     const requestId = this.entropy.token(8);
     const live = this.#liveSession(proof);
     if (live === undefined) return this.#guest(requestId);
@@ -177,7 +181,7 @@ export class IdentitySessionStore {
   }
 
   /** `scope=current`: revoke only this session row; other sessions survive. */
-  revokeCurrent(proof: SessionProof): boolean {
+  async revokeCurrent(proof: SessionProof): Promise<boolean> {
     const record = this.#sessions.get(hashProof(proof.value));
     if (record === undefined || record.revoked) return false;
     record.revoked = true;
@@ -185,7 +189,7 @@ export class IdentitySessionStore {
   }
 
   /** `scope=all`: bump account authorization epoch so every session's resolve fails. */
-  revokeAll(accountReference: string): void {
+  async revokeAll(accountReference: string): Promise<void> {
     const account = this.#account(accountReference);
     if (account === undefined) return;
     account.authorizationEpoch += 1;
@@ -193,7 +197,7 @@ export class IdentitySessionStore {
   }
 
   /** Workspace switch: rotate this session (new proof + generation), swap the current workspace. */
-  switchWorkspace(proof: SessionProof, workspaceReference: string): IssuedSession | undefined {
+  async switchWorkspace(proof: SessionProof, workspaceReference: string): Promise<IssuedSession | undefined> {
     const live = this.#liveSession(proof);
     if (live === undefined) return undefined;
     const { record, account } = live;
@@ -211,27 +215,27 @@ export class IdentitySessionStore {
     return { proof: { kind: "SessionProof", value }, viewer: this.#viewer(rotated, account, requestId) };
   }
 
-  addWorkspace(accountReference: string, workspaceReference: string): void {
+  async addWorkspace(accountReference: string, workspaceReference: string): Promise<void> {
     this.#account(accountReference)?.workspaces.add(workspaceReference);
   }
 
   /** Every workspace owned by the account — the cascade target for account-scope erasure (SEC-09). */
-  workspacesOf(accountReference: string): string[] {
+  async workspacesOf(accountReference: string): Promise<string[]> {
     return [...(this.#account(accountReference)?.workspaces ?? [])];
   }
 
-  accountSecurityRevision(accountReference: string): number {
+  async accountSecurityRevision(accountReference: string): Promise<number> {
     return this.#account(accountReference)?.securityRevision ?? 0;
   }
 
-  bumpSecurityRevision(accountReference: string): number {
+  async bumpSecurityRevision(accountReference: string): Promise<number> {
     const account = this.#account(accountReference);
     if (account === undefined) return 0;
     account.securityRevision += 1;
     return account.securityRevision;
   }
 
-  setAccountState(accountReference: string, state: AccountState): void {
+  async setAccountState(accountReference: string, state: AccountState): Promise<void> {
     const account = this.#account(accountReference);
     if (account === undefined) return;
     account.state = state;
@@ -243,7 +247,7 @@ export class IdentitySessionStore {
    * session rows. The fence is durable coordinator state — a later restore that re-activates the
    * account row is still overridden by the fence in `#liveSession`.
    */
-  erase(accountReference: string): number {
+  async erase(accountReference: string): Promise<number> {
     const account = this.#account(accountReference);
     if (account === undefined) return 0;
     this.#globalFence += 1;
@@ -257,15 +261,15 @@ export class IdentitySessionStore {
     return this.#globalFence;
   }
 
-  isErasedAccount(accountReference: string): boolean {
+  async isErasedAccount(accountReference: string): Promise<boolean> {
     return this.#erasedAccounts.has(accountReference);
   }
 
-  fenceFor(accountReference: string): number {
+  async fenceFor(accountReference: string): Promise<number> {
     return this.#erasedAccounts.get(accountReference) ?? 0;
   }
 
-  accountState(accountReference: string): AccountState | undefined {
+  async accountState(accountReference: string): Promise<AccountState | undefined> {
     return this.#account(accountReference)?.state;
   }
 }

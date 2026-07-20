@@ -20,13 +20,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const server = identityServer();
   const proof: SessionProof = { kind: "SessionProof", value };
-  const viewer = server.identity.resolve(proof);
+  const viewer = await server.identity.resolve(proof);
   const response = NextResponse.json({ status: "revoked" });
   clearSessionCookie(response);
   if (viewer.kind !== "workspace") return response;
 
-  const expectedRevision = String(server.store.accountSecurityRevision(String(viewer.accountReference)));
-  server.identity.revokeSession(
+  const expectedRevision = String(await server.store.accountSecurityRevision(String(viewer.accountReference)));
+  await server.identity.revokeSession(
     { scope: "current" },
     { idempotencyKey: randomUUID(), expectedRevision: brandReference<string, "Revision">(expectedRevision) },
     proof,

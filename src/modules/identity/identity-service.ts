@@ -42,15 +42,15 @@ export class IdentityService {
     private readonly participants: readonly ErasureParticipant[] = [],
   ) {}
 
-  resolve(sessionProof: SessionProof): ViewerContext {
+  resolve(sessionProof: SessionProof): Promise<ViewerContext> {
     return this.store.resolve(sessionProof);
   }
 
-  requestAccountEmail(command: AccountEmailCommand, control: Readonly<{ idempotencyKey: string }>, clientProof: ClientProof): AccountEmailOutcome {
+  requestAccountEmail(command: AccountEmailCommand, control: Readonly<{ idempotencyKey: string }>, clientProof: ClientProof): Promise<AccountEmailOutcome> {
     return this.challenge.request(command, control, clientProof);
   }
 
-  consumeAccountChallenge(command: Readonly<{ kind: "link" | "manual_code"; proof: string }>, clientProof: ClientProof): SessionOutcome {
+  consumeAccountChallenge(command: Readonly<{ kind: "link" | "manual_code"; proof: string }>, clientProof: ClientProof): Promise<SessionOutcome> {
     return this.challenge.consume(command, clientProof);
   }
 
@@ -62,7 +62,7 @@ export class IdentityService {
     return this.federated.consume(command, clientProof);
   }
 
-  revokeSession(command: Readonly<{ scope: "current" | "all" }>, control: MutationControl, sessionProof: SessionProof): SessionOutcome {
+  async revokeSession(command: Readonly<{ scope: "current" | "all" }>, control: MutationControl, sessionProof: SessionProof): Promise<SessionOutcome> {
     // Bind the receipt to this proof so two accounts reusing an idempotencyKey string never collide.
     const receiptKey = `${hashProof(sessionProof.value)}:${control.idempotencyKey}`;
     const canonicalHash = hashProof(`revoke ${command.scope}`);
@@ -71,25 +71,25 @@ export class IdentityService {
       // idempotency short-circuits before resolve so an at-least-once retry with a now-dead session still replays.
       return prior.canonicalHash === canonicalHash ? prior.outcome : { kind: "SessionOutcome", status: "conflict" };
     }
-    const viewer = this.store.resolve(sessionProof);
+    const viewer = await this.store.resolve(sessionProof);
     if (viewer.kind !== "workspace") return { kind: "SessionOutcome", status: "rejected" };
     const accountReference = String(viewer.accountReference);
-    const currentRevision = this.store.accountSecurityRevision(accountReference);
+    const currentRevision = await this.store.accountSecurityRevision(accountReference);
     if (String(currentRevision) !== control.expectedRevision) {
       return { kind: "SessionOutcome", status: "rejected", revision: brandReference<string, "Revision">(String(currentRevision)) };
     }
 
-    if (command.scope === "current") this.store.revokeCurrent(sessionProof);
-    else this.store.revokeAll(accountReference);
-    const revision = this.store.bumpSecurityRevision(accountReference);
+    if (command.scope === "current") await this.store.revokeCurrent(sessionProof);
+    else await this.store.revokeAll(accountReference);
+    const revision = await this.store.bumpSecurityRevision(accountReference);
     const outcome: SessionOutcome = { kind: "SessionOutcome", status: "revoked", revision: brandReference<string, "Revision">(String(revision)) };
     this.#revokeReceipts.set(receiptKey, { canonicalHash, outcome });
     return outcome;
   }
 
   /** Re-authentication gate for destructive commands. One-time, account-bound, short TTL. */
-  beginReauthentication(sessionProof: SessionProof): ReauthenticationProof | undefined {
-    const viewer = this.store.resolve(sessionProof);
+  async beginReauthentication(sessionProof: SessionProof): Promise<ReauthenticationProof | undefined> {
+    const viewer = await this.store.resolve(sessionProof);
     if (viewer.kind !== "workspace") return undefined;
     const value = this.entropy.token(32);
     this.#reauth.set(hashProof(value), { accountReference: String(viewer.accountReference), expiresAtMs: this.clock.now() + REAUTH_TTL_MS });
@@ -117,29 +117,29 @@ export class IdentityService {
       // carries a now-dead proof — it must still replay the original receipt, not fail.
       return prior.canonicalHash === canonicalHash ? prior.outcome : { kind: "ErasureCommandOutcome", status: "conflict" };
     }
-    const viewer = this.store.resolve(sessionProof);
+    const viewer = await this.store.resolve(sessionProof);
     if (viewer.kind !== "workspace") return { kind: "ErasureCommandOutcome", status: "denied" };
     const accountReference = String(viewer.accountReference);
     const workspaceReference = String(viewer.workspaceReference);
     if (!this.#consumeReauthentication(accountReference, command.confirmationProof)) {
       return { kind: "ErasureCommandOutcome", status: "denied" };
     }
-    const currentRevision = this.store.accountSecurityRevision(accountReference);
+    const currentRevision = await this.store.accountSecurityRevision(accountReference);
     if (String(currentRevision) !== control.expectedRevision) {
       return { kind: "ErasureCommandOutcome", status: "rejected", revision: brandReference<string, "Revision">(String(currentRevision)) };
     }
 
     // Commit the monotonic fence + durable intent FIRST, then collect module receipts behind it.
-    const fence = this.store.erase(accountReference);
+    const fence = await this.store.erase(accountReference);
     // Account-scope erasure must fence EVERY workspace the account owns, not just the
     // viewer's current one (SEC-09) — else other workspaces' personal data survives.
-    const targetWorkspaces = command.scope === "account" ? this.store.workspacesOf(accountReference) : [workspaceReference];
+    const targetWorkspaces = command.scope === "account" ? await this.store.workspacesOf(accountReference) : [workspaceReference];
     for (const participant of this.participants) {
       for (const ws of targetWorkspaces) {
         await participant.erase({ accountReference, workspaceReference: ws, scope: command.scope, fence });
       }
     }
-    const revision = this.store.bumpSecurityRevision(accountReference);
+    const revision = await this.store.bumpSecurityRevision(accountReference);
     const outcome: ErasureCommandOutcome = {
       kind: "ErasureCommandOutcome",
       status: "accepted",

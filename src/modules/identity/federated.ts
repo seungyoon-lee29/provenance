@@ -189,15 +189,15 @@ export class FederatedSignInService {
     if (identityKey === null) return denied(); // untrusted / forged / malformed → 0 session
 
     // identity key is issuer+subject; a matching email never auto-merges into another account.
-    const account = this.store.ensureFederatedAccount(identityKey);
-    if (account.state !== "active" || this.store.isErasedAccount(account.accountReference)) return denied(); // erased tombstone stays suppressed
-    const issued = this.store.issueSession(account.accountReference, this.store.primaryWorkspace(account));
+    const account = await this.store.ensureFederatedAccount(identityKey);
+    if (account.state !== "active" || (await this.store.isErasedAccount(account.accountReference))) return denied(); // erased tombstone stays suppressed
+    const issued = await this.store.issueSession(account.accountReference, await this.store.primaryWorkspace(account));
     return {
       kind: "SessionOutcome",
       status: "issued",
       sessionProof: issued.proof,
       viewer: issued.viewer,
-      revision: brandReference<string, "Revision">(String(this.store.bumpSecurityRevision(account.accountReference))),
+      revision: brandReference<string, "Revision">(String(await this.store.bumpSecurityRevision(account.accountReference))),
     };
   }
 }

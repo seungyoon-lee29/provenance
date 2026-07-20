@@ -19,7 +19,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
   const { purpose, email, idempotencyKey } = parsed.data;
-  const outcome = identityServer().identity.requestAccountEmail(
+  const outcome = await identityServer().identity.requestAccountEmail(
     { kind: "AccountEmailCommand", purpose, email },
     { idempotencyKey },
     clientProofFrom(request),

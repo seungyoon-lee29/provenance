@@ -7,16 +7,15 @@ Depends on: 09
 Blocked by: None
 Owner: claude-main
 Claimed at: 2026-07-19
-Last heartbeat: 2026-07-19 (체크포인트 — 슬라이스 3a[cascade SEC-09] 완료, 3b[Identity async 영속] 매핑·대기)
+Last heartbeat: 2026-07-20 (슬라이스 3b-i[Identity async 리플, 동작 불변] 완료 — src 0에러, 1239 green; 다음 3b-ii[repo 포트])
 
 ## Progress
 
 - **슬라이스 1(완료)**: `PersonalCacheRepository<T>` async 포트 + `PersonalCacheStore` in-memory impl + 파라미터화 계약 스위트(양쪽 impl oracle) + fence 단조성 계약. 기존 F4 oracle async화. check green.
 - **슬라이스 2(완료)**: `PgPersonalCache`(pg impl) + `db/migrations/0002_personal_cache`(fence·entry 테이블) + `withTransaction`(UoW seed, `src/platform/persistence/pg.ts`). **설계 결정 #1(TOCTOU) 실装**: write·erase 양쪽이 fence row `SELECT … FOR UPDATE`를 entry 조작 前에 잡아 직렬화 → race 시 entry가 fence 아래로 절대 안 남음. fence는 `GREATEST`로 monotonic. pg가 **in-memory와 동일 계약 스위트 통과** + 25회 race 동시성 테스트 통과(compose persistence-integration lane, 실 postgres). `verify-migrations.ts`를 N-migration 안전하게 일반화("down 후 재-up 성공"이 롤백 완전성 검증 — 하드코딩 테이블 체크 제거). compose:verify 5단계 green(잔여 컨테이너 0), CI PR-integration 자동 포함.
 - **슬라이스 3a(완료, 커밋 b8d6e8c)**: 전-workspace cascade SEC-09 버그 수정 — `requestAdministrativeErasure`가 viewer workspace만 fence하던 걸 `IdentitySessionStore.workspacesOf` + account-scope 전-workspace 루프로 수정. red-first 회귀 테스트. 어느 영속 스코프든 필요한 독립 버그 픽스라 먼저 처리. check 1239 green.
-- **슬라이스 3b(대기, 사용자 결정: full Identity 영속)** — 착수 시 아래 매핑대로 재개:
-  - **async 리플(~12파일, typecheck가 누락 강제)**: `IdentitySessionStore` ~20 public 메서드 sync→async(resolve·issueSession·revokeCurrent/All·switchWorkspace·erase·accountSecurityRevision·bumpSecurityRevision·workspacesOf·ensure*/find*Account·markEmailVerified·setAccountState·addWorkspace·isErasedAccount·fenceFor·accountState·primaryWorkspace). `IdentityService`의 resolve/revokeSession/requestAdministrativeErasure → async. 합성 `identity-server.ts` resolve wrapper·`session-cookie.ts` `viewerFrom` → async. 소비 route 6개(signin·callback·revoke·email consume/request·connections, 전부 이미 async) await 추가. `research-service`의 `.resolve`는 consent/material resolver라 무관.
-  - **포트+계약**: `IdentityAccountRepository` async 포트 + in-memory(현 로직) + pg 두 impl, 양쪽 파라미터화 contract suite(slice 1/2 패턴).
+- **슬라이스 3b-i(완료, 사용자 결정: full Identity 영속)**: async 리플 — `IdentitySessionStore` 공개 메서드 20개 sync→async(private 헬퍼는 in-memory라 sync 유지, pg 슬라이스에서 async화), `IdentityService`(resolve·revokeSession·beginReauthentication·requestAccountEmail·consumeAccountChallenge·requestAdministrativeErasure), `EmailChallengeService`(request·consume·#eligibility), `FederatedSignInService.consume` await, 합성 `identity-server.resolve`·`session-cookie.viewerFrom` async, 라우트 5개(revoke·connections GET/POST·email consume/request·workspace page) await. **매핑에 없던 표면 발견·처리**: `workspace-server.ts`(dev/test 레이아웃 shim)가 layout-service의 **의도적 sync `resolveViewer` seam**에 store.resolve를 넘겼음 → layout 리듀서까지 async 번짐 방지 위해 dev shim만 async화하고 dev 뷰어를 부트스트랩서 1회 eager 해석해 layout엔 캐시 sync 리졸버 주입(그 외 proof는 guest, store not-found와 동일). 소비 route 2개(workspace layout·reset) await. 테스트 6파일 await 전파(sonnet 위임, 기계적 215건; diff 검수 = await/async만 추가, assertion 불변). **동작 불변 검증**: `npm run check` green(typecheck 0에러·lint 0에러·1239 test green·seam 2종). 기존 테스트가 회귀 oracle.
+  - **3b-ii 포트+계약(다음)**: `IdentityAccountRepository` async 포트 + in-memory(현 로직) + pg 두 impl, 양쪽 파라미터화 contract suite(slice 1/2 패턴).
   - **pg + migration**: accounts·sessions·`account_fence`·revoke/erasure `receipt` 테이블. **idempotency = `UNIQUE(workspace,module,account,kind,idempotency_key)` 단독 + payload_hash 원자 비교**(hash를 유니크 키에 넣지 않음). fence-first는 slice 2 패턴(`FOR UPDATE` lock-first)으로 UoW 원자 erase(fence+shred+세션삭제+receipt+전-workspace cascade 한 트랜잭션).
   - **재시작 생존**: revoke/erasure 재시도가 저장된 receipt 반환(재실행 0).
   - **backup 드릴(gate-2 종결)**: compose 프로파일 — (1) post-erase 라운드트립, (2) stale-backup 복원 시 삭제 데이터 부활 0(fence restore-dominance). PersonalCache는 이미 pg라 드릴에 편입.

@@ -49,7 +49,7 @@ describe("federated sign-in (SEC-07)", () => {
     const result = await service.consume({ provider: "google", callbackProof: callback(intent.state) }, PROOF);
     expect(result.status).toBe("issued");
     if (result.sessionProof === undefined) throw new Error("expected session");
-    expect(store.resolve(result.sessionProof).kind).toBe("workspace");
+    expect((await store.resolve(result.sessionProof)).kind).toBe("workspace");
     expect(JSON.stringify(result)).not.toContain(token); // no raw provider token artifact
   });
 
@@ -60,7 +60,7 @@ describe("federated sign-in (SEC-07)", () => {
     const result = await service.consume({ provider: "github", callbackProof: callback(intent.state) }, PROOF);
     expect(result.status).toBe("issued");
     if (result.sessionProof === undefined) throw new Error("expected session");
-    expect(store.resolve(result.sessionProof).kind).toBe("workspace");
+    expect((await store.resolve(result.sessionProof)).kind).toBe("workspace");
   });
 
   it("rejects a forged/unknown state (CSRF) with no session", async () => {
@@ -145,8 +145,8 @@ describe("federated sign-in (SEC-07)", () => {
     expect(ghResult.viewer?.accountReference).not.toBe(ggResult.viewer?.accountReference);
     // and the two proofs resolve to two different workspaces
     if (ghResult.sessionProof === undefined || ggResult.sessionProof === undefined) throw new Error("expected sessions");
-    const ghViewer = store.resolve(ghResult.sessionProof);
-    const ggViewer = store.resolve(ggResult.sessionProof);
+    const ghViewer = await store.resolve(ghResult.sessionProof);
+    const ggViewer = await store.resolve(ggResult.sessionProof);
     if (ghViewer.kind !== "workspace" || ggViewer.kind !== "workspace") throw new Error("expected workspaces");
     expect(ghViewer.accountReference).not.toBe(ggViewer.accountReference);
   });
@@ -155,7 +155,7 @@ describe("federated sign-in (SEC-07)", () => {
     const clock = new IdentityTestClock(1_000_000);
     let token = "";
     const { store, service } = build(async () => ({ kind: "oidc", idToken: token }), clock);
-    const emailAccount = store.ensureEmailAccount("shared@example.com");
+    const emailAccount = await store.ensureEmailAccount("shared@example.com");
     const intent = service.begin({ provider: "google", returnRoute: ROUTE }, PROOF);
     token = validGoogleToken(intent.nonce, clock.now(), { email: "shared@example.com" });
 

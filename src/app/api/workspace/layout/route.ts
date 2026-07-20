@@ -30,6 +30,6 @@ export async function POST(request: Request): Promise<NextResponse> {
     idempotencyKey: parsed.data.idempotencyKey,
     expectedRevision: brandReference<string, "Revision">(parsed.data.expectedRevision),
   };
-  const outcome = changeWorkspaceLayout(command, control, devWorkspaceProof());
+  const outcome = await changeWorkspaceLayout(command, control, await devWorkspaceProof());
   return NextResponse.json({ status: outcome.status, revision: String(outcome.revision), layout: outcome.layout });
 }

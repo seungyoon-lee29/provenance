@@ -24,16 +24,19 @@ type WorkspaceSingleton = Readonly<{ devProof: SessionProof; service: ReturnType
 // module-level const would let the page read a different store than the API writes.
 const globalStore = globalThis as unknown as { __ftWorkspace?: WorkspaceSingleton };
 
-function singleton(): WorkspaceSingleton {
+async function singleton(): Promise<WorkspaceSingleton> {
   if (globalStore.__ftWorkspace !== undefined) return globalStore.__ftWorkspace;
   const store = new IdentitySessionStore(realClock, realEntropy);
-  const devAccount = store.ensureEmailAccount("dev@workspace.local");
-  const devSession = store.issueSession(devAccount.accountReference, store.primaryWorkspace(devAccount));
+  const devAccount = await store.ensureEmailAccount("dev@workspace.local");
+  const devSession = await store.issueSession(devAccount.accountReference, await store.primaryWorkspace(devAccount));
+  // The layout module's resolveViewer is a sync seam by design. This dev shim only ever holds the one
+  // dev session, so resolve it once at bootstrap and hand layout a cached sync resolver — any other
+  // proof maps to guest, matching the store's not-found behaviour.
+  const devViewer = await store.resolve(devSession.proof);
   const service = createLayoutService({
     seed: WORKSPACE_SEED,
-    // The layout module only knows the shared opaque SessionProof; the concrete identity proof
-    // (carrying the secret value) flows through at runtime, so bridge the two here.
-    resolveViewer: (proof) => store.resolve(proof as unknown as SessionProof),
+    resolveViewer: (proof) =>
+      (proof as unknown as SessionProof).value === devSession.proof.value ? devViewer : { kind: "guest", requestId: realEntropy.token(8) },
   });
   globalStore.__ftWorkspace = { devProof: devSession.proof, service };
   return globalStore.__ftWorkspace;
@@ -45,18 +48,18 @@ export function isDevWorkspaceMode(): boolean {
   return environment === "development" || environment === "test";
 }
 
-export function devWorkspaceProof(): SharedSessionProof {
-  return singleton().devProof as unknown as SharedSessionProof;
+export async function devWorkspaceProof(): Promise<SharedSessionProof> {
+  return (await singleton()).devProof as unknown as SharedSessionProof;
 }
 
-export function openWorkspaceLayout(proof: SharedSessionProof): WorkspaceLayoutModel {
-  return singleton().service.open(proof);
+export async function openWorkspaceLayout(proof: SharedSessionProof): Promise<WorkspaceLayoutModel> {
+  return (await singleton()).service.open(proof);
 }
 
-export function changeWorkspaceLayout(command: ChangeWorkspaceLayoutCommand, control: Parameters<ReturnType<typeof createLayoutService>["changeLayout"]>[1], proof: SharedSessionProof): LayoutOutcome {
-  return singleton().service.changeLayout(command, control, proof);
+export async function changeWorkspaceLayout(command: ChangeWorkspaceLayoutCommand, control: Parameters<ReturnType<typeof createLayoutService>["changeLayout"]>[1], proof: SharedSessionProof): Promise<LayoutOutcome> {
+  return (await singleton()).service.changeLayout(command, control, proof);
 }
 
-export function resetWorkspaceLayout(proof: SharedSessionProof): void {
-  singleton().service.reset(proof);
+export async function resetWorkspaceLayout(proof: SharedSessionProof): Promise<void> {
+  (await singleton()).service.reset(proof);
 }

@@ -38,7 +38,7 @@ const revokeSchema = z.object({
 const bodySchema = z.discriminatedUnion("action", [saveSchema, verifySchema, revokeSchema]);
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
-  const viewer = viewerFrom(request);
+  const viewer = await viewerFrom(request);
   if (viewer === undefined || viewer.kind !== "workspace") {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const clientProof = clientProofFrom(request);
   if (!clientProof.sameOrigin) return NextResponse.json({ error: "rejected" }, { status: 403 });
 
-  const viewer = viewerFrom(request);
+  const viewer = await viewerFrom(request);
   if (viewer === undefined || viewer.kind !== "workspace") {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }

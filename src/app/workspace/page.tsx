@@ -12,7 +12,7 @@ async function resolveAccount(): Promise<{ accountReference: string; vaultDisabl
   const value = (await cookies()).get(SESSION_COOKIE)?.value;
   if (value === undefined) return undefined;
   const server = identityServer();
-  const viewer = server.resolve(value);
+  const viewer = await server.resolve(value);
   if (viewer.kind !== "workspace") return undefined;
   return { accountReference: String(viewer.accountReference), vaultDisabled: server.vaultDisabled };
 }
@@ -32,8 +32,8 @@ export default async function WorkspacePage() {
     );
   }
 
-  const proof = devWorkspaceProof();
-  const initial = openWorkspaceLayout(proof);
+  const proof = await devWorkspaceProof();
+  const initial = await openWorkspaceLayout(proof);
 
   return (
     <main style={{ padding: "12px", boxSizing: "border-box" }}>

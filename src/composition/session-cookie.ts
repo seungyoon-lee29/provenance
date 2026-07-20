@@ -52,7 +52,7 @@ export function clientProofFrom(request: NextRequest): ClientProof {
 }
 
 /** Resolve the current viewer from the session cookie (guest if absent/invalid). */
-export function viewerFrom(request: NextRequest) {
+export async function viewerFrom(request: NextRequest) {
   const value = sessionCookieValue(request);
   return value === undefined ? undefined : identityServer().resolve(value);
 }

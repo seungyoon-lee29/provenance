@@ -56,7 +56,7 @@ export type IdentitySingleton = Readonly<{
   challenge: EmailChallengeService;
   connections: ProviderConnectionsCore;
   vaultDisabled: boolean;
-  resolve: (value: string) => ViewerContext;
+  resolve: (value: string) => Promise<ViewerContext>;
 }>;
 
 const realClock: IdentityClock = { now: () => Date.now() };

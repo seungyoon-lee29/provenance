@@ -273,8 +273,8 @@ describe("AT-11: administrative erasure through the real Identity coordinator", 
       },
     };
     const { store, svc } = buildIdentity([participant]);
-    const account = store.ensureEmailAccount("erase-me@example.com");
-    const subject = String(store.primaryWorkspace(account));
+    const account = await store.ensureEmailAccount("erase-me@example.com");
+    const subject = String(await store.primaryWorkspace(account));
 
     // Email accepted (→ directory binding WITH route + quota counters), push 503
     // (→ live retry row in the dispatch queue at erasure time).
@@ -312,10 +312,10 @@ describe("AT-11: administrative erasure through the real Identity coordinator", 
 
   it("coordinator fence-first erasure: module receipt matches the public fence and every store line shreds", async () => {
     const w = await erasedWorld();
-    const session = w.store.issueSession(w.account.accountReference, w.store.primaryWorkspace(w.account));
-    const proof = w.svc.beginReauthentication(session.proof);
+    const session = await w.store.issueSession(w.account.accountReference, await w.store.primaryWorkspace(w.account));
+    const proof = await w.svc.beginReauthentication(session.proof);
     if (proof === undefined) throw new Error("expected reauth proof");
-    const revision = w.store.accountSecurityRevision(w.account.accountReference);
+    const revision = await w.store.accountSecurityRevision(w.account.accountReference);
     const outcome = await w.svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, control("e-int", revision), session.proof);
 
     expect(outcome.status).toBe("accepted");
@@ -367,10 +367,10 @@ describe("AT-11: administrative erasure through the real Identity coordinator", 
 
   it("erasure replay through the coordinator keeps the original receipt (idempotent public state)", async () => {
     const w = await erasedWorld();
-    const session = w.store.issueSession(w.account.accountReference, w.store.primaryWorkspace(w.account));
-    const proof = w.svc.beginReauthentication(session.proof);
+    const session = await w.store.issueSession(w.account.accountReference, await w.store.primaryWorkspace(w.account));
+    const proof = await w.svc.beginReauthentication(session.proof);
     if (proof === undefined) throw new Error("expected reauth proof");
-    const revision = w.store.accountSecurityRevision(w.account.accountReference);
+    const revision = await w.store.accountSecurityRevision(w.account.accountReference);
     const first = await w.svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, control("e-replay", revision), session.proof);
     expect(first.status).toBe("accepted");
     const receipt = w.erasure.receiptFor(w.subject);

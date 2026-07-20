@@ -17,7 +17,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
 
-  const outcome = identityServer().identity.consumeAccountChallenge(
+  const outcome = await identityServer().identity.consumeAccountChallenge(
     { kind: parsed.data.kind, proof: parsed.data.proof },
     clientProofFrom(request),
   );

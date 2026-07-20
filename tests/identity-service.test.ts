@@ -31,62 +31,62 @@ function control(idempotencyKey: string, expectedRevision: number): MutationCont
 }
 
 describe("identity service — revoke (SEC-08)", () => {
-  it("current revoke ends only that session and requires the expected revision", () => {
+  it("current revoke ends only that session and requires the expected revision", async () => {
     const { store, svc } = build();
-    const account = store.ensureEmailAccount("a@example.com");
-    const ws = store.primaryWorkspace(account);
-    const first = store.issueSession(account.accountReference, ws);
-    const second = store.issueSession(account.accountReference, ws);
-    const rev = store.accountSecurityRevision(account.accountReference);
+    const account = await store.ensureEmailAccount("a@example.com");
+    const ws = await store.primaryWorkspace(account);
+    const first = await store.issueSession(account.accountReference, ws);
+    const second = await store.issueSession(account.accountReference, ws);
+    const rev = await store.accountSecurityRevision(account.accountReference);
 
-    const outcome = svc.revokeSession({ scope: "current" }, control("k1", rev), first.proof);
+    const outcome = await svc.revokeSession({ scope: "current" }, control("k1", rev), first.proof);
     expect(outcome.status).toBe("revoked");
-    expect(svc.resolve(first.proof).kind).toBe("guest");
-    expect(svc.resolve(second.proof).kind).toBe("workspace");
+    expect((await svc.resolve(first.proof)).kind).toBe("guest");
+    expect((await svc.resolve(second.proof)).kind).toBe("workspace");
   });
 
-  it("rejects a stale expected revision with the current revision and no effect", () => {
+  it("rejects a stale expected revision with the current revision and no effect", async () => {
     const { store, svc } = build();
-    const account = store.ensureEmailAccount("a@example.com");
-    const issued = store.issueSession(account.accountReference, store.primaryWorkspace(account));
+    const account = await store.ensureEmailAccount("a@example.com");
+    const issued = await store.issueSession(account.accountReference, await store.primaryWorkspace(account));
 
-    const outcome = svc.revokeSession({ scope: "all" }, control("k", 999), issued.proof);
+    const outcome = await svc.revokeSession({ scope: "all" }, control("k", 999), issued.proof);
     expect(outcome.status).toBe("rejected");
-    expect(svc.resolve(issued.proof).kind).toBe("workspace"); // untouched
+    expect((await svc.resolve(issued.proof)).kind).toBe("workspace"); // untouched
   });
 
-  it("is idempotent on the key and conflicts on same-key/different-scope", () => {
+  it("is idempotent on the key and conflicts on same-key/different-scope", async () => {
     const { store, svc } = build();
-    const account = store.ensureEmailAccount("a@example.com");
-    const ws = store.primaryWorkspace(account);
-    const a = store.issueSession(account.accountReference, ws);
-    const b = store.issueSession(account.accountReference, ws);
-    const rev = store.accountSecurityRevision(account.accountReference);
+    const account = await store.ensureEmailAccount("a@example.com");
+    const ws = await store.primaryWorkspace(account);
+    const a = await store.issueSession(account.accountReference, ws);
+    const b = await store.issueSession(account.accountReference, ws);
+    const rev = await store.accountSecurityRevision(account.accountReference);
 
-    const first = svc.revokeSession({ scope: "current" }, control("dup", rev), a.proof);
-    const replay = svc.revokeSession({ scope: "current" }, control("dup", rev), a.proof);
+    const first = await svc.revokeSession({ scope: "current" }, control("dup", rev), a.proof);
+    const replay = await svc.revokeSession({ scope: "current" }, control("dup", rev), a.proof);
     expect(replay).toEqual(first); // same receipt, no double effect
-    expect(svc.resolve(b.proof).kind).toBe("workspace"); // "all" was never applied
+    expect((await svc.resolve(b.proof)).kind).toBe("workspace"); // "all" was never applied
 
     // same proof + same key + different scope → side-effect-free conflict
-    const conflict = svc.revokeSession({ scope: "all" }, control("dup", rev), a.proof);
+    const conflict = await svc.revokeSession({ scope: "all" }, control("dup", rev), a.proof);
     expect(conflict.status).toBe("conflict");
-    expect(svc.resolve(b.proof).kind).toBe("workspace"); // "all" still never applied
+    expect((await svc.resolve(b.proof)).kind).toBe("workspace"); // "all" still never applied
   });
 
-  it("does not collide revoke receipts across accounts reusing the same idempotency key", () => {
+  it("does not collide revoke receipts across accounts reusing the same idempotency key", async () => {
     const { store, svc } = build();
-    const a = store.ensureEmailAccount("a@example.com");
-    const b = store.ensureEmailAccount("b@example.com");
-    const sa = store.issueSession(a.accountReference, store.primaryWorkspace(a));
-    const sb = store.issueSession(b.accountReference, store.primaryWorkspace(b));
+    const a = await store.ensureEmailAccount("a@example.com");
+    const b = await store.ensureEmailAccount("b@example.com");
+    const sa = await store.issueSession(a.accountReference, await store.primaryWorkspace(a));
+    const sb = await store.issueSession(b.accountReference, await store.primaryWorkspace(b));
 
-    const outA = svc.revokeSession({ scope: "current" }, control("shared-key", store.accountSecurityRevision(a.accountReference)), sa.proof);
-    const outB = svc.revokeSession({ scope: "current" }, control("shared-key", store.accountSecurityRevision(b.accountReference)), sb.proof);
+    const outA = await svc.revokeSession({ scope: "current" }, control("shared-key", await store.accountSecurityRevision(a.accountReference)), sa.proof);
+    const outB = await svc.revokeSession({ scope: "current" }, control("shared-key", await store.accountSecurityRevision(b.accountReference)), sb.proof);
     expect(outA.status).toBe("revoked");
     expect(outB.status).toBe("revoked"); // B is not a false idempotent replay of A's receipt
-    expect(svc.resolve(sa.proof).kind).toBe("guest");
-    expect(svc.resolve(sb.proof).kind).toBe("guest"); // B was actually revoked, not skipped
+    expect((await svc.resolve(sa.proof)).kind).toBe("guest");
+    expect((await svc.resolve(sb.proof)).kind).toBe("guest"); // B was actually revoked, not skipped
   });
 });
 
@@ -96,18 +96,18 @@ describe("identity service — administrative erasure (SEC-09)", () => {
     const participant: ErasureParticipant = {
       erase: async ({ accountReference, fence }) => {
         // the durable fence must already be committed when a module receipt runs
-        seenFence.push(store.isErasedAccount(accountReference) && fence > 0);
+        seenFence.push(await store.isErasedAccount(accountReference) && fence > 0);
       },
     };
     const { store, svc } = build(new IdentityTestClock(), [participant]);
-    const account = store.ensureEmailAccount("a@example.com");
-    const ws = store.primaryWorkspace(account);
-    const primary = store.issueSession(account.accountReference, ws);
-    const secondary = store.issueSession(account.accountReference, ws);
+    const account = await store.ensureEmailAccount("a@example.com");
+    const ws = await store.primaryWorkspace(account);
+    const primary = await store.issueSession(account.accountReference, ws);
+    const secondary = await store.issueSession(account.accountReference, ws);
 
-    const proof = svc.beginReauthentication(primary.proof);
+    const proof = await svc.beginReauthentication(primary.proof);
     if (proof === undefined) throw new Error("expected reauth proof");
-    const rev = store.accountSecurityRevision(account.accountReference);
+    const rev = await store.accountSecurityRevision(account.accountReference);
     const outcome = await svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, control("e1", rev), primary.proof);
 
     expect(outcome.status).toBe("accepted");
@@ -115,8 +115,8 @@ describe("identity service — administrative erasure (SEC-09)", () => {
     expect(outcome.erasureReference).toBeDefined();
     expect(seenFence).toEqual([true]);
     // every session of the account is now dead
-    expect(svc.resolve(primary.proof).kind).toBe("guest");
-    expect(svc.resolve(secondary.proof).kind).toBe("guest");
+    expect((await svc.resolve(primary.proof)).kind).toBe("guest");
+    expect((await svc.resolve(secondary.proof)).kind).toBe("guest");
   });
 
   it("account-scope erasure cascades the fence to EVERY workspace of the account (SEC-09)", async () => {
@@ -125,15 +125,15 @@ describe("identity service — administrative erasure (SEC-09)", () => {
       erase: async ({ workspaceReference }) => { erasedWorkspaces.push(workspaceReference); },
     };
     const { store, svc } = build(new IdentityTestClock(), [participant]);
-    const account = store.ensureEmailAccount("a@example.com");
-    const primaryWs = store.primaryWorkspace(account);
+    const account = await store.ensureEmailAccount("a@example.com");
+    const primaryWs = await store.primaryWorkspace(account);
     const secondWs = "workspace:second";
-    store.addWorkspace(account.accountReference, secondWs);
-    const primary = store.issueSession(account.accountReference, primaryWs);
+    await store.addWorkspace(account.accountReference, secondWs);
+    const primary = await store.issueSession(account.accountReference, primaryWs);
 
-    const proof = svc.beginReauthentication(primary.proof);
+    const proof = await svc.beginReauthentication(primary.proof);
     if (proof === undefined) throw new Error("expected reauth proof");
-    const rev = store.accountSecurityRevision(account.accountReference);
+    const rev = await store.accountSecurityRevision(account.accountReference);
     await svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, control("e", rev), primary.proof);
 
     // A multi-workspace account's personal data lives in every workspace; erasing the
@@ -143,9 +143,9 @@ describe("identity service — administrative erasure (SEC-09)", () => {
 
   it("denies erasure without a valid reauthentication proof", async () => {
     const { store, svc } = build();
-    const account = store.ensureEmailAccount("a@example.com");
-    const issued = store.issueSession(account.accountReference, store.primaryWorkspace(account));
-    const rev = store.accountSecurityRevision(account.accountReference);
+    const account = await store.ensureEmailAccount("a@example.com");
+    const issued = await store.issueSession(account.accountReference, await store.primaryWorkspace(account));
+    const rev = await store.accountSecurityRevision(account.accountReference);
 
     const outcome = await svc.requestAdministrativeErasure(
       { scope: "account", confirmationProof: { kind: "ReauthenticationProof", value: "forged" } },
@@ -153,23 +153,23 @@ describe("identity service — administrative erasure (SEC-09)", () => {
       issued.proof,
     );
     expect(outcome.status).toBe("denied");
-    expect(svc.resolve(issued.proof).kind).toBe("workspace"); // untouched
+    expect((await svc.resolve(issued.proof)).kind).toBe("workspace"); // untouched
   });
 
   it("suppresses restore: a backup re-activating the account row is overridden by the fence", async () => {
     const { store, svc } = build();
-    const account = store.ensureEmailAccount("a@example.com");
-    const issued = store.issueSession(account.accountReference, store.primaryWorkspace(account));
-    const proof = svc.beginReauthentication(issued.proof);
+    const account = await store.ensureEmailAccount("a@example.com");
+    const issued = await store.issueSession(account.accountReference, await store.primaryWorkspace(account));
+    const proof = await svc.beginReauthentication(issued.proof);
     if (proof === undefined) throw new Error("expected reauth proof");
-    const rev = store.accountSecurityRevision(account.accountReference);
+    const rev = await store.accountSecurityRevision(account.accountReference);
     await svc.requestAdministrativeErasure({ scope: "account", confirmationProof: proof }, control("e", rev), issued.proof);
 
     // simulate a stale backup restore flipping the account row back to active
-    store.setAccountState(account.accountReference, "active");
-    expect(store.accountState(account.accountReference)).toBe("active");
+    await store.setAccountState(account.accountReference, "active");
+    expect(await store.accountState(account.accountReference)).toBe("active");
     // the monotonic fence still overrides it — the old session never resolves
-    expect(svc.resolve(issued.proof).kind).toBe("guest");
-    expect(store.isErasedAccount(account.accountReference)).toBe(true);
+    expect((await svc.resolve(issued.proof)).kind).toBe("guest");
+    expect(await store.isErasedAccount(account.accountReference)).toBe(true);
   });
 });
