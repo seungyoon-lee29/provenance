@@ -10,6 +10,7 @@ import type {
   PublicPanelKey,
 } from "./contracts";
 import { GuestPanel, LoginGate } from "./guest-panel";
+import { PublicTreasuryWidget } from "./public-treasury-widget";
 import styles from "./guest-terminal-shell.module.css";
 import { useGuestPanelUpdates } from "./guest-update-client";
 import { ChartWorkspace } from "../chart/chart-workspace";
@@ -178,7 +179,9 @@ export function GuestTerminalShell({ snapshot, updateUrl, chart }: Readonly<{
           <div id="headlines">
             <GuestPanel title="주요 뉴스" state={get("headlines")} />
           </div>
-          <GuestPanel title="금리·환율·원자재" state={get("macro")} />
+          <GuestPanel title="금리·환율·원자재" state={get("macro")}>
+            <PublicTreasuryWidget />
+          </GuestPanel>
         </div>
 
         <aside className={`${styles.column} ${styles.rightColumn}`} aria-label="개인 기능과 데이터 품질" tabIndex={0}>

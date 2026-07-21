@@ -29,6 +29,7 @@ are empty and every `RUN_*_CONTRACT` flag defaults to `false`.
 | Alpaca Basic | free IEX / paper | opt-in contract only |
 | Gemini | AI over allowed materials | opt-in, key required |
 | DART / KRX | public filings / EOD | opt-in, key required |
+| US Treasury yield curve | public domain (17 U.S.C. §105), keyless daily XML, guest-redistributable | opt-in via `PUBLIC_MARKET_TREASURY_ENABLED` |
 
 No personal key is ever redistributed to a logged-out public feed or another
 user's cache. See [`docs/configuration/provider-credentials.md`](../configuration/provider-credentials.md)

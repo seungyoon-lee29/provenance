@@ -76,6 +76,21 @@ export function applyObservationFreshness(
   available: AvailableInformation<MarketObservation>,
   input: Readonly<{ nowMs: number; policy: ObservationExpiryPolicy }>,
 ): InformationOutcome<MarketObservation> {
+  return applyClassifiedObservationFreshness(available, {
+    nowMs: input.nowMs,
+    classify: (asOfMs, nowMs) => classifyObservationFreshness({ asOfMs, nowMs, policy: input.policy }),
+  });
+}
+
+/**
+ * Same malformed/roundtrip/outcome machinery, but with an injected classifier —
+ * for feeds whose expiry schedule a static `ObservationExpiryPolicy` cannot
+ * express (e.g. Treasury's expected business-day publications, spec §5.1).
+ */
+export function applyClassifiedObservationFreshness(
+  available: AvailableInformation<MarketObservation>,
+  input: Readonly<{ nowMs: number; classify(asOfMs: number, nowMs: number): ObservationFreshnessClass }>,
+): InformationOutcome<MarketObservation> {
   const occurredAt = new Date(input.nowMs).toISOString();
   if (isMalformedObservation(available.value)) {
     return invalidResponseOutcome(available.provider, available.feed, occurredAt);
@@ -84,7 +99,7 @@ export function applyObservationFreshness(
   if (Number.isNaN(asOfMs) || new Date(asOfMs).toISOString() !== available.asOf) {
     return invalidResponseOutcome(available.provider, available.feed, occurredAt);
   }
-  const classification = classifyObservationFreshness({ asOfMs, nowMs: input.nowMs, policy: input.policy });
+  const classification = input.classify(asOfMs, input.nowMs);
   if (classification.kind === "invalid") {
     return invalidResponseOutcome(available.provider, available.feed, occurredAt);
   }
