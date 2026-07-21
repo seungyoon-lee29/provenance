@@ -10,6 +10,7 @@ import {
   resolveGuestFeatureRuntime,
 } from "@/modules/terminal-view/presentation/guest/public-feature";
 import { resolveGuestChart } from "@/modules/terminal-view/presentation/chart/chart-server";
+import { publicMarketServer } from "@/composition/public-market-server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,8 +19,9 @@ export default async function HomePage() {
     process.env.NODE_ENV,
     process.env.F1_SCRIPTED_PROVIDER_DELAY_MS,
     process.env.APP_ENVIRONMENT,
+    process.env.F1_GUEST_MODE,
   );
-  const feature = createGuestTerminalFeature(runtime);
+  const feature = createGuestTerminalFeature({ ...runtime, publicMarket: publicMarketServer() });
   const requestId = crypto.randomUUID();
   const load = feature.terminalView.open(
     createGuestTerminalRequest(publicPanelKeys, `guest-${requestId}`),

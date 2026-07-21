@@ -1,3 +1,5 @@
+import type { MarketInformation } from "@/modules/financial-information/data/contracts";
+
 import type { GuestClock, GuestTerminalView } from "./contracts";
 import { createGuestTerminalView, guestSystemClock } from "./guest-terminal-view";
 import { createPublicFinancialInformation } from "./public-financial-information";
@@ -11,6 +13,8 @@ export function createGuestTerminalFeature(options: Readonly<{
   mode: GuestFeatureMode;
   clock?: GuestClock;
   scriptedHitDelayMs?: number;
+  /** Real public-track provider (ticket 30-a); only the public composition consumes it. */
+  publicMarket?: MarketInformation;
 }>): Readonly<{
   terminalView: GuestTerminalView;
   marker?: "SYNTHETIC TEST DATA";
@@ -24,7 +28,7 @@ export function createGuestTerminalFeature(options: Readonly<{
     terminalView: createGuestTerminalView({
       financialInformation: synthetic
         ? createScriptedFinancialInformation(clock, options.scriptedHitDelayMs)
-        : createPublicFinancialInformation(),
+        : createPublicFinancialInformation(options.publicMarket ? { market: options.publicMarket } : {}),
       clock,
       ...(synthetic ? { syntheticMarker: "SYNTHETIC TEST DATA" as const } : {}),
     }),
@@ -36,6 +40,7 @@ export function resolveGuestFeatureRuntime(
   nodeEnvironment: string | undefined,
   scriptedHitDelay: string | undefined = undefined,
   appEnvironment: string | undefined = undefined,
+  guestModeOverride: string | undefined = undefined,
 ): Readonly<{
   environment: GuestFeatureEnvironment;
   mode: GuestFeatureMode;
@@ -43,6 +48,11 @@ export function resolveGuestFeatureRuntime(
 }> {
   if (nodeEnvironment === "production" && appEnvironment !== "test") {
     return { environment: "production", mode: "public" };
+  }
+  // Dev/test QA opt-in (ticket 30-b): F1_GUEST_MODE=public composes the real public track locally.
+  // Only this one direction exists — production can never opt INTO synthetic (fence above).
+  if (guestModeOverride === "public") {
+    return { environment: appEnvironment === "test" ? "test" : "development", mode: "public" };
   }
   const parsedDelay = Number(scriptedHitDelay ?? 0);
   const scriptedHitDelayMs = Number.isFinite(parsedDelay) && parsedDelay >= 0 && parsedDelay <= 1_000

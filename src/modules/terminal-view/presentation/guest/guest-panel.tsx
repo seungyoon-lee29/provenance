@@ -80,7 +80,7 @@ export function LoginGate({ title, feature }: Readonly<{ title: string; feature:
         <span className={styles.lockIcon} aria-hidden="true">◎</span>
         <strong>로그인 필요</strong>
         <p>로그인 후 사용할 수 있습니다.</p>
-        <button type="button" aria-label={`${title} 로그인을 준비 중입니다`} disabled>로그인 준비 중</button>
+        <a href="/signin" aria-label={`${title} 사용을 위해 로그인`}>로그인</a>
       </div>
     </section>
   );
