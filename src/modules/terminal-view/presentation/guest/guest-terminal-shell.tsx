@@ -10,6 +10,8 @@ import type {
   PublicPanelKey,
 } from "./contracts";
 import { GuestPanel, LoginGate } from "./guest-panel";
+import { SymbolLookup } from "./symbol-lookup";
+import { parseTerminalCommand } from "./terminal-command";
 import { PublicTreasuryWidget } from "./public-treasury-widget";
 import styles from "./guest-terminal-shell.module.css";
 import { useGuestPanelUpdates } from "./guest-update-client";
@@ -106,8 +108,22 @@ export function GuestTerminalShell({ snapshot, updateUrl, chart, account }: Read
   const byKey = useMemo(() => panelMap(panels), [panels]);
   const get = (panelKey: PublicPanelKey) => byKey.get(panelKey) ?? fallbackPanel(panelKey, snapshot.requestRevision);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [lookups, setLookups] = useState<readonly string[]>([]);
+  const commandInputRef = useRef<HTMLInputElement>(null);
   const [announcement, setAnnouncement] = useState("게스트 터미널 준비 완료");
   const menuButtonRef = useRef<HTMLButtonElement>(null);
+
+  // ⌘K/Ctrl+K는 헤더에 표시만 돼 있고 동작이 없었다(ticket 37).
+  useEffect(() => {
+    const focusCommand = (event: KeyboardEvent) => {
+      if (event.key !== "k" || !(event.metaKey || event.ctrlKey)) return;
+      event.preventDefault();
+      commandInputRef.current?.focus();
+      commandInputRef.current?.select();
+    };
+    window.addEventListener("keydown", focusCommand);
+    return () => window.removeEventListener("keydown", focusCommand);
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -120,9 +136,25 @@ export function GuestTerminalShell({ snapshot, updateUrl, chart, account }: Read
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [menuOpen]);
 
+  // 명령 실행 (ticket 37): 티커를 조회 목록에 넣는다. 라우트와 같은 경계로 먼저 거절해
+  // 사용자가 "왜 안 되는지"를 즉시 안다.
   function handleCommand(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAnnouncement("명령 실행은 다음 단계에서 제공됩니다. 현재 화면은 읽기 전용입니다.");
+    const form = event.currentTarget;
+    const input = form.elements.namedItem("command");
+    const raw = input instanceof HTMLInputElement ? input.value : "";
+    const command = parseTerminalCommand(raw);
+    if (command.kind === "empty") {
+      setAnnouncement("조회할 티커를 입력하세요.");
+      return;
+    }
+    if (command.kind === "invalid") {
+      setAnnouncement("사용할 수 없는 티커입니다. 영문·숫자·점 12자 이내로 입력하세요.");
+      return;
+    }
+    setLookups((current) => (current.includes(command.symbol) ? current : [command.symbol, ...current]));
+    setAnnouncement(`${command.symbol} 조회를 시작했습니다.`);
+    if (input instanceof HTMLInputElement) input.value = "";
   }
 
   return (
@@ -154,7 +186,7 @@ export function GuestTerminalShell({ snapshot, updateUrl, chart, account }: Read
         <form className={styles.command} role="search" onSubmit={handleCommand}>
           <label htmlFor="terminal-command">명령 또는 티커 입력</label>
           <span aria-hidden="true">⌕</span>
-          <input id="terminal-command" name="command" autoComplete="off" placeholder="명령 또는 티커 입력" />
+          <input ref={commandInputRef} id="terminal-command" name="command" autoComplete="off" placeholder="명령 또는 티커 입력" />
           <kbd>⌘K</kbd>
           <button className={styles.commandSubmit} type="submit" aria-label="명령 실행">↵</button>
         </form>
@@ -194,7 +226,9 @@ export function GuestTerminalShell({ snapshot, updateUrl, chart, account }: Read
             </ul>
           </GuestPanel>
           <div id="watchlist">
-            <GuestPanel title="관심종목" state={get("watchlist")} />
+            <GuestPanel title="관심종목" state={get("watchlist")}>
+              <SymbolLookup symbols={lookups} />
+            </GuestPanel>
           </div>
           <GuestPanel title="공시" state={get("filings")} />
         </div>

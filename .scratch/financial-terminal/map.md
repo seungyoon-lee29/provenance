@@ -72,8 +72,21 @@
 - [34](./issues/34-kis-request-spacing.md) **resolved** → 화면을 늘리기 전 전송 경계 선행 수정.
 - [35 - 패널 provenance 노이즈 정리](./issues/35-panel-provenance-noise.md) **resolved** (2026-07-21): 값 + `출처 · 신선도 · 시각` 한 줄만 남기고 나머지 provenance는 네이티브 `<details>` 뒤로(패널·차트 공통), 헤더의 내부 패널 키 제거. 요약은 available일 때만 — 값 없는 outcome에 출처 줄을 지어내지 않는다. **접자마자 드러난 결함 2건도 함께 수정**: LoginGate 링크 터치 타겟 17px(티켓 30 회귀, WCAG 2.5.5), 차트 선택 버튼 대비 4.3<4.5(원래 있었으나 컨트롤이 화면 밖이라 axe가 측정 못 하던 것). + playwright webServer가 개발자 `.env.local`의 single_owner를 흡수해 레인이 부팅 거절되던 하네스 버그 pin. 브라우저·a11y 레인 86 green, check 1,361 green.
 - [36 - 로그인 터미널 본체화](./issues/36-logged-in-terminal-core.md) **resolved** (2026-07-21): 같은 셸에 소스만 갈아끼우는 방식으로 로그인 화면을 본체화 — `createPersonalFinancialInformation`이 KIS 가능 패널(`index-kospi`·`market-overview`·`watchlist`)만 개인 경로로 보내고 나머지는 공개 소스에 위임. **뷰어는 인자가 아니라 세션에서 확정**(게스트 조립 경로엔 개인 소스가 존재하지 않고, 어댑터 scope guard가 2차 방어). 헤더 계정 영역(로그인/워크스페이스·로그아웃) 추가. **배선하며 드러난 구멍**: 패널 값이 흐르는 SSE 핸드오프 라우트에 세션 검사가 아예 없었다 → 소유 계정 바인딩 + 불일치 시 거절하되 소모하지 않음(DoS 방지). 실 KIS 라이브 렌더 확인(KOSPI 6,747.95·코스닥 753.34·삼성전자 259,000, 게스트 HTML 개인 값 0건), 핸드오프 소유권 실측(410→200). 회귀 2건 동반 수정(모바일 헤더가 ↵ 버튼 덮음, 차트 disabled opacity로 대비 2.73 붕괴). check 1,367 green, 브라우저 86 green. **잔여**: 관심종목은 대표 1종목(목록 UI·저장은 후속), 해외지수 미배선, 로그인 첫 페인트는 유량 간격만큼 순차.
-- [37 - 명령·티커 검색 실작동](./issues/37-command-search.md): stub 핸들러 → 실제 종목 화면. 36 선행.
+- [37 - 명령·티커 검색 실작동](./issues/37-command-search.md) **resolved** (2026-07-21): stub 핸들러 → 실제 조회. `parseTerminalCommand`가 라우트와 **같은 심볼 경계**로 먼저 거절(UI가 사유를 안다), 결과는 `SymbolLookup`으로 관심종목 패널에 누적 — **검색과 관심목록이 같은 기계**라 저장소 없이 목록이 생긴다. ⌘K도 실제 포커스. **조회가 임의 심볼을 열자마자 불변식 위반이 드러났다**: 없는 종목에 KIS가 `rt_cd=0` + 가격 `"0"`을 주고 엄격 파서가 이를 통과시켜 **`available` 0원 시세**를 만들고 있었다(고정 4심볼만 조회하던 동안 도달하지 않았을 뿐). KRX 시세·지수의 0은 값이 아니라 `no_data`로 봉쇄(빈 문자열=형식 오류는 계속 `invalid_response`로 구분). 실 KIS 라이브 확인(000660 1,836,000·kospi 소문자 정규화·`bad;symbol` 즉시 거절·ZZZZ no_data), check 1,375 green, 브라우저 86 green. **잔여**: 조회 목록 비영속, 회사명 검색 불가(종목 마스터 필요), 차트는 조회 심볼 미추종.
 - [38 - 상단 탭 실제 라우팅](./issues/38-nav-tabs-routing.md): 앵커 → 라우트. 36·37 선행(먼저 하면 빈 페이지 4개).
+
+### 외부 사례 대조 백로그 (2026-07-21, 사용자 결정)
+
+`JungHoonGhae/tossinvest-cli`(Go CLI+MCP, ★455) 전문 대조에서 **우리에게 없는 것 3개**를 채택.
+데이터 획득 전략(WTS 리버스 엔지니어링)은 우리 라이선스 논지와 정면 충돌하므로 **의도적 미채택**.
+
+- [39 - 공급자 응답 계약 상시 프로브](./issues/39-provider-contract-probe.md): 우리 검증은 전부
+  *내가 틀리는 것*만 잡고 *외부가 바뀌는 것*은 opt-in env 게이트라 사실상 안 돈다.
+  **37·38(UI)과 독립**이므로 원하면 먼저 당겨도 된다.
+- [40 - 주문별 confirm token](./issues/40-order-confirm-token.md): idempotency는 중복을 막지만
+  intent 일치는 증명하지 않는다. Live를 열 때 그대로 재사용되는 선불 보험.
+- [41 - MCP read-only 카탈로그](./issues/41-mcp-readonly-catalog.md): `InformationOutcome`을
+  평탄화 없이 에이전트에 전달하는 표면. 상시 컨텍스트 툴 3개 고정. write는 40 선행 전 미논의.
 
 ### 트랙 상태 (2026-07-20, 정직)
 

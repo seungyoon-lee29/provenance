@@ -12,7 +12,7 @@ import type {
   ProviderFailureKind,
 } from "./contracts";
 import { applyObservationFreshness, OBSERVATION_POLICY_VERSION } from "./observation-freshness";
-import { apiRequiredOutcome, classifyProviderFailure } from "./outcome-classification";
+import { apiRequiredOutcome, classifyProviderFailure, noDataOutcome } from "./outcome-classification";
 import { DATA_DEADLINE_MS, deadlineTimeoutOutcome, withDeadline, type Sleep } from "./deadline";
 import { KRX_HOLIDAYS, KRX_HOLIDAY_YEARS } from "./krx-holidays";
 
@@ -281,6 +281,13 @@ export function createKisMarketInformation(deps: KisDeps): MarketInformation {
       const session = krxSessionAsOf(nowMs);
       const { value, evidenceReference } = toObservation(query.symbol, body.output ?? {}, session.basis);
       const asOf = new Date(session.asOfMs).toISOString();
+      // 없는 종목에도 KIS는 rt_cd=0 + 가격 "0"을 준다(ticket 37 실 서버 실측). "0"은 형식상 정상
+      // 십진수라 파서를 통과하므로, 여기서 막지 않으면 **없는 종목에 0원짜리 시세가 생긴다**.
+      // KRX 시세·지수는 0이 될 수 없다 — 값이 아니라 "관측값 없음"이 사실이다. (빈 문자열 같은
+      // 형식 오류는 아래 malformed 경로가 계속 invalid_response로 잡는다.)
+      if (value.last === 0) {
+        return noDataOutcome(`kis:${query.symbol}`, asOf);
+      }
       const available: AvailableInformation<MarketObservation> = {
         status: "available",
         value,

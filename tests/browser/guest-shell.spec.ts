@@ -103,7 +103,11 @@ test("supports keyboard commands, mobile menu focus return, and touch targets", 
   await input.fill("AAPL");
   const submit = page.getByRole("button", { name: "명령 실행" });
   await submit.click();
-  await expect(page.getByText("명령 실행은 다음 단계에서 제공됩니다. 현재 화면은 읽기 전용입니다.", { exact: true })).toBeAttached();
+  // ticket 37: 명령창이 실제로 조회를 시작한다. 게스트에게는 개인 시세가 라이선스상 닫혀 있으므로
+  // 값이 아니라 "로그인 필요"가 정직한 결과다 — 어느 쪽이든 값을 지어내지 않는다.
+  await expect(page.getByText("AAPL 조회를 시작했습니다.", { exact: true })).toBeAttached();
+  await expect(page.locator('[data-role="lookup-row"][data-symbol="AAPL"]')).toBeVisible();
+  await expect(page.locator('[data-role="lookup-row"][data-symbol="AAPL"] [data-role="lookup-value"]')).toHaveCount(0);
   await expect(submit).toBeFocused();
 
   if (testInfo.project.name === "mobile-360") {

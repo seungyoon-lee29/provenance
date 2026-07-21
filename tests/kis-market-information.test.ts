@@ -407,3 +407,44 @@ describe("KIS deadline & concurrency (slice 6 — codex blockers)", () => {
     expect(calls.filter((c) => c.url.includes("/inquire-price")).length).toBe(2);
   });
 });
+
+// ticket 37, 실 서버 실측: 없는 종목(ZZZZ)에도 KIS는 rt_cd=0 + 가격 "0"을 준다. 엄격 십진 파서는
+// "0"을 정상 숫자로 받으므로 그대로 두면 **없는 종목에 0원짜리 시세가 생긴다** — 이 프로젝트가
+// 절대 하지 않기로 한 것(값을 모르면 만들지 않는다). 검색이 임의 심볼을 열면서 도달 가능해졌다.
+describe("KIS zero-priced quote (37)", () => {
+  const zeroQuote = { rt_cd: "0", msg_cd: "MCA00000", output: { stck_prpr: "0", prdy_vrss: "0", prdy_ctrt: "0" } };
+
+  it("a zero stock price is not a 0원 value → unavailable/no_data", async () => {
+    const http: KisHttp = async (req) => {
+      if (req.url.includes("/oauth2/tokenP")) return { status: 200, json: { access_token: "t", expires_in: 3600 } };
+      return { status: 200, json: zeroQuote };
+    };
+    const info = createKisMarketInformation({ http, clock, config: CONFIG });
+    const outcome = await info.read(query("ZZZZ"), ownerViewer()).result;
+    expect(outcome.status).toBe("unavailable");
+    if (outcome.status !== "unavailable") throw new Error("unreachable");
+    expect(outcome.reason).toBe("no_data");
+  });
+
+  it("keeps a malformed(빈 문자열) response distinct from an honest zero", async () => {
+    const http: KisHttp = async (req) => {
+      if (req.url.includes("/oauth2/tokenP")) return { status: 200, json: { access_token: "t", expires_in: 3600 } };
+      return { status: 200, json: { rt_cd: "0", msg_cd: "MCA00000", output: { stck_prpr: "", prdy_vrss: "", prdy_ctrt: "" } } };
+    };
+    const info = createKisMarketInformation({ http, clock, config: CONFIG });
+    const outcome = await info.read(query("ZZZZ"), ownerViewer()).result;
+    expect(outcome.status).toBe("failed");
+    if (outcome.status !== "failed") throw new Error("unreachable");
+    expect(outcome.degradation.code).toBe("invalid_response");
+  });
+
+  it("a real price is untouched by the zero gate", async () => {
+    const http: KisHttp = async (req) => {
+      if (req.url.includes("/oauth2/tokenP")) return { status: 200, json: { access_token: "t", expires_in: 3600 } };
+      return { status: 200, json: { rt_cd: "0", msg_cd: "MCA00000", output: { stck_prpr: "259000", prdy_vrss: "15000", prdy_ctrt: "6.15" } } };
+    };
+    const info = createKisMarketInformation({ http, clock, config: CONFIG });
+    const outcome = await info.read(query("005930"), ownerViewer()).result;
+    expect(outcome.status).toBe("available");
+  });
+});
