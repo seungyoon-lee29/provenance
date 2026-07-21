@@ -34,12 +34,16 @@ function IndexRow({ symbol, label }: Readonly<{ symbol: string; label: string }>
   }, [symbol]);
 
   return (
-    <li data-role="index-row" data-symbol={symbol} style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
-      <span>{label}</span>
+    <li
+      data-role="index-row"
+      data-symbol={symbol}
+      style={{ display: "flex", justifyContent: "space-between", gap: "8px", padding: "4px 0", fontSize: "0.85rem" }}
+    >
+      <span style={{ opacity: 0.8 }}>{label}</span>
       {outcome === undefined ? (
         <span aria-live="polite">확인 중</span>
       ) : outcome !== "network_error" && outcome.status === "available" ? (
-        <strong data-role="index-value">
+        <strong data-role="index-value" style={{ fontWeight: 550 }}>
           {outcome.value.last.toLocaleString()}
           {outcome.value.currency === "pt" ? "" : outcome.value.currency} ({outcome.value.change >= 0 ? "+" : ""}
           {outcome.value.changePercent}%) · {outcome.freshness}

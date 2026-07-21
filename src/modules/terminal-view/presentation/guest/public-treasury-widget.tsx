@@ -5,10 +5,13 @@ import { useEffect, useState } from "react";
 import type { MarketObservation } from "@/modules/financial-information/data/contracts";
 import type { InformationOutcome } from "@/shared/contracts/information-outcome";
 
-// Public treasury rows (ticket 28-c). Consumes /api/public-market and renders a value ONLY on an
-// available outcome (F1 discipline: no fabricated numbers); otherwise a provenance-free status.
+import styles from "./guest-terminal-shell.module.css";
+
+// Public market rows (tickets 28-c, 32-c). Consumes /api/public-market and renders a value ONLY on
+// an available outcome (F1 discipline: no fabricated numbers); otherwise a provenance-free status.
 // The parsed body IS the backend contract type — the compiler keeps widget and route in sync
 // (a `network_error` sentinel covers transport/non-2xx), same pattern as the personal market-widget.
+// Typography rides the shell's microList system class — no bespoke sizes.
 type MarketOutcome = InformationOutcome<MarketObservation>;
 
 const SYMBOLS = [
@@ -47,12 +50,12 @@ function TreasuryRow({ symbol, label }: Readonly<{ symbol: string; label: string
   }, [symbol]);
 
   return (
-    <li data-role="treasury-row" data-symbol={symbol} style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+    <li data-role="treasury-row" data-symbol={symbol}>
       <span>{label}</span>
       {outcome === undefined ? (
-        <span aria-live="polite">확인 중</span>
+        <strong aria-live="polite">확인 중</strong>
       ) : outcome === "network_error" ? (
-        <span data-role="treasury-unavailable">일시적으로 불러올 수 없음</span>
+        <strong data-role="treasury-unavailable">일시적으로 불러올 수 없음</strong>
       ) : outcome.status === "available" ? (
         <strong data-role="treasury-value">
           {Math.round(outcome.value.last * 100) / 100}
@@ -60,9 +63,9 @@ function TreasuryRow({ symbol, label }: Readonly<{ symbol: string; label: string
           {outcome.asOf.slice(0, 10)}
         </strong>
       ) : outcome.status === "unavailable" ? (
-        <span data-role="treasury-unavailable">표시할 수 없음: {outcome.reason}</span>
+        <strong data-role="treasury-unavailable">표시할 수 없음: {outcome.reason}</strong>
       ) : (
-        <span data-role="treasury-unavailable">일시적으로 불러올 수 없음</span>
+        <strong data-role="treasury-unavailable">일시적으로 불러올 수 없음</strong>
       )}
     </li>
   );
@@ -70,7 +73,7 @@ function TreasuryRow({ symbol, label }: Readonly<{ symbol: string; label: string
 
 export function PublicTreasuryWidget() {
   return (
-    <ul data-role="public-treasury" aria-label="공개 시장 데이터 (재무부·ECB)" style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+    <ul data-role="public-treasury" aria-label="공개 시장 데이터 (재무부·ECB)" className={styles.microList}>
       {SYMBOLS.map(({ symbol, label }) => (
         <TreasuryRow key={symbol} symbol={symbol} label={label} />
       ))}
