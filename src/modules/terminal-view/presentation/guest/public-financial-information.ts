@@ -1,6 +1,8 @@
 import { brandReference } from "../../../../shared/contracts/brands";
 import type { InformationOutcome } from "@/shared";
 import type { MarketInformation, MarketObservation } from "@/modules/financial-information/data/contracts";
+import type { EvidenceOutcome } from "@/modules/financial-information/data/evidence-contracts";
+import type { FilingsInformation } from "@/modules/financial-information/data/dart-filings-information";
 import type { GuestViewerContext } from "@/shared/contracts/viewer-context";
 
 import type {
@@ -35,11 +37,35 @@ function toPanelOutcome(
   return { ...outcome, value };
 }
 
+/** v1 filings cell: the most recent filing as one line. ponytail: list UI is the follow-up. */
+function toFilingsPanelOutcome(outcome: EvidenceOutcome): InformationOutcome<GuestPanelValue> {
+  if (outcome.status !== "available") return outcome;
+  const first = outcome.value.kind === "filing" ? outcome.value.filings[0] : undefined;
+  if (!first) {
+    return {
+      status: "unavailable",
+      reason: "no_data",
+      queryRange: "dart:latest",
+      asOf: outcome.asOf,
+      policyVersion: outcome.policyVersion,
+    };
+  }
+  return { ...outcome, value: { label: "최신 공시", displayValue: `${first.source} · ${first.form}` } };
+}
+
 export function createPublicFinancialInformation(
-  deps: Readonly<{ market?: MarketInformation }> = {},
+  deps: Readonly<{ market?: MarketInformation; filings?: FilingsInformation }> = {},
 ): GuestFinancialInformation {
   return {
     read(query: GuestFinancialQuery, viewer: GuestViewerContext): GuestFinancialLoad {
+      if (query.panelKey === "filings" && deps.filings) {
+        return {
+          kind: "FinancialLoad",
+          cache: "miss",
+          query,
+          result: deps.filings.readRecent(viewer).then(toFilingsPanelOutcome),
+        };
+      }
       const wired = PANEL_SYMBOLS[query.panelKey];
       if (wired && deps.market) {
         const load = deps.market.read(

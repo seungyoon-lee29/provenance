@@ -29,7 +29,10 @@ guest 스트립 `index-usdkrw` 셀 + macro 위젯 행 배선(표시만 2dp 반�
   scope 게이트·영업일 freshness 15:30Z) + treasury 29 회귀 green. check 전 레인 green(1,333).
 - **실 ECB 계약 테스트 pass**(`ECB_CONTRACT=1`): live USD/KRW 교차 available·indicative·public·
   asOf 10일 내.
-- codex 적대 리뷰는 31·33과 배치 1회 — 결과 반영 예정.
+- 적대 리뷰(31·33과 배치, codex 기동 실패로 **차선 에이전트** — 상세 고지는 티켓 33): ECB 축은
+  교차 정직성·공통일 선택·CSV 정렬·treasury 분류기 회귀 모두 **이상 없음** 판정. 단 게이트
+  지적(legacy 플래그의 조용한 권한 확장)에 따라 별칭을 은퇴시키고 설정 시 부팅 오류로 변경 —
+  `PUBLIC_MARKET_ENABLED`만 유효.
 
 ### Residual risks
 

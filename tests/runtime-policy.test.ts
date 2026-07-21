@@ -24,6 +24,13 @@ describe("runtime policy", () => {
     });
   });
 
+  it("retired treasury-only flag fails closed instead of silently widening to ECB+DART", () => {
+    expect(() => loadRuntimeConfig(environment({ PUBLIC_MARKET_TREASURY_ENABLED: "true" }))).toThrow("PUBLIC_MARKET_ENABLED");
+    // The canonical flag alone gates the whole public track.
+    expect(loadRuntimeConfig(environment({ PUBLIC_MARKET_ENABLED: "true" })).publicMarketEnabled).toBe(true);
+    expect(loadRuntimeConfig(environment()).publicMarketEnabled).toBe(false);
+  });
+
   it("rejects forbidden registrations even if a registry is assembled incorrectly", () => {
     const config = loadRuntimeConfig(environment());
     expect(() => assertSafeComposition(config, { ...buildCompositionManifest(config), paidRoutes: ["premium"] })).toThrow("unsafe paid");

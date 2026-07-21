@@ -123,6 +123,55 @@ describe("guest index-us10y cell — treasury wiring (30-a)", () => {
   });
 });
 
+describe("guest filings panel — DART wiring (33-b)", () => {
+  const filingOutcome = {
+    status: "available",
+    value: {
+      kind: "filing",
+      filings: [
+        {
+          form: "주요사항보고서",
+          source: "삼성전자",
+          filedAt: "2026-07-21T00:00:00.000Z",
+          accession: "20260721000123",
+          link: "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260721000123",
+          evidenceReference: brandReference<string, "EvidenceReference">("evidence:f4:filing:20260721000123"),
+        },
+      ],
+    },
+    evidenceReference: brandReference<string, "EvidenceReference">("evidence:f4:filing-list:dart"),
+    provider: "dart",
+    feed: "dart:latest-list",
+    asOf: "2026-07-21T05:00:00.000Z",
+    receivedAt: "2026-07-21T05:00:00.000Z",
+    freshness: "realtime",
+    licenseScope: { audience: "public", purposes: ["public_display"], validUntil: "2099-01-01T00:00:00.000Z" },
+    policyVersion: brandReference<string, "PolicyVersion">("policy:f4-freshness-v1"),
+  } as const;
+
+  it("maps the most recent filing to one honest display line", async () => {
+    const info = createPublicFinancialInformation({
+      filings: { readRecent: async () => filingOutcome },
+    });
+
+    const outcome = await info.read(guestQuery("filings"), guestViewer).result;
+
+    expect(outcome.status).toBe("available");
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.displayValue).toBe("삼성전자 · 주요사항보고서");
+    expect(outcome.provider).toBe("dart");
+    expect(outcome.licenseScope.audience).toBe("public");
+  });
+
+  it("keeps the honest api_required stub when no filings source is injected", async () => {
+    const info = createPublicFinancialInformation();
+    const outcome = await info.read(guestQuery("filings"), guestViewer).result;
+    expect(outcome.status).toBe("unavailable");
+    if (outcome.status !== "unavailable") throw new Error("unreachable");
+    expect(outcome.reason).toBe("api_required");
+  });
+});
+
 describe("guest runtime mode override (30-b)", () => {
   it("F1_GUEST_MODE=public opts dev into the public composition", () => {
     expect(resolveGuestFeatureRuntime("development", undefined, "development", "public")).toEqual({

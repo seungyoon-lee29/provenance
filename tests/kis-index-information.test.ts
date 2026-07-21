@@ -115,6 +115,34 @@ describe("KIS index quotes (ticket 31)", () => {
     expect(calls.length).toBe(0);
   });
 
+  it("non-decimal index values (null/boolean/hex) are never coerced into points → invalid_response", async () => {
+    for (const poisoned of [null, true, "0x10", "1e3"]) {
+      const body = { rt_cd: "0", msg_cd: "MCA00000", output: { bstp_nmix_prpr: poisoned, bstp_nmix_prdy_vrss: "1.0", bstp_nmix_prdy_ctrt: "0.1" } };
+      const http: KisHttp = async (req) => {
+        if (req.url.includes("/oauth2/tokenP")) return { status: 200, json: TOKEN_JSON };
+        return { status: 200, json: body };
+      };
+      const info = createKisMarketInformation({ http, clock, config: CONFIG });
+      const outcome = await info.read(query("KOSPI"), ownerViewer()).result;
+      expect(outcome.status).toBe("failed");
+      if (outcome.status !== "failed") throw new Error("unreachable");
+      expect(outcome.degradation.code).toBe("invalid_response");
+    }
+  });
+
+  it("a null stock price is never a 0-KRW value → invalid_response (same lexical gate)", async () => {
+    const body = { rt_cd: "0", msg_cd: "MCA00000", output: { stck_prpr: null, prdy_vrss: "0", prdy_ctrt: "0" } };
+    const http: KisHttp = async (req) => {
+      if (req.url.includes("/oauth2/tokenP")) return { status: 200, json: TOKEN_JSON };
+      return { status: 200, json: body };
+    };
+    const info = createKisMarketInformation({ http, clock, config: CONFIG });
+    const outcome = await info.read(query("005930"), ownerViewer()).result;
+    expect(outcome.status).toBe("failed");
+    if (outcome.status !== "failed") throw new Error("unreachable");
+    expect(outcome.degradation.code).toBe("invalid_response");
+  });
+
   it("a blank index price is never a 0-point value → invalid_response", async () => {
     const blank = { rt_cd: "0", msg_cd: "MCA00000", output: { bstp_nmix_prpr: "", bstp_nmix_prdy_vrss: "", bstp_nmix_prdy_ctrt: "" } };
     const http: KisHttp = async (req) => {

@@ -89,10 +89,12 @@ function tokenFailure(status: number, nowMs: number): ProviderFailureKind {
   return { kind: "invalid_response" };
 }
 
-/** KIS returns numeric fields as strings and "" for halted/no-data symbols; a blank must not read as 0. */
+// KIS returns numeric fields as decimal STRINGS; anything else (null→0, true→1, "0x10"→16 under
+// Number()) is a shape break that must fail closed, never coerce into a plausible price/point.
 function toNumber(value: unknown): number {
-  if (typeof value === "string" && value.trim() === "") return Number.NaN;
-  return Number(value);
+  if (typeof value !== "string") return Number.NaN;
+  const text = value.trim();
+  return /^-?\d+(?:\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
 }
 
 /** KIS business error (HTTP 200 with rt_cd ≠ "0") → typed failure. */

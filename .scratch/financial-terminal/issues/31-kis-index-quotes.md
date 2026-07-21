@@ -25,7 +25,9 @@ KIS 어댑터가 지수 심볼(`KOSPI`→U/0001, `KOSDAQ`→U/1001)을 같은 `M
   + 기존 KIS 28 회귀 green. `npm run check` 전 레인 green(1,324).
 - **실 KIS 계약 테스트 pass**(`KIS_CONTRACT=1`, 모의 :29443): TR·경로·필드 가정 실서버 확정,
   실 KOSPI point 수신.
-- codex 적대 리뷰는 32·33과 배치 1회로 실행(예산 시퀀싱) — 결과는 각 티켓에 반영.
+- 적대 리뷰(32·33과 배치, codex 기동 실패로 **차선 에이전트** — 상세 고지는 티켓 33): HIGH 1건
+  확인 — `toNumber` 강제변환(null→0·true→1·hex) → 엄격 십진 lexicon으로 수정(주식 경로 포함),
+  반례 픽스처 테스트 추가, 실 KIS 계약 2건 재실행 pass. fence·분기 축은 이상 없음 판정.
 
 ### Residual risks
 

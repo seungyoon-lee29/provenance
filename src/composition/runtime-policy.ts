@@ -15,8 +15,9 @@ const baseRuntimeSchema = z.object({
   CREDENTIAL_VAULT_KMS_KEY_REF: z.string().optional(),
   ENABLE_SYNTHETIC_PROVIDER: booleanFlagSchema,
   PUBLIC_MARKET_ENABLED: booleanFlagSchema,
-  // Deprecated alias of PUBLIC_MARKET_ENABLED (ticket 28 shipped it treasury-named; 32 generalized).
-  PUBLIC_MARKET_TREASURY_ENABLED: booleanFlagSchema,
+  // ticket 28's treasury-named flag, retired in 32: the public track now covers more providers
+  // (ECB, DART), so the old opt-in must NOT silently widen — setting it is a startup error.
+  PUBLIC_MARKET_TREASURY_ENABLED: z.string().optional(),
   ENABLE_LIVE_TRADING: booleanFlagSchema,
   ENABLED_PAID_ADAPTERS: z.string().default(""),
   ENABLED_PAID_ROUTES: z.string().default(""),
@@ -218,6 +219,10 @@ function assertDeliveryPolicy(parsed: z.infer<typeof baseRuntimeSchema>): void {
 
 export function loadRuntimeConfig(environment: Readonly<Record<string, string | undefined>>): RuntimeConfig {
   const parsed = baseRuntimeSchema.parse(environment);
+  if (isConfigured(parsed.PUBLIC_MARKET_TREASURY_ENABLED)) {
+    // Fail closed instead of aliasing: the treasury-only opt-in must not become an ECB+DART grant.
+    throw new Error("PUBLIC_MARKET_TREASURY_ENABLED was replaced by PUBLIC_MARKET_ENABLED (now covers all public guest-track feeds) — set the new flag explicitly");
+  }
   assertCanonicalOrigin(parsed.APP_PUBLIC_ORIGIN, parsed.APP_ENVIRONMENT);
   assertNoPaidComposition(parsed);
   assertCredentialPolicy(parsed);
@@ -241,7 +246,7 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
       parsed.LOCAL_PROVIDER_CREDENTIAL_MODE === "single_owner" &&
       isConfigured(parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID),
     kisMarketBase: isConfigured(parsed.KIS_REST_BASE) ? parsed.KIS_REST_BASE!.trim() : DEFAULT_KIS_BASE,
-    publicMarketEnabled: parsed.PUBLIC_MARKET_ENABLED || parsed.PUBLIC_MARKET_TREASURY_ENABLED,
+    publicMarketEnabled: parsed.PUBLIC_MARKET_ENABLED,
     identityPersistence: parsed.IDENTITY_PERSISTENCE,
     credentialVaultProvider: parsed.CREDENTIAL_VAULT_PROVIDER,
     credentialLocalKeyringFile: parsed.CREDENTIAL_LOCAL_KEYRING_FILE,

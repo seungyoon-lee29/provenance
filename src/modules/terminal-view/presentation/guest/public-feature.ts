@@ -1,4 +1,5 @@
 import type { MarketInformation } from "@/modules/financial-information/data/contracts";
+import type { FilingsInformation } from "@/modules/financial-information/data/dart-filings-information";
 
 import type { GuestClock, GuestTerminalView } from "./contracts";
 import { createGuestTerminalView, guestSystemClock } from "./guest-terminal-view";
@@ -13,8 +14,9 @@ export function createGuestTerminalFeature(options: Readonly<{
   mode: GuestFeatureMode;
   clock?: GuestClock;
   scriptedHitDelayMs?: number;
-  /** Real public-track provider (ticket 30-a); only the public composition consumes it. */
+  /** Real public-track providers (tickets 30-a, 33-b); only the public composition consumes them. */
   publicMarket?: MarketInformation;
+  publicFilings?: FilingsInformation;
 }>): Readonly<{
   terminalView: GuestTerminalView;
   marker?: "SYNTHETIC TEST DATA";
@@ -28,7 +30,10 @@ export function createGuestTerminalFeature(options: Readonly<{
     terminalView: createGuestTerminalView({
       financialInformation: synthetic
         ? createScriptedFinancialInformation(clock, options.scriptedHitDelayMs)
-        : createPublicFinancialInformation(options.publicMarket ? { market: options.publicMarket } : {}),
+        : createPublicFinancialInformation({
+            ...(options.publicMarket ? { market: options.publicMarket } : {}),
+            ...(options.publicFilings ? { filings: options.publicFilings } : {}),
+          }),
       clock,
       ...(synthetic ? { syntheticMarker: "SYNTHETIC TEST DATA" as const } : {}),
     }),
