@@ -183,6 +183,19 @@ describe("KIS error mapping (slice 4)", () => {
     expect(outcome.degradation.diagnosticReference.startsWith("diagnostic:")).toBe(true);
   });
 
+  // ticket 34, 실 서버 실측: 유량 초과는 HTTP 200이 아니라 **500 + rt_cd=1/EGW00201**로 온다.
+  // 상태코드만 보고 분류하면 quota 특례가 죽고 upstream으로 오분류된다.
+  it("EGW00201 as HTTP 500 (real KIS shape) → still failed/quota, not upstream", async () => {
+    const { outcome } = await readWith({
+      quoteStatus: 500,
+      quote: { rt_cd: "1", msg_cd: "EGW00201", msg1: "초당 거래건수를 초과하였습니다." },
+    });
+    expect(outcome.status).toBe("failed");
+    if (outcome.status !== "failed") throw new Error("unreachable");
+    expect(outcome.degradation.code).toBe("quota");
+    expect(outcome.degradation.retryAfter).toBeTruthy();
+  });
+
   it("quote 5xx → failed/upstream, retryable", async () => {
     const { outcome } = await readWith({ quoteStatus: 500, quote: {} });
     expect(outcome.status).toBe("failed");

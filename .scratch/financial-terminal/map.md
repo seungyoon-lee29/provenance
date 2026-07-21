@@ -59,6 +59,22 @@
 - [33 - DART 게스트 공시](./issues/33-dart-guest-filings.md) **resolved** (2026-07-21): Open DART 최근 공시 목록 → F4 `FilingEntry` 재사용, 키는 env→URL만, spec §5.1 soft 5분을 transport TTL로 강제, guest 공시 패널 v1(최신 1건 한 줄). 실 DART 계약 테스트 pass(키 누출 0). **배치 적대 리뷰(31~33)**: codex 2회 기동 실패(행업·권한 오류) → 차선 에이전트 검토(고지 기록), BLOCK → 확인 5건 수정: DART 반사 키 quarantine+접수번호 14자리 강제, legacy 게이트 플래그 은퇴(설정 시 부팅 오류), KIS toNumber 엄격 십진(주식 root-cause 포함), DART status exhaustive map, 반례 픽스처 테스트. 수정 후 실 KIS·DART 계약 재확인, check 1,349 green.
 - [29 - KIS 휴장일 정직화](./issues/29-kis-holiday-honesty.md) **resolved** (2026-07-20): 평일 휴장일 실시간 위조 버그 봉쇄. `krxSessionAsOf`를 `isKrxClosed`(주말 || 휴장일) 기반으로 교체(in-session·step-back 둘 다) → 휴장일은 정직하게 eod, step-back은 주말+휴장일 건너뛴 직전 영업일 마감. 휴장일 데이터는 network-off 유지 위해 static 번들(`krx-holidays.ts`, 2026)로 — 특일정보 API 키 401 폴백, **웹 3중 교차검증**(calendarlabs·smarthan-note·ekn.kr)으로 확정 + **규칙 오류 교정**(설날/추석 대체는 일요일 겹칠 때만 → 2026 9/28은 거래일). red-first TDD(+7) → check green 1283. **잔여**: 커버연도 2026뿐(밖은 weekday-only 폴백)·임시공휴일 미포함(특일정보 키 확보 시 갱신)·세션시간 연장(2026-06-29 추진) 별도.
 
+- [34 - KIS 동시 호출 유량 게이트](./issues/34-kis-request-spacing.md) **resolved** (2026-07-21): 사용자 실환경 QA에서 위젯이 3심볼을 동시에 열면 매번 1건이 "일시적으로 불러올 수 없음"으로 떨어지던 버그. 원인은 파싱이 아니라 **KIS 모의 유량 한도**였고, 두 겹으로 봉쇄 — ① 모든 KIS 트래픽(토큰 포함)이 지나는 `KisHttp` 경계에 `withRequestSpacing` 직렬화(호출부마다가 아니라 한 곳), ② **간격을 실측으로 결정**(8콜: 500ms 초과·700ms 2건 실패·1100ms 0건·1500ms는 데드라인 초과 → 지속 한도 초당 ~1건 확인, 1100ms 채택). 덤으로 **유량 초과가 HTTP 500 본문으로 온다**는 실측으로 `quota` 특례가 죽어 `upstream`으로 오분류되던 것 교정. 실 KIS 동시 3심볼 × 3라운드 9/9 available, check 1,356 green. **잔여**: 프로세스 다중 시 합산 유량, 8심볼 초과 화면은 TTL 캐시가 선행(티켓 36).
+
+### 사용자 QA 로드맵 (2026-07-21, 사용자 결정)
+
+사용자 판정: "탭도 안 눌리고 검색도 안 되고 로그인도 없고 — 제대로 구현된 게 없다". 진단 결과
+**대부분 사실**(앵커 링크·stub 핸들러·헤더 로그인 부재)이고, 일부는 라이선스상 정직한 공백이며,
+`Required capability`/`Policy Version` 노출은 **디버그 정보를 1급 UI로 올린 설계 실수**다.
+사용자 선택: 네 갈래 전부 + provenance는 **기본 숨김 + 토글** + 빈 패널은 **로그인 트랙 데이터로**
++ 기준 화면은 **로그인 터미널이 본체, 게스트는 쇼케이스**.
+
+- [34](./issues/34-kis-request-spacing.md) **resolved** → 화면을 늘리기 전 전송 경계 선행 수정.
+- [35 - 패널 provenance 노이즈 정리](./issues/35-panel-provenance-noise.md): 값 + "출처·시각" 한 줄만, 나머지는 토글.
+- [36 - 로그인 터미널 본체화](./issues/36-logged-in-terminal-core.md): 헤더 로그인/계정 + 메인 화면에 개인(KIS) 소스 주입(같은 포트 drop-in, 재배포 금지 불변식 유지). **34 선행 필요**.
+- [37 - 명령·티커 검색 실작동](./issues/37-command-search.md): stub 핸들러 → 실제 종목 화면. 36 선행.
+- [38 - 상단 탭 실제 라우팅](./issues/38-nav-tabs-routing.md): 앵커 → 라우트. 36·37 선행(먼저 하면 빈 페이지 4개).
+
 ### 트랙 상태 (2026-07-20, 정직)
 
 개인용/게스트용 두 트랙 분리 운영(사용자 결정, 취업용 배포·운영 목표).

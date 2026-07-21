@@ -4,6 +4,7 @@ import { brandReference } from "@/shared/contracts/brands";
 import type { WorkspaceReference } from "@/shared/contracts/brands";
 import { DATA_DEADLINE_MS } from "@/modules/financial-information/data/deadline";
 import type { KisConfig, KisHttp } from "@/modules/financial-information/data/kis-market-information";
+import { withRequestSpacing } from "@/modules/financial-information/data/kis-market-information";
 import type { ObservationExpiryPolicy } from "@/modules/financial-information/data/contracts";
 import { assembleMarketInformation } from "./market-assembly";
 import type { MarketAssembly } from "./market-assembly";
@@ -76,7 +77,13 @@ function build(): MarketSingleton {
       policy: KIS_MARKET_POLICY,
       licenseValidUntil: new Date(Date.now() + 365 * 24 * 3_600_000).toISOString(),
     };
-    return assembleMarketInformation("kis", { clock: realMarketClock, kis: { http: fetchKisHttp(), config: kisConfig } });
+    // 간격은 문서가 아니라 실측으로 정했다(ticket 34, 모의 :29443에 8콜씩):
+    //   500ms → 유량 초과, 700ms → 8콜 중 2건 EGW00201, 1100ms → 0건.
+    // 즉 모의의 지속 한도는 초당 ~1건(순간 버스트만 2건)이다. 실전 계정(20건/초)으로 옮기면 base와
+    // 함께 낮춘다. ponytail: 심볼이 8개를 넘는 화면은 이 간격만으로는 §11.3 10s를 넘기므로, 그때는
+    // 간격을 더 줄이는 게 아니라 짧은 TTL 캐시/배치를 먼저 얹어야 한다(티켓 36).
+    const http = withRequestSpacing(fetchKisHttp(), { minIntervalMs: 1_100, clock: realMarketClock });
+    return assembleMarketInformation("kis", { clock: realMarketClock, kis: { http, config: kisConfig } });
   }
   return assembleMarketInformation("scripted", { clock: realMarketClock });
 }

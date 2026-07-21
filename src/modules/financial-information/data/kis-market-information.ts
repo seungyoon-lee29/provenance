@@ -36,6 +36,34 @@ export type KisHttp = (request: KisHttpRequest) => Promise<KisHttpResponse>;
 
 export type KisClock = Readonly<{ now(): number; sleep: Sleep }>;
 
+/**
+ * KIS는 호출 유량을 제한한다 (모의 실측: 순간 버스트 2건, 지속 ~1건/초 — 한 화면이 3심볼을
+ * 동시에 열면 그중 1건이 EGW00201로 떨어지는 것을 실 서버에서 확인, ticket 34). 호출부마다 늦추면
+ * 화면이 늘 때마다 같은 버그가 다시 나므로, **모든 KIS 트래픽(토큰 발급 포함)이 통과하는 이
+ * 전송 경계 한 곳**에서 순차화한다. 대기는 주입된 clock으로 — 테스트는 network-off 결정론 유지.
+ */
+export function withRequestSpacing(
+  inner: KisHttp,
+  options: Readonly<{ minIntervalMs: number; clock: KisClock }>,
+): KisHttp {
+  let queue: Promise<unknown> = Promise.resolve();
+  let nextAllowedAt = Number.NEGATIVE_INFINITY;
+  return (request) => {
+    const run = queue.then(async () => {
+      const waitMs = nextAllowedAt - options.clock.now();
+      if (waitMs > 0) await options.clock.sleep(waitMs);
+      nextAllowedAt = options.clock.now() + options.minIntervalMs;
+      return inner(request);
+    });
+    // A rejected call must not wedge the queue — the next caller still gets its turn.
+    queue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
+}
+
 export type KisConfig = Readonly<{
   base: string;
   appkey: string;
@@ -97,11 +125,14 @@ function toNumber(value: unknown): number {
   return /^-?\d+(?:\.\d+)?$/.test(text) ? Number(text) : Number.NaN;
 }
 
-/** KIS business error (HTTP 200 with rt_cd ≠ "0") → typed failure. */
+/** 초당 거래건수 초과. 실 서버는 이 코드를 HTTP 200이 아니라 500 본문으로도 돌려준다(ticket 34). */
+const RATE_LIMIT_MSG_CD = "EGW00201";
+
+/** KIS business error (rt_cd ≠ "0") → typed failure. */
 function businessFailure(msgCd: string | undefined, nowMs: number): ProviderFailureKind {
   // ponytail: only the observed rate-limit code is special-cased; other non-zero rt_cd → retryable
   // upstream. Widen the map as real KIS error codes surface via the opt-in contract test.
-  if (msgCd === "EGW00201") return { kind: "quota", retryAfter: new Date(nowMs + 1_000).toISOString() }; // 초당 거래건수 초과
+  if (msgCd === RATE_LIMIT_MSG_CD) return { kind: "quota", retryAfter: new Date(nowMs + 1_000).toISOString() };
   return { kind: "upstream" };
 }
 
@@ -235,12 +266,16 @@ export function createKisMarketInformation(deps: KisDeps): MarketInformation {
         return classifyProviderFailure({ failure: tokenResult.failure, provider: PROVIDER, feed: FEED, occurredAt });
       }
       const res = await fetchQuote(deps, tokenResult.token, query.symbol);
-      if (res.status < 200 || res.status >= 300) {
-        return classifyProviderFailure({ failure: statusFailure(res.status, nowMs), provider: PROVIDER, feed: FEED, occurredAt });
-      }
       const body = (res.json ?? {}) as { rt_cd?: unknown; msg_cd?: unknown; output?: Record<string, unknown> };
+      const msgCd = typeof body.msg_cd === "string" ? body.msg_cd : undefined;
+      if (res.status < 200 || res.status >= 300) {
+        // KIS는 유량 초과를 HTTP 500 + rt_cd=1/EGW00201로 돌려준다(ticket 34 실측). 상태코드만 보면
+        // 일시적 유량이 서버 장애(upstream)로 오분류된다. 인증/권한 상태코드의 의미는 건드리지 않도록
+        // **실측된 유량 코드만** 예외로 둔다(다른 코드는 계속 상태코드 기준).
+        const failure = msgCd === RATE_LIMIT_MSG_CD ? businessFailure(msgCd, nowMs) : statusFailure(res.status, nowMs);
+        return classifyProviderFailure({ failure, provider: PROVIDER, feed: FEED, occurredAt });
+      }
       if (body.rt_cd !== "0") {
-        const msgCd = typeof body.msg_cd === "string" ? body.msg_cd : undefined;
         return classifyProviderFailure({ failure: businessFailure(msgCd, nowMs), provider: PROVIDER, feed: FEED, occurredAt });
       }
       const session = krxSessionAsOf(nowMs);
