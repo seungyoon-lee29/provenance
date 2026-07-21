@@ -170,6 +170,22 @@ describe("guest filings panel — DART wiring (33-b)", () => {
     if (outcome.status !== "unavailable") throw new Error("unreachable");
     expect(outcome.reason).toBe("api_required");
   });
+
+  it("truncates a long filing line for display only (panel type scale)", async () => {
+    const long = {
+      ...filingOutcome,
+      value: {
+        kind: "filing" as const,
+        filings: [{ ...filingOutcome.value.filings[0]!, form: "임원ㆍ주요주주특정증권등소유상황보고서및장문의보고서명이계속이어지는경우" }],
+      },
+    };
+    const info = createPublicFinancialInformation({ filings: { readRecent: async () => long } });
+    const outcome = await info.read(guestQuery("filings"), guestViewer).result;
+    expect(outcome.status).toBe("available");
+    if (outcome.status !== "available") throw new Error("unreachable");
+    expect(outcome.value.displayValue.length).toBeLessThanOrEqual(40);
+    expect(outcome.value.displayValue.endsWith("…")).toBe(true);
+  });
 });
 
 describe("guest runtime mode override (30-b)", () => {

@@ -50,7 +50,11 @@ function toFilingsPanelOutcome(outcome: EvidenceOutcome): InformationOutcome<Gue
       policyVersion: outcome.policyVersion,
     };
   }
-  return { ...outcome, value: { label: "최신 공시", displayValue: `${first.source} · ${first.form}` } };
+  // Display-only truncation: the panel's primary-value type scale is sized for short values, and a
+  // full report title wraps it into a paragraph. The full title belongs to the follow-up list UI.
+  const line = `${first.source} · ${first.form}`;
+  const displayValue = line.length > 40 ? `${line.slice(0, 39)}…` : line;
+  return { ...outcome, value: { label: "최신 공시", displayValue } };
 }
 
 export function createPublicFinancialInformation(

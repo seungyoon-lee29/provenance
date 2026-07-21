@@ -408,6 +408,12 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 공시는 숫자가 아니라 문장 — 대형 숫자 스케일 대신 본문 스케일로 래핑 없이 표시 */
+section[data-panel-key="filings"] .valueBlock output {
+  font: 600 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  text-align: right;
+}
+
 .provenance {
   margin: 9px 0 0;
   border-top: 1px solid var(--line);
