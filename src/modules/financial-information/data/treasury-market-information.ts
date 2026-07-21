@@ -11,6 +11,7 @@ import type {
 } from "./contracts";
 import {
   applyClassifiedObservationFreshness,
+  classifyBusinessDayPublicationFreshness,
   type ObservationFreshnessClass,
 } from "./observation-freshness";
 import { OBSERVATION_POLICY_VERSION } from "./outcome-classification";
@@ -68,36 +69,18 @@ function yieldCurveUrl(base: string, year: number): string {
 // Treasury publishes each business day around 15:30 ET; 20:30Z is the DST-agnostic late bound
 // (during DST the actual publication is ~19:30Z — expecting it an hour late only delays aging,
 // it never overstates freshness of a superseded value beyond the spec'd +2h grace).
+// ponytail: weekday-only model (shared classifier), add a US holiday bundle if a long holiday
+// weekend visibly hard-expires a genuinely-latest curve.
 const PUBLICATION_MINUTES_UTC = 20 * 60 + 30;
 const SOFT_GRACE_MS = 2 * 3_600_000; // spec §5.1: soft = next expected publication + 2h
-const DAY_MS = 86_400_000;
 
-/**
- * Spec §5.1 "Treasury·ECB daily": realtime until the next expected business-day publication +2h,
- * stale after one missed expected publication, no value after two. Expected publications are
- * weekdays; US federal holidays are unmodeled, which only ages a value FASTER (fail-closed
- * direction — a holiday counts as a missed publication). ponytail: weekday-only model, add a US
- * holiday bundle if a long holiday weekend visibly hard-expires a genuinely-latest curve.
- */
 function classifyTreasuryFreshness(asOfMs: number, nowMs: number): ObservationFreshnessClass {
-  if (asOfMs > nowMs) return { kind: "invalid", reason: "future_timestamp" };
-  let missed = 0;
-  let firstExpectedMs: number | undefined;
-  for (let dayMs = asOfMs + DAY_MS; dayMs <= nowMs + DAY_MS && missed < 2; dayMs += DAY_MS) {
-    const day = new Date(dayMs);
-    const dow = day.getUTCDay();
-    if (dow === 0 || dow === 6) continue;
-    const publicationMs =
-      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + PUBLICATION_MINUTES_UTC * 60_000;
-    firstExpectedMs ??= publicationMs;
-    if (publicationMs < nowMs) missed += 1;
-  }
-  if (missed === 0) return { kind: "fresh", freshness: "realtime" };
-  if (missed === 1 && firstExpectedMs !== undefined && nowMs <= firstExpectedMs + SOFT_GRACE_MS) {
-    return { kind: "fresh", freshness: "realtime" };
-  }
-  if (missed === 1) return { kind: "soft_expired", freshness: "stale" };
-  return { kind: "hard_expired" };
+  return classifyBusinessDayPublicationFreshness({
+    asOfMs,
+    nowMs,
+    publicationMinutesUtc: PUBLICATION_MINUTES_UTC,
+    softGraceMs: SOFT_GRACE_MS,
+  });
 }
 
 type CurveEntry = Readonly<{ dateKey: string; asOfMs: number; fields: string }>;

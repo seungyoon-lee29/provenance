@@ -16,6 +16,7 @@ import type {
 // not by omission).
 const PANEL_SYMBOLS: Readonly<Partial<Record<GuestFinancialQuery["panelKey"], { symbol: string; label: string }>>> = {
   "index-us10y": { symbol: "UST10Y", label: "미국 10Y" },
+  "index-usdkrw": { symbol: "USDKRW", label: "USD/KRW" },
 };
 
 /** Value only on available — a value-free market outcome passes through untouched (same contract). */
@@ -24,9 +25,11 @@ function toPanelOutcome(
   label: string,
 ): InformationOutcome<GuestPanelValue> {
   if (outcome.status !== "available") return outcome;
+  // Display rounding only (derived crosses carry long fractions); the outcome's value is untouched.
+  const rounded = Math.round(outcome.value.last * 100) / 100;
   const value: GuestPanelValue = {
     label,
-    displayValue: `${outcome.value.last}${outcome.value.currency}`,
+    displayValue: `${rounded}${outcome.value.currency}`,
     unit: outcome.value.currency,
   };
   return { ...outcome, value };

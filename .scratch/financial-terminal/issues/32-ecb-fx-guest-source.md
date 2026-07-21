@@ -1,11 +1,40 @@
 # 32 - 게스트 공개 소스 증분: ECB 기준환율 (USD/KRW 스트립 셀)
 
 Type: implementation
-Status: open
+Status: resolved
 Triage: ready-for-agent
 Depends on: 28, 30
 Blocked by: None
-Owner: (unclaimed)
+Owner: main
+Claimed at: 2026-07-21T07:25:00Z
+Last heartbeat: 2026-07-21T07:50:00Z
+
+## Resolution (2026-07-21)
+
+### Answer
+
+게스트 트랙 둘째 소스: ECB SDMX csvdata(`EXR/D.USD+KRW.EUR.SP00.A`, 무키, live probe 실측 —
+한 요청에 두 시리즈)를 `createEcbFxInformation`으로 정규화. **USD/KRW는 파생 교차**(KRW.EUR ÷
+USD.EUR)임을 정직하게 표기: `priceBasis:"indicative"`, feed `ecb:reference-cross`, 교차는 **양
+시리즈가 모두 공표된 날짜에만** 존재(반쪽 교차 위조 금지, 테스트 고정). freshness는 공표시각
+파라미터로 일반화한 공용 영업일 분류기(`classifyBusinessDayPublicationFreshness`, rule of three
+둘째 실사례 — treasury도 위임으로 전환, 회귀 0). 게이트는 `PUBLIC_MARKET_ENABLED`로 승격
+(기존 `PUBLIC_MARKET_TREASURY_ENABLED`는 별칭 유지). composition은 심볼 라우팅 합성
+(ECB_FX_SYMBOLS → ecb, 나머지 → treasury), 같은 TTL 캐시·pinned origin·redirect 거부 공유.
+guest 스트립 `index-usdkrw` 셀 + macro 위젯 행 배선(표시만 2dp 반올림, 값 원형 보존).
+
+### Validation
+
+- network-off 단위 9(교차 정확성·공통일 정직성·<2 공통일 invalid·0 분모·비십진·에러 매트릭스·
+  scope 게이트·영업일 freshness 15:30Z) + treasury 29 회귀 green. check 전 레인 green(1,333).
+- **실 ECB 계약 테스트 pass**(`ECB_CONTRACT=1`): live USD/KRW 교차 available·indicative·public·
+  asOf 10일 내.
+- codex 적대 리뷰는 31·33과 배치 1회 — 결과 반영 예정.
+
+### Residual risks
+
+- CSV 나이브 split은 인용부호 앞 컬럼(≤7)만 위치 안전 — 전 필드 엄격 검증으로 오정렬은 fail-closed.
+- EU/KR 공휴일 미모델(fail-closed 방향, treasury와 동일 잔여). 추가 환율쌍·KRX EOD 이월.
 
 ## Context
 

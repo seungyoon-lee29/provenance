@@ -14,6 +14,7 @@ type MarketOutcome = InformationOutcome<MarketObservation>;
 const SYMBOLS = [
   { symbol: "UST2Y", label: "미국 국채 2Y" },
   { symbol: "UST10Y", label: "미국 국채 10Y" },
+  { symbol: "USDKRW", label: "달러/원 (ECB 교차)" },
 ] as const;
 
 const freshnessLabels: Readonly<Record<string, string>> = {
@@ -54,7 +55,7 @@ function TreasuryRow({ symbol, label }: Readonly<{ symbol: string; label: string
         <span data-role="treasury-unavailable">일시적으로 불러올 수 없음</span>
       ) : outcome.status === "available" ? (
         <strong data-role="treasury-value">
-          {outcome.value.last}
+          {Math.round(outcome.value.last * 100) / 100}
           {outcome.value.currency} · {freshnessLabels[outcome.freshness] ?? outcome.freshness} ·{" "}
           {outcome.asOf.slice(0, 10)}
         </strong>
@@ -69,7 +70,7 @@ function TreasuryRow({ symbol, label }: Readonly<{ symbol: string; label: string
 
 export function PublicTreasuryWidget() {
   return (
-    <ul data-role="public-treasury" aria-label="미 재무부 수익률 곡선" style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
+    <ul data-role="public-treasury" aria-label="공개 시장 데이터 (재무부·ECB)" style={{ listStyle: "none", margin: "8px 0 0", padding: 0 }}>
       {SYMBOLS.map(({ symbol, label }) => (
         <TreasuryRow key={symbol} symbol={symbol} label={label} />
       ))}

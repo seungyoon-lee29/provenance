@@ -14,6 +14,8 @@ const baseRuntimeSchema = z.object({
   CREDENTIAL_LOCAL_KEYRING_FILE: z.string().default(".secrets/credential-keyring.json"),
   CREDENTIAL_VAULT_KMS_KEY_REF: z.string().optional(),
   ENABLE_SYNTHETIC_PROVIDER: booleanFlagSchema,
+  PUBLIC_MARKET_ENABLED: booleanFlagSchema,
+  // Deprecated alias of PUBLIC_MARKET_ENABLED (ticket 28 shipped it treasury-named; 32 generalized).
   PUBLIC_MARKET_TREASURY_ENABLED: booleanFlagSchema,
   ENABLE_LIVE_TRADING: booleanFlagSchema,
   ENABLED_PAID_ADAPTERS: z.string().default(""),
@@ -61,8 +63,8 @@ export type RuntimeConfig = Readonly<{
   kisMarketEnabled: boolean;
   /** The credential destination — pinned to an official KIS REST origin, never an arbitrary host. */
   kisMarketBase: string;
-  /** Opt-in for the keyless public-domain Treasury feed (rights.md); off = zero external egress. */
-  treasuryMarketEnabled: boolean;
+  /** Opt-in for the keyless public guest-track feeds (rights.md); off = zero external egress. */
+  publicMarketEnabled: boolean;
   identityPersistence: "memory" | "postgres";
   credentialVaultProvider: "disabled" | "local" | "kms" | "secret_manager";
   credentialLocalKeyringFile: string;
@@ -239,7 +241,7 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
       parsed.LOCAL_PROVIDER_CREDENTIAL_MODE === "single_owner" &&
       isConfigured(parsed.LOCAL_PROVIDER_OWNER_WORKSPACE_ID),
     kisMarketBase: isConfigured(parsed.KIS_REST_BASE) ? parsed.KIS_REST_BASE!.trim() : DEFAULT_KIS_BASE,
-    treasuryMarketEnabled: parsed.PUBLIC_MARKET_TREASURY_ENABLED,
+    publicMarketEnabled: parsed.PUBLIC_MARKET_ENABLED || parsed.PUBLIC_MARKET_TREASURY_ENABLED,
     identityPersistence: parsed.IDENTITY_PERSISTENCE,
     credentialVaultProvider: parsed.CREDENTIAL_VAULT_PROVIDER,
     credentialLocalKeyringFile: parsed.CREDENTIAL_LOCAL_KEYRING_FILE,

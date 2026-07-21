@@ -53,6 +53,41 @@ export function classifyObservationFreshness(input: Readonly<{
   return { kind: "hard_expired" };
 }
 
+const DAY_MS = 86_400_000;
+
+/**
+ * Spec §5.1 "Treasury·ECB daily" freshness for scheduled business-day feeds: realtime until the
+ * next expected weekday publication + grace, stale after one missed expected publication, no value
+ * after two. Public holidays are unmodeled, which only ages a value FASTER (fail-closed direction).
+ * `publicationMinutesUtc` is each feed's DST-agnostic late-bound publication instant.
+ */
+export function classifyBusinessDayPublicationFreshness(input: Readonly<{
+  asOfMs: number;
+  nowMs: number;
+  publicationMinutesUtc: number;
+  softGraceMs: number;
+}>): ObservationFreshnessClass {
+  const { asOfMs, nowMs } = input;
+  if (asOfMs > nowMs) return { kind: "invalid", reason: "future_timestamp" };
+  let missed = 0;
+  let firstExpectedMs: number | undefined;
+  for (let dayMs = asOfMs + DAY_MS; dayMs <= nowMs + DAY_MS && missed < 2; dayMs += DAY_MS) {
+    const day = new Date(dayMs);
+    const dow = day.getUTCDay();
+    if (dow === 0 || dow === 6) continue;
+    const publicationMs =
+      Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()) + input.publicationMinutesUtc * 60_000;
+    firstExpectedMs ??= publicationMs;
+    if (publicationMs < nowMs) missed += 1;
+  }
+  if (missed === 0) return { kind: "fresh", freshness: "realtime" };
+  if (missed === 1 && firstExpectedMs !== undefined && nowMs <= firstExpectedMs + input.softGraceMs) {
+    return { kind: "fresh", freshness: "realtime" };
+  }
+  if (missed === 1) return { kind: "soft_expired", freshness: "stale" };
+  return { kind: "hard_expired" };
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
