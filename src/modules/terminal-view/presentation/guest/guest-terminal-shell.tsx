@@ -73,10 +73,34 @@ function IndexCell({ state }: Readonly<{ state: GuestPanelState }>) {
   );
 }
 
-export function GuestTerminalShell({ snapshot, updateUrl, chart }: Readonly<{
+/** 헤더 계정 영역 (ticket 36): 로그인 전에는 진입점, 로그인 후에는 워크스페이스·로그아웃. */
+function AccountControls({ account }: Readonly<{ account?: { reference: string } }>) {
+  if (!account) {
+    return <a className={styles.accountAction} href="/signin">로그인</a>;
+  }
+  return (
+    <>
+      <a className={styles.accountAction} href="/workspace">워크스페이스</a>
+      <button
+        className={styles.accountAction}
+        type="button"
+        onClick={() => {
+          void fetch("/api/auth/revoke", { method: "POST", headers: { "Content-Type": "application/json" } })
+            .catch(() => undefined)
+            .then(() => window.location.assign("/"));
+        }}
+      >
+        로그아웃
+      </button>
+    </>
+  );
+}
+
+export function GuestTerminalShell({ snapshot, updateUrl, chart, account }: Readonly<{
   snapshot: GuestTerminalSnapshot;
   updateUrl: string;
   chart: GuestChartProps;
+  account?: { reference: string };
 }>) {
   const panels = useGuestPanelUpdates(snapshot, updateUrl);
   const byKey = useMemo(() => panelMap(panels), [panels]);
@@ -141,6 +165,9 @@ export function GuestTerminalShell({ snapshot, updateUrl, chart }: Readonly<{
         >
           AI <span>분석</span>
         </button>
+        <div className={styles.account}>
+          <AccountControls {...(account ? { account } : {})} />
+        </div>
       </header>
 
       {snapshot.syntheticMarker ? (

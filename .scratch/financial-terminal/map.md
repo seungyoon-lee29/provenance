@@ -71,7 +71,7 @@
 
 - [34](./issues/34-kis-request-spacing.md) **resolved** → 화면을 늘리기 전 전송 경계 선행 수정.
 - [35 - 패널 provenance 노이즈 정리](./issues/35-panel-provenance-noise.md) **resolved** (2026-07-21): 값 + `출처 · 신선도 · 시각` 한 줄만 남기고 나머지 provenance는 네이티브 `<details>` 뒤로(패널·차트 공통), 헤더의 내부 패널 키 제거. 요약은 available일 때만 — 값 없는 outcome에 출처 줄을 지어내지 않는다. **접자마자 드러난 결함 2건도 함께 수정**: LoginGate 링크 터치 타겟 17px(티켓 30 회귀, WCAG 2.5.5), 차트 선택 버튼 대비 4.3<4.5(원래 있었으나 컨트롤이 화면 밖이라 axe가 측정 못 하던 것). + playwright webServer가 개발자 `.env.local`의 single_owner를 흡수해 레인이 부팅 거절되던 하네스 버그 pin. 브라우저·a11y 레인 86 green, check 1,361 green.
-- [36 - 로그인 터미널 본체화](./issues/36-logged-in-terminal-core.md): 헤더 로그인/계정 + 메인 화면에 개인(KIS) 소스 주입(같은 포트 drop-in, 재배포 금지 불변식 유지). **34 선행 필요**.
+- [36 - 로그인 터미널 본체화](./issues/36-logged-in-terminal-core.md) **resolved** (2026-07-21): 같은 셸에 소스만 갈아끼우는 방식으로 로그인 화면을 본체화 — `createPersonalFinancialInformation`이 KIS 가능 패널(`index-kospi`·`market-overview`·`watchlist`)만 개인 경로로 보내고 나머지는 공개 소스에 위임. **뷰어는 인자가 아니라 세션에서 확정**(게스트 조립 경로엔 개인 소스가 존재하지 않고, 어댑터 scope guard가 2차 방어). 헤더 계정 영역(로그인/워크스페이스·로그아웃) 추가. **배선하며 드러난 구멍**: 패널 값이 흐르는 SSE 핸드오프 라우트에 세션 검사가 아예 없었다 → 소유 계정 바인딩 + 불일치 시 거절하되 소모하지 않음(DoS 방지). 실 KIS 라이브 렌더 확인(KOSPI 6,747.95·코스닥 753.34·삼성전자 259,000, 게스트 HTML 개인 값 0건), 핸드오프 소유권 실측(410→200). 회귀 2건 동반 수정(모바일 헤더가 ↵ 버튼 덮음, 차트 disabled opacity로 대비 2.73 붕괴). check 1,367 green, 브라우저 86 green. **잔여**: 관심종목은 대표 1종목(목록 UI·저장은 후속), 해외지수 미배선, 로그인 첫 페인트는 유량 간격만큼 순차.
 - [37 - 명령·티커 검색 실작동](./issues/37-command-search.md): stub 핸들러 → 실제 종목 화면. 36 선행.
 - [38 - 상단 탭 실제 라우팅](./issues/38-nav-tabs-routing.md): 앵커 → 라우트. 36·37 선행(먼저 하면 빈 페이지 4개).
 

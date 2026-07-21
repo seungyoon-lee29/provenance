@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { takeGuestTerminalLoad } from "@/modules/terminal-view/presentation/guest/guest-load-registry";
+import { viewerFrom } from "@/composition/session-cookie";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +27,11 @@ export async function GET(request: NextRequest): Promise<Response> {
     return Response.json({ error: "invalid guest update request" }, { status: 400 });
   }
 
-  const load = takeGuestTerminalLoad(parsed.data.requestId, parsed.data.revision);
+  // 로그인 화면의 패널 값은 개인(KIS) 데이터다 — 그 핸드오프는 같은 세션 계정만 집어갈 수 있다
+  // (ticket 36). 게스트 로드는 계정이 없으므로 지금까지처럼 누구나 이어받는다.
+  const viewer = await viewerFrom(request);
+  const claimAccount = viewer?.kind === "workspace" ? String(viewer.accountReference) : undefined;
+  const load = takeGuestTerminalLoad(parsed.data.requestId, parsed.data.revision, claimAccount);
   if (!load) {
     return Response.json({ error: "guest update load expired or already claimed" }, { status: 410 });
   }

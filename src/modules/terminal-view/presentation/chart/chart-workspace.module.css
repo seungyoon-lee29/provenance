@@ -48,8 +48,11 @@
   font-weight: 600;
 }
 
+/* opacity로 흐리면 전경색이 배경과 섞여 대비가 무너진다(게스트 차트에서 2.73까지 떨어졌다).
+   비활성은 색과 테두리로 표현하고 대비는 유지한다 — WCAG는 disabled 컨트롤을 면제하지 않는다. */
 .controls button:disabled {
-  opacity: 0.5;
+  color: var(--fb-muted, #b4bccd);
+  border-style: dashed;
   cursor: not-allowed;
 }
 
