@@ -1,11 +1,36 @@
 # 31 - workspace KIS 업종지수 위젯 (코스피·코스닥 현재지수, owner 전용)
 
 Type: implementation
-Status: open
+Status: resolved
 Triage: ready-for-agent
 Depends on: 24, 25, 26, 29
 Blocked by: None
-Owner: (unclaimed)
+Owner: main
+Claimed at: 2026-07-21T07:00:00Z
+Last heartbeat: 2026-07-21T07:20:00Z
+
+## Resolution (2026-07-21)
+
+### Answer
+
+KIS 어댑터가 지수 심볼(`KOSPI`→U/0001, `KOSDAQ`→U/1001)을 같은 `MarketInformation` port로
+서빙: `inquire-index-price`(TR `FHPUP02100000`)·`bstp_nmix_*` 필드 → `currency:"pt"`(표시 단위
+관례, treasury "%" 동형). owner-only·personal_display·재배포 금지 fence가 지수에도 동일 적용
+(guest → KIS 호출 0, 테스트 고정). workspace market-widget에 코스피·코스닥 행(available일 때만
+값+등락+freshness). 세션/휴장일 freshness 로직 그대로 재사용.
+
+### Validation
+
+- network-off 단위 5(available 매핑·KOSDAQ 코드·guest 0호출·빈 지수값 invalid_response·주식 회귀)
+  + 기존 KIS 28 회귀 green. `npm run check` 전 레인 green(1,324).
+- **실 KIS 계약 테스트 pass**(`KIS_CONTRACT=1`, 모의 :29443): TR·경로·필드 가정 실서버 확정,
+  실 KOSPI point 수신.
+- codex 적대 리뷰는 32·33과 배치 1회로 실행(예산 시퀀싱) — 결과는 각 티켓에 반영.
+
+### Residual risks
+
+- workspace 실브라우저 QA(owner 세션 부팅)는 데몬 재시작 후 — 위젯은 26-c live 검증된 계약·패턴
+  재사용이라 낮은 위험. 해외지수·SSE 이월.
 
 ## Context
 

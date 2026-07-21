@@ -11,6 +11,48 @@ import type { InformationOutcome } from "@/shared/contracts/information-outcome"
 // the widget and /api/market stay in sync (a `network_error` sentinel covers transport/non-2xx).
 type MarketOutcome = InformationOutcome<MarketObservation>;
 
+// 업종지수 행 (ticket 31-b): 같은 /api/market 계약 소비, available일 때만 값.
+function IndexRow({ symbol, label }: Readonly<{ symbol: string; label: string }>) {
+  const [outcome, setOutcome] = useState<MarketOutcome | "network_error" | undefined>(undefined);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/market?symbol=${encodeURIComponent(symbol)}`, {
+          signal: AbortSignal.timeout(15_000),
+        });
+        const data: MarketOutcome | "network_error" = response.ok ? ((await response.json()) as MarketOutcome) : "network_error";
+        if (active) setOutcome(data);
+      } catch {
+        if (active) setOutcome("network_error");
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [symbol]);
+
+  return (
+    <li data-role="index-row" data-symbol={symbol} style={{ display: "flex", justifyContent: "space-between", gap: "8px" }}>
+      <span>{label}</span>
+      {outcome === undefined ? (
+        <span aria-live="polite">확인 중</span>
+      ) : outcome !== "network_error" && outcome.status === "available" ? (
+        <strong data-role="index-value">
+          {outcome.value.last.toLocaleString()}
+          {outcome.value.currency === "pt" ? "" : outcome.value.currency} ({outcome.value.change >= 0 ? "+" : ""}
+          {outcome.value.changePercent}%) · {outcome.freshness}
+        </strong>
+      ) : (
+        <span data-role="index-unavailable">
+          {outcome !== "network_error" && outcome.status === "unavailable" ? `표시할 수 없음: ${outcome.reason}` : "일시적으로 불러올 수 없음"}
+        </span>
+      )}
+    </li>
+  );
+}
+
 export function MarketWidget({ initialSymbol = "005930" }: Readonly<{ initialSymbol?: string }>) {
   const [symbol, setSymbol] = useState(initialSymbol);
   const [query, setQuery] = useState(initialSymbol);
@@ -38,6 +80,10 @@ export function MarketWidget({ initialSymbol = "005930" }: Readonly<{ initialSym
   return (
     <section data-role="market-widget" style={{ marginBottom: "16px", padding: "12px", border: "1px solid #444", borderRadius: "8px" }}>
       <h2 style={{ fontSize: "1rem", margin: "0 0 8px" }}>내 시세 (KIS)</h2>
+      <ul aria-label="국내 업종지수" style={{ listStyle: "none", margin: "0 0 12px", padding: 0 }}>
+        <IndexRow symbol="KOSPI" label="코스피" />
+        <IndexRow symbol="KOSDAQ" label="코스닥" />
+      </ul>
       <form
         onSubmit={(event) => {
           event.preventDefault();

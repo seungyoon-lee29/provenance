@@ -49,6 +49,14 @@ export type KisConfig = Readonly<{
 const PROVIDER = "kis";
 const FEED = "kis:domestic-quote";
 const QUOTE_TR = "FHKST01010100"; // 국내주식 현재가 (probe-confirmed on :29443)
+const INDEX_TR = "FHPUP02100000"; // 국내업종 현재지수 (ticket 31)
+
+// Index symbols ride the same port: symbol → KRX 업종코드 (시장분류 U). Everything else is a stock
+// ISCD. Same owner-only fence either way — an index quote from a personal key is still personal.
+const INDEX_CODES: Readonly<Record<string, string>> = {
+  KOSPI: "0001",
+  KOSDAQ: "1001",
+};
 
 type KisDeps = Readonly<{ http: KisHttp; clock: KisClock; config: KisConfig }>;
 
@@ -145,16 +153,19 @@ function krxSessionAsOf(nowMs: number): { asOfMs: number; basis: MarketObservati
 }
 
 async function fetchQuote({ http, config }: KisDeps, token: string, symbol: string): Promise<KisHttpResponse> {
+  const index = Object.hasOwn(INDEX_CODES, symbol);
+  const path = index ? "inquire-index-price" : "inquire-price";
+  const iscd = index ? (INDEX_CODES[symbol] as string) : symbol;
   return http({
     method: "GET",
     url:
-      `${config.base}/uapi/domestic-stock/v1/quotations/inquire-price` +
-      `?fid_cond_mrkt_div_code=J&fid_input_iscd=${encodeURIComponent(symbol)}`,
+      `${config.base}/uapi/domestic-stock/v1/quotations/${path}` +
+      `?fid_cond_mrkt_div_code=${index ? "U" : "J"}&fid_input_iscd=${encodeURIComponent(iscd)}`,
     headers: {
       authorization: `Bearer ${token}`,
       appkey: config.appkey,
       appsecret: config.appsecret,
-      tr_id: QUOTE_TR,
+      tr_id: index ? INDEX_TR : QUOTE_TR,
       custtype: "P",
     },
   });
@@ -162,12 +173,15 @@ async function fetchQuote({ http, config }: KisDeps, token: string, symbol: stri
 
 function toObservation(symbol: string, output: Record<string, unknown>, basis: MarketObservation["priceBasis"]) {
   const evidenceReference = brandReference<string, "EvidenceReference">(`evidence:f4:${symbol}:${FEED}`);
+  const index = Object.hasOwn(INDEX_CODES, symbol);
   const value: MarketObservation = {
     symbol,
-    last: toNumber(output.stck_prpr),
-    currency: "KRW",
-    change: toNumber(output.prdy_vrss),
-    changePercent: toNumber(output.prdy_ctrt),
+    last: toNumber(index ? output.bstp_nmix_prpr : output.stck_prpr),
+    // Index levels are points, not a settlement currency — the display unit rides the field
+    // (same convention as the treasury adapter's "%").
+    currency: index ? "pt" : "KRW",
+    change: toNumber(index ? output.bstp_nmix_prdy_vrss : output.prdy_vrss),
+    changePercent: toNumber(index ? output.bstp_nmix_prdy_ctrt : output.prdy_ctrt),
     priceBasis: basis,
     evidenceReference,
   };
