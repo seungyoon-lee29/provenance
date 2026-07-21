@@ -140,14 +140,18 @@ export function ChartWorkspace({ initialFrame, mode }: Readonly<{
         <p className={styles.notice}>{view.statusDetail}</p>
       )}
 
-      <dl className={styles.metrics} aria-label="차트 provenance">
-        {view.provenance.map((entry) => (
-          <div key={entry.label}>
-            <dt>{entry.label}</dt>
-            <dd>{entry.value}</dd>
-          </div>
-        ))}
-      </dl>
+      {/* 패널과 같은 규칙(ticket 35): 출처·정책은 계약대로 남기되 평소 화면에서는 접는다. */}
+      <details className={styles.provenanceDetails}>
+        <summary>{view.hasValue ? "상세" : "상세 · 왜 값이 없는지"}</summary>
+        <dl className={styles.metrics} aria-label="차트 provenance">
+          {view.provenance.map((entry) => (
+            <div key={entry.label}>
+              <dt>{entry.label}</dt>
+              <dd>{entry.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </details>
     </div>
   );
 }

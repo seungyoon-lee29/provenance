@@ -19,9 +19,10 @@ export function GuestPanel({
   const classes = [styles.panel, className].filter(Boolean).join(" ");
   return (
     <section className={classes} data-panel-key={state.panelKey} aria-labelledby={`${state.panelKey}-title`}>
+      {/* 내부 패널 키는 헤더에서 뺀다 — 사용자에게 의미 없는 식별자다(ticket 35).
+          data-panel-key 속성은 남는다: 스타일·테스트가 쓰는 계약이고 화면에는 안 보인다. */}
       <header className={styles.panelHeader}>
         <h2 id={`${state.panelKey}-title`}>{title}</h2>
-        <span className={styles.panelCode}>{state.panelKey}</span>
       </header>
       <div
         className={styles.panelScroll}
@@ -46,17 +47,22 @@ export function GuestPanel({
               <output data-role="primary-value">{view.primaryValue}</output>
             </div>
           ) : null}
-          <p>{view.statusDetail}</p>
+          {view.summary ? <p className={styles.summaryLine}>{view.summary}</p> : <p>{view.statusDetail}</p>}
         </div>
+        {/* 출처·정책 추적은 계약대로 남기되 평소 화면에서는 접는다(ticket 35). 네이티브 details라
+            키보드·스크린리더 동작을 직접 구현하지 않는다. */}
         {view.provenance.length > 0 ? (
-          <dl className={styles.provenance} aria-label={`${title} provenance`}>
-            {view.provenance.map((entry) => (
-              <div key={entry.label}>
-                <dt>{entry.label}</dt>
-                <dd>{entry.value}</dd>
-              </div>
-            ))}
-          </dl>
+          <details className={styles.provenanceDetails}>
+            <summary>{view.summary ? "상세" : "상세 · 왜 값이 없는지"}</summary>
+            <dl className={styles.provenance} aria-label={`${title} provenance`}>
+              {view.provenance.map((entry) => (
+                <div key={entry.label}>
+                  <dt>{entry.label}</dt>
+                  <dd>{entry.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
         ) : null}
         {children}
       </div>

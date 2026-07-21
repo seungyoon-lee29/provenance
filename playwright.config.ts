@@ -34,6 +34,13 @@ export default defineConfig({
       APP_PUBLIC_ORIGIN: baseURL,
       PROVIDER_BILLING_MODE: "free_only",
       LOCAL_PROVIDER_CREDENTIAL_MODE: "contract_only",
+      // 개발자 .env.local이 single_owner + owner workspace로 떠 있어도 이 레인은 자기 조합을 끝까지
+      // 고정한다 — 짝이 되는 값을 비우지 않으면 부팅이 "owner workspace is valid only for
+      // single_owner"로 거절된다(2026-07-21 실제 발생). 결정론 레인에 개인 키 흔적을 남기지 않는다.
+      LOCAL_PROVIDER_OWNER_WORKSPACE_ID: "",
+      IDENTITY_PERSISTENCE: "memory",
+      PUBLIC_MARKET_ENABLED: "false",
+      F1_GUEST_MODE: "",
       CREDENTIAL_VAULT_PROVIDER: "disabled",
       ENABLE_SYNTHETIC_PROVIDER: "false",
       ENABLE_LIVE_TRADING: "false",

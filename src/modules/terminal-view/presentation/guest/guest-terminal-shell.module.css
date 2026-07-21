@@ -414,8 +414,46 @@ section[data-panel-key="filings"] .valueBlock output {
   text-align: right;
 }
 
+/* 값 밑 한 줄 요약: 출처 · 신선도 · 시각 (ticket 35). 평소 화면에 남는 유일한 provenance다. */
+.summaryLine {
+  margin: 6px 0 0;
+  font: 10px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-muted);
+}
+
+/* 나머지 provenance는 접어 둔다 — 계약은 그대로, 화면만 조용해진다. */
+.provenanceDetails {
+  margin: 8px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.provenanceDetails > summary {
+  padding: 6px 1px;
+  font: 10px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.provenanceDetails > summary::-webkit-details-marker {
+  display: none;
+}
+
+.provenanceDetails > summary::before {
+  content: "▸ ";
+}
+
+.provenanceDetails[open] > summary::before {
+  content: "▾ ";
+}
+
+.provenanceDetails > summary:hover,
+.provenanceDetails > summary:focus-visible {
+  color: var(--amber);
+}
+
 .provenance {
-  margin: 9px 0 0;
+  margin: 0;
   border-top: 1px solid var(--line);
   font: 10px/1.35 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
@@ -515,8 +553,14 @@ section[data-panel-key="filings"] .valueBlock output {
   font-size: 22px;
 }
 
-.loginGate button {
-  min-height: 32px;
+/* 티켓 30에서 disabled 버튼을 /signin 링크로 바꾸면서 버튼이 갖고 있던 터치 타겟이 사라졌다
+   (모바일 17px — WCAG 2.5.5 44px 미달, 브라우저 레인이 잡음). 링크도 같은 크기를 갖는다. */
+.loginGate button,
+.loginGate a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
   padding: 0 12px;
   color: var(--text-muted);
   border: 1px solid var(--line-strong);

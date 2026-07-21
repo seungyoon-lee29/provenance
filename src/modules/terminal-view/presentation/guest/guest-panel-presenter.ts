@@ -10,6 +10,8 @@ export type GuestPanelPresentation = Readonly<{
   tone: "available" | "pending" | "notice" | "failed";
   primaryValue?: string;
   valueLabel?: string;
+  /** 평소 화면에 남는 한 줄 — 출처 · 신선도 · 시각. 값이 있는 outcome에서만 만든다(ticket 35). */
+  summary?: string;
   provenance: readonly Readonly<{ label: string; value: string }>[];
 }>;
 
@@ -18,6 +20,17 @@ const freshnessLabels = {
   delayed: "지연",
   stale: "오래됨",
 } as const;
+
+/**
+ * 일별 공표(재무부·ECB)는 asOf가 자정 UTC라 시각을 붙이면 노이즈뿐이다 — 날짜만 보여준다.
+ * 장중 관측은 시각이 정보이므로 분까지 남기되, UTC임을 표기한다(KST로 읽히면 9시간 거짓말이 된다).
+ */
+function asOfLabel(asOf: string): string {
+  const [date, time] = asOf.split("T");
+  if (date === undefined) return asOf;
+  if (time === undefined || time.startsWith("00:00")) return date;
+  return `${date} ${time.slice(0, 5)} UTC`;
+}
 
 export function presentGuestPanel(state: GuestPanelPresentationInput): GuestPanelPresentation {
   if (state.state === "pending") {
@@ -45,6 +58,8 @@ export function presentGuestPanel(state: GuestPanelPresentationInput): GuestPane
       tone: "available",
       primaryValue: outcome.value.displayValue,
       valueLabel: outcome.value.label,
+      // 갱신 지연은 드물지만 사용자에게 의미 있는 사실이라 한 줄 요약에 남긴다(상세 코드는 토글에).
+      summary: `${outcome.provider} · ${freshnessLabels[outcome.freshness]} · ${asOfLabel(outcome.asOf)}${outcome.degradation ? " · 갱신 지연" : ""}`,
       provenance: [
         { label: "Evidence Reference", value: outcome.evidenceReference },
         { label: "Provider", value: outcome.provider },
