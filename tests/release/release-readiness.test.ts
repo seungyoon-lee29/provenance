@@ -42,7 +42,7 @@ describe.skipIf(!envExamplePresent)("F11 release readiness posture", () => {
   });
 
   it("carries no non-empty credential value in the shipped example", () => {
-    for (const key of ["KIS_APP_KEY", "KIS_APP_SECRET", "DART_API_KEY", "GOOGLE_IDENTITY_CLIENT_SECRET", "GITHUB_IDENTITY_CLIENT_SECRET"]) {
+    for (const key of ["KIS_APP_KEY", "KIS_APP_SECRET", "KIS_LIVE_APP_KEY", "KIS_LIVE_APP_SECRET", "DART_API_KEY", "GOOGLE_IDENTITY_CLIENT_SECRET", "GITHUB_IDENTITY_CLIENT_SECRET"]) {
       expect(env.get(key)).toBe("");
     }
   });

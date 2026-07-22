@@ -193,6 +193,9 @@ Stage 2 — 영속성 + 모듈 정리   ← 다음 세션은 여기부터
     · scripts/backup-drill.ts 의 ALL_TABLES 하드코딩(현재 identity·personal-cache 7개뿐)에
       paper 테이블 추가 — 안 하면 백업 게이트가 돈 원장을 안 본다
   T3. notification-center 삭제 (T1·T2 후에는 아무도 안 씀)
+    · runtime-policy 의 EMAIL_*·MAILPIT_SMTP_*·DELIVERY_KEYRING_* 스키마 필드 + composition/local-delivery-keyring
+      + bootstrap 의 deliveryKeyring 조립도 함께 제거 (.env.example 에서는 2026-07-22 에 이미 제거 —
+      identity 이메일 로그인은 인메모리 outbox + peek 를 쓰므로 무관, 실측 확인)
   T4. actual-portfolio: calculation/ 만 남기고 broker-sync/·baseline/·journal/ 삭제
     · **경계 주의 (실측)**: calculation/ 중 TWR(performance)·XIRR(personal-return)·reporting-pnl 은 깨끗하지만
       corporate-actions·rebalancing·transfers 3개가 baseline/journal 타입에 의존 —
