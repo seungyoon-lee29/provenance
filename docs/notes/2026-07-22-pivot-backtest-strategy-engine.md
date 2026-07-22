@@ -183,6 +183,8 @@ Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에
   · credential-vault(234)는 남긴다 — CLI 브로커 키 암호화 저장에 필요 (§3-16)
   · 게스트 시세 터미널(/) 존치 여부를 이 시점에 결정 — 기본 배포는 npm publish,
     웹 데모는 배포 운영 비용(호스트+PG+Redis)을 감수할 때만
+  · Stage 3 직후 문서 재정합: map.md Destination·spec.md 를 남은 시스템 기준으로 재작성,
+    T8~T12 를 정식 티켓(42~)으로 작성, README 재작성(§9-4)
 
 이후 — 엔진
   T8. 백테스트 엔진 — InternalPaperSimulator 를 과거 캔들로 확장 + 시간축 커서(look-ahead 차단)
@@ -193,6 +195,9 @@ Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에
 
 규칙: 각 Stage 끝마다 4개 게이트(typecheck·lint·test·build) + 커밋. 자르기 전마다 git tag.
      테스트 개수가 삭제 모듈만큼 줄어드는 것은 정상 — 삭제 전/후 개수를 함께 기록할 것.
+     각 Stage 커밋에는 .scratch/financial-terminal/map.md "트랙 상태" 한 줄 갱신을 포함한다.
+     map.md·spec.md 상단에 supersede 배너 있음(2026-07-22) — 옛 Destination·이월 백로그를 따르지 말 것.
+     스펙·맵 전면 재작성은 Stage 3 뒤 (지울 코드의 스펙을 미리 고쳐 쓰는 낭비 방지 + 게스트 터미널 미결).
 ```
 
 **T2가 절대 먼저다.** 재시작하면 날아가는 원장 위에 백테스트를 얹는 건 말이 안 된다.

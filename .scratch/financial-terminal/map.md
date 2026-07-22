@@ -1,6 +1,18 @@
 # 한국어 금융 터미널 Wayfinder Map
 
+> ⚠️ **2026-07-22 방향 전환 — 아래 Destination은 대체됐다.**
+> 새 목적지: **한국 시장 백테스트 + 실시간 모의투자 엔진, 얼굴은 CLI + MCP.**
+> 정본은 [docs/notes/2026-07-22-pivot-backtest-strategy-engine.md](../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)
+> (확정 결정·재조사 금지 사실·폐기안·Stage 0~3 + T8~T12).
+> - 티켓 01~38은 **완료 이력으로 보존**한다 (지우지 않는다). 단, UI·알림·broker-sync 트랙의
+>   이월/백로그 항목(per-user 크리덴셜, SSE, 알림 delivery, KRX EOD 재배포권 등)은 **무효**.
+> - **39·40·41은 새 방향에서 그대로 유효** — 40(confirm token)·41(MCP 카탈로그)은 T10의 선행 티켓.
+> - 각 Stage 커밋에는 이 맵의 "트랙 상태"에 한 줄 갱신을 포함한다. Destination·spec 전면 재작성은
+>   Stage 3(웹·인증 컷) 뒤에 남은 시스템 기준으로 한다.
+
 ## Destination
+
+*(2026-07-22 대체됨 — 위 배너 참조. 아래는 이력 보존)*
 
 실데이터와 데이터 품질 상태를 명확히 표시하고, 비로그인 시장 조회, 로그인 사용자별 포트폴리오와 설정, 커스터마이징 가능한 고밀도 터미널 UI, Paper Trading, 안전한 브로커 연결 구조를 포함한 운영 배포 가능 MVP의 승인된 스펙을 만든다. 최종 구현은 테스트·문서·Docker·ZIP·실데이터 스크린샷까지 검증한다.
 

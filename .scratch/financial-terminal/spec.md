@@ -1,5 +1,11 @@
 # 한국어 금융 터미널 MVP 구현 스펙
 
+> ⚠️ **2026-07-22 방향 전환 — 이 스펙은 구현 이력 기준선으로만 유효하다.**
+> 제품 방향이 "백테스트 + 실시간 모의투자 엔진, CLI + MCP"로 바뀌었다. 정본:
+> [docs/notes/2026-07-22-pivot-backtest-strategy-engine.md](../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md).
+> 이 문서 중 웹 UI·알림·broker-sync 절은 Stage 1~3에서 제거되는 표면을 서술한다.
+> 새 스펙은 Stage 3 뒤 남은 시스템 기준으로 재작성한다.
+
 상태: 구현 기준선
 통합 기준일: 2026-07-15
 제품 단계: 설계 완료, 구현 전
