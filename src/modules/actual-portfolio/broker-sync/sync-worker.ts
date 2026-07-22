@@ -1,5 +1,5 @@
-import { FencedKeyedStore } from "../../notification-center/fenced-store";
-import type { Erasable } from "../../notification-center/fenced-store";
+import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
+import type { Erasable } from "../../../platform/persistence/fenced-store";
 import { brandReference } from "../../../shared/contracts/brands";
 import type { ProviderConnectionReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "../../../shared/contracts/viewer-context";

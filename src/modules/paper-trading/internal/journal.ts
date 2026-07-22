@@ -1,7 +1,7 @@
 import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
-import { FencedKeyedStore } from "../../notification-center/fenced-store";
+import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import { currencyMinorUnitScale } from "./contracts";
 import type {
   PaperCommandOutcome,

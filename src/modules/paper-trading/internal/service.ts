@@ -2,8 +2,8 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 import type { ViewerContext, WorkspaceViewerContext } from "../../../shared/contracts/viewer-context";
 
-import { FencedKeyedStore } from "../../notification-center/fenced-store";
-import type { Erasable } from "../../notification-center/fenced-store";
+import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
+import type { Erasable } from "../../../platform/persistence/fenced-store";
 import type {
   PaperCashRow,
   PaperCommandOutcome,

@@ -1,5 +1,5 @@
-import { FencedKeyedStore } from "../../notification-center/fenced-store";
-import type { Erasable } from "../../notification-center/fenced-store";
+import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
+import type { Erasable } from "../../../platform/persistence/fenced-store";
 
 import type { BrokerLineage, BrokerReconciliationIssue, BrokerSyncEvent } from "./contracts";
 import { canonicalPayload, eventKey, lineageKey, permutationKey } from "./contracts";

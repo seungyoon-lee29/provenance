@@ -1,6 +1,6 @@
 import { brandReference } from "../../../shared/contracts/brands";
 
-import { FencedKeyedStore } from "../../notification-center/fenced-store";
+import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import type {
   ActualAccountReference,
   ActualCommandOutcome,

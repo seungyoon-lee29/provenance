@@ -1,4 +1,4 @@
-import type { Erasable } from "../../notification-center/fenced-store";
+import type { Erasable } from "../../../platform/persistence/fenced-store";
 
 import type { BrokerSyncEventStore } from "./event-store";
 import type { BrokerSnapshotStore } from "./snapshot";

@@ -1,4 +1,4 @@
-import { FencedKeyedStore, type Erasable } from "../../notification-center/fenced-store";
+import { FencedKeyedStore, type Erasable } from "../../../platform/persistence/fenced-store";
 import { brandReference } from "../../../shared/contracts/brands";
 
 import type { ActualAccountReference } from "../baseline/contracts";

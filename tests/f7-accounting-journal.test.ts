@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { brandReference } from "../src/shared/contracts/brands";
 import { AccountingJournal } from "../src/modules/actual-portfolio/journal/accounting-journal";
 import type { AccountingEvent } from "../src/modules/actual-portfolio/journal/contracts";
-import type { Erasable } from "../src/modules/notification-center/fenced-store";
+import type { Erasable } from "../src/platform/persistence/fenced-store";
 import {
   computeScopeAwareReturn,
   classifyTransfer,

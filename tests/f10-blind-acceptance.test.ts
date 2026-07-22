@@ -19,7 +19,7 @@ import type { ProviderConnectionReference } from "../src/shared/contracts/brands
 
 // ── Event store
 import { BrokerSyncEventStore, BROKER_SYNC_LIVE_EPOCH } from "../src/modules/actual-portfolio/broker-sync/event-store";
-import type { Erasable } from "../src/modules/notification-center/fenced-store";
+import type { Erasable } from "../src/platform/persistence/fenced-store";
 
 // ── Projection
 import { effectiveBrokerEvents, projectBrokerBook } from "../src/modules/actual-portfolio/broker-sync/projection";
