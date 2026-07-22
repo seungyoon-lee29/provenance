@@ -69,7 +69,7 @@ Last heartbeat: 2026-07-19 (resolved — 초기 push 후 CI 첫 run green 관측
 
 ## Resolution (2026-07-19)
 
-사람이 `ALLOW_PUSH=1 git push -u origin main` 실행(Claude tool-hook가 push를 도구 레벨에서 차단하기 때문). private 원격 `github.com/seungyoon-lee29/fakebloomberg`에 main push 후 **CI 첫 run(29684491848) conclusion=success 관측**:
+사람이 `ALLOW_PUSH=1 git push -u origin main` 실행(Claude tool-hook가 push를 도구 레벨에서 차단하기 때문). private 원격 `github.com/seungyoon-lee29/provenance`에 main push 후 **CI 첫 run(29684491848) conclusion=success 관측**:
 
 - `PR-fast (hook parity)`: ✅ success — content-gates 범위 스캔(초기 push는 `github.event.before` all-zero → root commit fallback으로 전체 히스토리 스캔) + `npm run check` green.
 - `PR-integration (Docker stack, network-off)`: ✅ success — compose:verify 4단계(pr-check·migration-smoke·network-off)가 hosted runner에서 재현.

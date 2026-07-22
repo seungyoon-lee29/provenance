@@ -16,7 +16,7 @@
 - 합의된 interface contract 안의 기능 구현, 테스트 작성과 일반 리팩터링은 `Medium` 또는 `High`를 사용한다. UI 스타일, 문서 동기화와 기계적 변경은 `Medium`, 포맷팅과 단순 이름 변경만 `Low`를 허용한다.
 - 전체 작업을 항상 `XHigh`로 실행하지 않는다. 추론 강도를 높일 때는 새 추상화를 만드는 대신 확인할 위험, invariant와 검증 oracle을 먼저 적는다.
 - 금융 수치, 권한, 실제/모의 구분, 데이터 상태와 외부 전달 경계에는 `Low`를 사용하지 않는다.
-- **모델 티어도 리스크에 비례한다**: 서브에이전트는 모델을 명시하지 않으면 메인 모델(최고 단가)을 상속한다. 탐색·조사·대량 읽기·기계적 변경·합의된 계약 안 구현을 위임할 때는 하위 티어를 명시한다(기본 `sonnet`, 대량 단순 읽기·조회는 `haiku`) — Agent 호출의 `model` 파라미터, Workflow의 `opts.model`·`opts.effort`. 설계·적대 리뷰·판정·중재와 인증·비밀·거래·돈 산술 등 고위험 경로의 에이전트만 메인 모델을 유지한다. 다운그레이드 대상은 "찾고 읽고 옮기는" 에이전트이지 "판단하는" 에이전트가 아니다.
+- **실행 티어도 리스크에 비례한다**: 탐색·조사·대량 읽기·기계적 변경·합의된 계약 안 구현은 비용이 낮은 실행 tier로 위임한다. 설계·적대 리뷰·판정·중재와 인증·비밀·거래·돈 산술 등 고위험 경로만 주 실행 tier를 유지한다. 낮은 tier에 맡기는 대상은 "찾고 읽고 옮기는" 작업이지 "판단하는" 작업이 아니다.
 
 ## 작업 위임
 
@@ -122,8 +122,8 @@
 - **반증 산출물 강제**: 리뷰어는 "괜찮아 보임" 대신 반례(실패 테스트/repro)를 제출하거나 "X·Y·Z 각도로 시도했으나 못 만듦"을 명시한다.
 - **spec 대조**: 티켓 contract가 아니라 source-of-truth `.scratch/<feature>/spec.md`/PRD에 직접 대조해 "옳은 걸 만들었나"를 확인한다. 불변식 목록·flag 기본값·ADR은 매 diff가 아니라 확정 시 1회 사람이 검증한다.
 - **믿기 전 측정**: property/테스트가 실제로 결함을 잡는지 mutation testing으로 사전 점검하고, 게이트를 빠져나간 결함은 "어느 tier가 왜 놓쳤나"를 기록해 tier 배정을 보정한다.
-- **Standards 축 1패스**: High·최상위 구현 티켓은 resolve 전 `code-review` 스킬의 Standards 축을 1회 돌린다(티켓당 1회, 배치당 아님). Spec 게이트(blind·적대 리뷰·mutation)는 경계 간 중복 로직의 우선순위 드리프트 계열을 구조적으로 놓친다 — F8 사후 리뷰 v1이 lifecycle pre-validation의 재전달 no-op 위반을 실증(2026-07-18, 27 mutation+blind+codex 전부 통과 후 발견).
-- **예산 시퀀싱**: 지금은 contain 명문화 + `verify:*` 가드 + spec 대조(거의 무비용)를 1차로 한다. 타입 불변식 → property test → mutation testing → 다른-계열 최상위 escalation은 토큰 여유가 회복될 때 도입한다.
+- **Standards 축 1패스**: High·최상위 구현 티켓은 resolve 전 `code-review` 스킬의 Standards 축을 1회 돌린다(티켓당 1회, 배치당 아님). Spec 게이트(blind·적대 리뷰·mutation)는 경계 간 중복 로직의 우선순위 드리프트 계열을 구조적으로 놓친다 — F8 사후 리뷰 v1이 lifecycle pre-validation의 재전달 no-op 위반을 실증(2026-07-18, 27개 mutation·blind·동일 계열 검수를 통과한 뒤 발견).
+- **검증 시퀀싱**: contain 명문화 + `verify:*` 가드 + spec 대조를 1차로 한다. 위험과 잔여 불확실성에 따라 타입 불변식 → property test → mutation testing → 독립적인 최상위 검수 순서로 강화한다.
 
 ## 검수와 승인
 

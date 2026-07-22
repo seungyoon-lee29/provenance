@@ -6,8 +6,8 @@
 - dirty worktree는 다른 세션의 작업으로 간주해 보존한다. 한 파일의 owner는 언제나 한 명.
 - 커밋은 파일 allowlist로 stage한다. pre-commit 훅(whitespace·secret 스캔·typecheck·test)을 `--no-verify`로 우회하지 않는다.
 - `.env.local`·`.secrets`·credential 원문은 읽기·출력·stage 금지.
-- push·`reset --hard`·`clean -f` 등 파괴적 git은 훅이 차단하며, 배정 없이 시도하지 않는다. 에이전트 Bash는 전역 훅이 `git push`를 하드 차단하므로, 의도적 push는 사용자가 `ALLOW_PUSH=1 git push`로 직접 실행한다(에이전트는 우회하지 않는다).
-- 서브에이전트 위임 시 탐색·조사·기계적 작업은 하위 모델(`sonnet`/`haiku`)을 명시한다. 판단·고위험 에이전트만 메인 모델.
+- push와 릴리스는 사람 소유 단계다. 에이전트는 배정 없이 push·`reset --hard`·`clean -f` 같은 외부·파괴적 Git 작업을 시도하지 않는다.
+- 서브에이전트 위임 시 탐색·조사·기계적 작업은 비용이 낮은 실행 tier를 명시한다. 판단·고위험 작업만 주 실행 tier를 사용한다.
 - 위임 프롬프트에는 작업에 필요한 스킬을 이름으로 지목해 호출을 지시하고, 해당 작업에 걸리는 하한 규칙을 인라인한다. 검수 시 실제 호출 여부를 확인한다.
 
 ## Agent skills

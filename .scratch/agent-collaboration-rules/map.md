@@ -10,7 +10,8 @@
 - [단계별 팀 운영 패턴](./issues/02-apply-phase-team-patterns.md)
 - [팀 사용과 통합 규칙 보정](./issues/03-calibrate-team-usage-and-integration.md)
 - [추론 강도와 실행 가드 보정](./issues/04-add-reasoning-and-execution-guardrails.md)
+- [포트폴리오용 운영 모델 정리](./issues/05-curate-public-agent-operating-model.md)
 
 ## Frontier
 
-- 없음. 실제 구현의 첫 vertical slice 완료 뒤 규칙 적용성을 재점검한다.
+- 없음. 실제 운영 규칙과 공개 사례 연구의 차이가 생기면 새 티켓으로 보정한다.

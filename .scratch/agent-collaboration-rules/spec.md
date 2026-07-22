@@ -24,3 +24,6 @@
 - 비밀 파일, provider smoke, broker mutation과 Live Trading의 실행 gate를 정의한다.
 - 기본 review와 targeted re-review의 종료 조건을 정의한다.
 - 세션 경계가 아니라 검증된 티켓별 커밋을 작업 checkpoint로 사용한다.
+- 공개 저장소에서는 도구별 로컬 실행 세부보다 이식 가능한 운영 원칙을 우선한다.
+- README에서 에이전트 운영 모델과 이를 강제하는 테스트·릴리스 가드를 함께 찾을 수 있게 한다.
+- raw 작업 기록과 공개 사례 연구를 구분하고, 공개 문서는 재현 가능한 저장소 경로만 참조한다.

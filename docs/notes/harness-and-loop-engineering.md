@@ -1,64 +1,60 @@
-# 하네스 & 루프 엔지니어링 — 학습 메모
+# 사례 연구: 하네스 규칙을 상시 검증으로 옮기기
 
-_2026-07-16 세션 정리. 나중에 다시 보고 공부용._
+금융 소프트웨어에서는 에이전트가 한 번 좋은 답을 내는 것보다, 잘못된 변경이 실제 주문·개인 데이터·돈 계산 경계를 통과하지 못하게 만드는 것이 중요하다. 이 프로젝트는 자연어 작업 규칙을 출발점으로 삼되 최종 안전성은 타입, 테스트와 fail-closed 릴리스 게이트가 담당하게 했다.
 
-## 한 줄 요약
+## 문제
 
-- **하네스 엔지니어링** = 모델 *바깥*(도구·컨텍스트·메모리·게이트·스킬·서브에이전트)을 설계.
-- **루프 엔지니어링** = 에이전트의 *반복 제어 흐름*(관찰→행동→관찰→종료·재계획·하위루프)을 설계.
-- 모델이 고정되면 에이전트 품질의 대부분이 여기서 나온다. **레버리지는 제품 코드보다 한 층 위**.
+초기 검수는 `No Live Trading`, 개인 데이터의 외부 유출 금지, Actual/Paper 상태 격리라는 세 불변식을 모두 만족한다고 판단했다. 하지만 당시 일부 모듈은 아직 구현되지 않아 위반할 코드 자체가 없는 조건도 있었다. 한 번의 정적 검수 결과를 계속 유효한 보장처럼 취급하면 이후 구현이 들어왔을 때 회귀를 놓칠 수 있었다.
 
-## 하네스 vs 루프
+또한 여러 에이전트가 같은 checkout에서 작업하면 좋은 추론만으로는 다음 실패를 막을 수 없다.
 
-- 하네스 = 정적 무대·소품. 루프 = 시간에 따른 안무(dynamics). 겹치지만 축이 다르다.
-- LLM 에이전트에선 **루프가 별도 코드가 아니라 하네스 안의 자연어 규칙으로 존재**할 수 있다. 규칙 doc을 고치면(=하네스 편집) 그 *내용*이 루프 설계일 수 있다 → **매체(하네스) vs 내용(루프)**.
-- **둘이 분리되는 지점 = 루프를 코드로 짤 때** (Workflow의 `while`/`parallel`/`pipeline`, hooks). 이게 "순수 루프 엔지니어링".
+- 같은 파일을 동시에 수정하거나 다른 세션의 dirty worktree를 덮는다.
+- 티켓의 선행 조건을 건너뛰고 구현을 시작한다.
+- 코드 작성자와 테스트 작성자가 같은 맹점을 공유한다.
+- 외부 전송이나 실제 거래처럼 되돌리기 어려운 경로를 일반 기능처럼 검수한다.
+- 검수 보고서는 남지만 다음 변경에서 자동으로 다시 실행되지 않는다.
 
-## 프로즈 → 머시너리 사다리 (아래로 갈수록 진짜 제어 흐름)
+## 운영 하네스
 
-1. **프로즈 in 하네스** — 규칙 doc이 루프를 서술, 모델이 실행. (가장 부드러움)
-2. **`/loop` · cron · schedule** — 에이전트를 간격/자기속도로 재호출. per-iteration은 여전히 모델 판단.
-3. **Ralph Loop** — "끝날 때까지" 자율 반복 패턴(플러그인).
-4. **hooks** — 이벤트(PostToolUse·Stop 등)에 결정론적으로 걸림(반복보다 반응).
-5. **Workflow** — `while`/`parallel`/`pipeline`을 코드로. 모델은 잎(leaf)만 채움. ← 가장 순수.
+저장소의 운영 모델은 다섯 단계로 구성된다.
 
-## Workflow 실전
+1. [로컬 티켓](../agents/issue-tracker.md)이 의존성과 frontier를 정의한다. 작업자는 편집 전에 티켓을 claim하고 owner와 heartbeat를 기록한다.
+2. [공통 하한](../../AGENTS.md)이 dirty worktree 보존, 단일 파일 owner, allowlist staging과 비밀 보호를 모든 작업에 적용한다.
+3. [협업 규칙](../agents/collaboration.md)이 독립 작업만 위임하고, 위험도에 따라 검수 깊이와 사람 게이트를 높인다.
+4. 완료는 보고가 아니라 `typecheck`, 테스트, 재현 명령과 잔여 위험을 티켓에 기록했을 때 성립한다.
+5. 메인 에이전트가 변경 파일과 검증 결과를 직접 확인한 뒤에만 통합한다.
 
-**실행**: 직접 치는 런치 명령 없음. 에이전트에게 "이런 워크플로 돌려줘" → Workflow 도구로 백그라운드 실행 → 완료 알림. 관전은 `/workflows`. 반복은 저장된 `.js` 편집 → `{scriptPath, resumeFromRunId}` 재실행(안 바뀐 에이전트는 캐시 즉시 반환).
+이 규칙은 에이전트 제품이나 특정 모델 이름에 의존하지 않는다. 도구별 진입점은 짧게 유지하고 프로젝트 상태와 판단 근거는 저장소 안의 공통 문서에 둔다.
 
-**언제 쓰나**: 여러 에이전트의 제어 흐름을 코드로 박고 싶을 때 — 팬아웃(N개 동시)·파이프라인(항목별 단계)·loop-until. 광범위 리뷰/감사, 마이그레이션(N곳 변환), 리서치 스윕, "N개 점검".
-**안 쓸 때(대부분)**: 인라인·서브에이전트 1개면 충분. 팬아웃은 **비용×N**이라 병렬·구조가 실제로 값을 할 때만.
+## Prevent → Detect → Contain
 
-**핵심 primitive**:
-- `agent(prompt, {schema, model, label, phase})` — 서브에이전트. `schema` 주면 검증된 객체 반환.
-- `parallel([thunks])` — 배리어 팬아웃(전부 기다림).
-- `pipeline(items, s1, s2, …)` — 항목별 독립 파이프라인, 단계 사이 배리어 없음(기본값).
-- `while` + `budget` — 조건/토큰 예산까지 반복.
-- `model: 'haiku'|'sonnet'|'opus'` — 잎마다 모델 티어링(비용 튜닝).
+검증 깊이는 리뷰어 수가 아니라 containment 이후의 최악 결과로 결정한다.
 
-**비용 교훈**: `parallel`은 wall-clock↓지만 토큰×N. → 읽기전용·기계적 잎엔 싼 모델, 비싼 판단(verify/judge)에만 opus.
+- **Prevent**: `Money`, Actual/Paper, Paper/Live 같은 경계를 타입과 좁은 인터페이스로 표현해 불법 상태를 만들기 어렵게 한다.
+- **Detect**: `npm run check`, network-off 검증, property test와 mutation testing으로 규칙을 위반한 변경을 반복해서 탐지한다.
+- **Contain**: 외부 전송과 주문 경로는 default-off flag, 허용목록, 상한, idempotency와 reconciliation으로 피해 범위를 줄인다.
 
-## 이 세션에서 실제로 한 것
+인증·credential·주문·migration·돈 산술처럼 되돌리기 어려운 경로는 자동으로 최상위 검증 tier가 된다. containment로 위험을 충분히 낮출 수 없으면 에이전트 합의가 아니라 사람 승인을 요구한다.
 
-1. **하네스 편집**: `docs/agents/collaboration.md`에 검증 방법 신설 — prevent→detect→contain, **decorrelation ∝ 되돌릴 수 없음 × blast radius**, tier·반증 산출물·믿기 전 측정. → 루프 설계를 **프로즈로** 인코딩.
-2. **코드 루프**: invariant-check Workflow(`parallel` 3-way 팬아웃) 작성·실행 → 실제 제어 흐름 머시너리.
-3. **결과**: 도메인 불변식 3개(no-live-route·egress-off·actual-paper) **3/3 성립(high)**, 위반 0. 226k 토큰/136초(팬아웃 비용 실측).
-4. **스냅샷 vs 상시**: one-shot 워크플로는 *스냅샷*. no-live·actual-paper는 F6–F10 미구현이라 위반할 코드가 아직 없어 **provisional** — 지어지면 재점검 필수. 진짜 값은 **standing 화**(매 변경 재실행).
+## 검수에서 발견한 맹점
 
-## 교습 런(pipeline + 모델 티어링)에서 배운 것
+독립적인 적대 검수는 첫 검수의 결론을 그대로 확인하는 대신 반례를 요구했다. 그 과정에서 Actual/Paper 격리 주장의 일부가 미구현 상태에 기대어 있다는 점과, 공유 계산 코드까지 금지하는 표현이 실제 설계 계약보다 과하다는 점을 발견했다.
 
-같은 3 불변식을 `pipeline(find→verify)`로 재실행 — find=haiku, verify=opus 적대적 반증. 0 반증(전부 생존)이지만 **평가 방법 자체**에 대한 교훈이 컸다:
+결과적으로 "현재 위반을 찾지 못했다"와 "구조적으로 위반할 수 없다"를 구분하고, 일회성 검수의 신뢰도를 낮췄다. 이후 불변식은 다음과 같은 상시 검증으로 이동했다.
 
-- **적대 verify가 flat find가 놓친 걸 잡았다.** 첫 `parallel` 런은 actual-paper를 high로 통과시켰는데, verify(opus 적대)는 **medium**으로 낮추고 발견: (a) 불변식이 부분적으로 **vacuous**(위반 모듈 미구현), (b) 문구 "shared calc 없음"이 **설계 보장보다 과함**(issue 04는 순수 계산 재사용 허용). → decorrelation·adversarial verify가 값을 한다는 산 증거.
-- **verify는 더 센 oracle을 쓴다.** find는 grep/read였지만 verify(no-live)는 **실제로 코드를 tsx로 실행**해 config 우회를 확인 — 정적 읽기보다 강함.
-- **비용 정정(정직)**: "haiku 쓰니 지난 226k보다 쌀 것"이라 예측했으나 **틀림 — 390k(더 비쌈).** find(haiku)는 40~51k로 쌌지만 verify(opus)가 65~97k로 무겁고 단계가 하나 늘어 6 에이전트. **교훈: 모델 티어링은 잎을 싸게 하지만, 무거운 단계를 추가하면 총비용은 오히려 는다.** 비용 동인 = 단계 수 × 각 단계의 깊이, 잎 모델만이 아님.
+| 불변식 | 상시 강제 장치 |
+|---|---|
+| No Live Trading | Paper-only 타입·구성 경계 + property test + mutation test |
+| No Redistribution / Egress | destination allowlist + network-off 검증 + mutation test |
+| Money Conservation | append-only 원장 fold property |
+| Actual / Paper Isolation | 분리된 상태 모델 + 교차 오염 property |
 
-## 다음 목적지
+## 공개 산출물과 작업 기록의 경계
 
-one-shot workflow → **standing property test**(fast-check) + **mutation testing**(스위트 adequacy 측정) = ticket 21의 실제 산출물. 워크플로는 루프의 *프로토타입 도구*, 지속형은 테스트 스위트 안의 코드.
+포트폴리오의 주 진입점은 README, `AGENTS.md`, `docs/agents/`와 이 사례 연구다. `.scratch/`는 스펙, 티켓, 중간 가설과 검증 기록을 보존하는 작업 정본이므로 개별 문장은 완료된 사실이 아닐 수 있다. 현재 동작은 코드, 테스트와 `resolved` 티켓의 검증 결과를 함께 확인한다.
 
-## 포인터
+릴리스 산출물은 [패키징 규칙](../release/release.md)에 따라 `.scratch/`, credential 패턴과 분류되지 않은 파일을 fail-closed로 제외한다. 따라서 작업 이력은 저장소에서 감사할 수 있지만 배포물에는 포함되지 않는다.
 
-- 규칙: `docs/agents/collaboration.md` §"검증 깊이와 blast radius"
-- backlog: `.scratch/financial-terminal/issues/21-verify-invariant-adequacy.md`
-- 예시 스크립트: `~/.claude/projects/.../workflows/scripts/check-domain-invariants-*.js`
+## 결과
+
+하네스는 에이전트에게 더 긴 지시를 주는 데서 끝나지 않았다. 일회성 검수에서 얻은 가설을 저장소가 매 변경마다 실행하는 oracle로 전환했고, 위험한 경로는 실패 시 피해를 제한하도록 설계했다. 에이전트 판단은 새로운 위험을 찾는 역할을 맡고, 이미 명세할 수 있는 위험은 결정론적 게이트가 계속 담당한다.
