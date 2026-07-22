@@ -31,7 +31,7 @@ function authorization(overrides: Partial<ProviderConnectionAuthorization> = {})
     purpose: "market_data",
     connectionReference: brandReference<string, "ProviderConnectionReference">("connection-1"),
     workspaceReference: brandReference<string, "WorkspaceReference">("workspace-1"),
-    provider: "alpaca",
+    provider: "kis",
     environment: "paper",
     capability: "basic_quotes",
     credentialVersion: brandReference<string, "CredentialVersion">("credential-v1"),
@@ -46,7 +46,7 @@ function authorization(overrides: Partial<ProviderConnectionAuthorization> = {})
 function route(overrides: Partial<ProviderRouteDefinition> = {}): ProviderRouteDefinition {
   return {
     id: "quote",
-    provider: "alpaca",
+    provider: "kis",
     origin: "https://api.provider.example",
     path: "/v1/quote",
     method: "POST",

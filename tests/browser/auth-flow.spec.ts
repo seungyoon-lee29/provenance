@@ -34,17 +34,15 @@ test("email sign-in issues a session and lands authenticated with a masked conne
 
   await codeField.fill(code);
   await Promise.all([
-    page.waitForURL("**/workspace"),
+    page.waitForURL("/"),
     page.getByRole("button", { name: "코드 확인" }).click(),
   ]);
 
-  // Authenticated: the account reference + logout + connections section render.
-  await expect(page.locator('[data-role="account-panel"]')).toBeVisible();
-  await expect(page.locator('[data-role="account-reference"]')).toContainText("account:");
+  // Authenticated: the guest shell header switches from 로그인 link to 로그아웃 (ticket 36).
+  // (account-panel/connections views lived on the deleted /workspace page — 2026-07-22 pivot.)
   await expect(page.getByRole("button", { name: "로그아웃" })).toBeVisible();
 
-  // Vault disabled → connections surface "설정 필요"; nothing secret-shaped is exposed.
-  await expect(page.locator('[data-role="connections-config"]')).toHaveText("설정 필요");
+  // Nothing secret-shaped is exposed in the authenticated page.
   const body = await page.content();
   expect(body).not.toContain(SECRET_PROBE);
   expect(body).not.toContain("ft_session"); // session value never bleeds into HTML
@@ -53,8 +51,8 @@ test("email sign-in issues a session and lands authenticated with a masked conne
   const cookieVisibleToJs = await page.evaluate(() => document.cookie.includes("ft_session"));
   expect(cookieVisibleToJs).toBe(false);
 
-  // The workspace layout editor still renders alongside the auth overlay.
-  await expect(page.locator('[data-role="workspace-layout"]')).toBeVisible();
+  // The guest terminal workspace region still renders alongside the auth overlay.
+  await expect(page.locator('[data-workspace="guest"]')).toBeVisible();
 
   const results = await new AxeBuilder({ page }).analyze();
   const serious = results.violations.filter((violation) => violation.impact === "serious" || violation.impact === "critical");

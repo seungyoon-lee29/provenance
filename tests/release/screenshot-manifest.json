@@ -3,24 +3,6 @@
   "allowedLicenseScopes": ["internal_test_only", "public"],
   "screenshots": [
     {
-      "file": "tests/browser/screenshots/explicit-unavailable.png",
-      "scene": "value-free unavailable Information Outcome (license_restricted panel)",
-      "provenance": "synthetic",
-      "licenseScope": "internal_test_only",
-      "capturedBy": "tests/browser/f4-panels.spec.ts",
-      "excludes": ["secrets", "personal_account_detail"],
-      "status": "captured"
-    },
-    {
-      "file": "tests/browser/screenshots/paper-workspace.png",
-      "scene": "synthetic Paper Trading workspace with the SYNTHETIC marker and yellow Paper badge",
-      "provenance": "synthetic",
-      "licenseScope": "internal_test_only",
-      "capturedBy": "tests/browser/paper-workspace.spec.ts",
-      "excludes": ["secrets", "personal_account_detail"],
-      "status": "captured"
-    },
-    {
       "file": "tests/browser/screenshots/guest-desktop-public.png",
       "scene": "logged-out desktop public market quote with provenance and freshness",
       "provenance": "real_public_data",

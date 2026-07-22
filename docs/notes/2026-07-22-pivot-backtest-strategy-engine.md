@@ -120,10 +120,13 @@ Stryker: 466 mutants, 313 killed, **67.17%** (범위는 `runtime-policy.ts` + `n
 - **`paper-trading/internal/{journal,service,simulator,lifecycle,blotter}.ts`** — 진짜 체결 엔진.
   **거래량 참여율 상한(10%) + 슬리피지 bps** 모델. 고정가 아님. DAY 주문 만료·취소·액면분할·배당 처리 있음.
   → **§3-4에서 이식하려던 Lean 방식이 이미 여기 있다. 백테스트로 확장만 하면 된다**
-- **`paper-trading/broker/outbox.ts`** — commit-before-send + CAS 상태 전이(`pending_dispatch → dispatched → acknowledged/closed`), 종단 상태 재개방 불가, 멱등 커밋
+- ~~**`paper-trading/broker/outbox.ts`** — commit-before-send + CAS 상태 전이(`pending_dispatch → dispatched → acknowledged/closed`), 종단 상태 재개방 불가, 멱등 커밋~~
+  **← 정정 (Stage 1 실행 시)**: broker/ 전체가 §8 폐기 모델(F9 외부 브로커 전송)의 TEST-ONLY 구현체로 판명되어 삭제됨.
+  CAS outbox 패턴 자체는 유효하니 라이브 주문(v2)을 열 때 `pre-stage1` 태그의 이 파일을 참조해 재구현할 것
 - **`financial-information/data/kis-market-information.ts`** — 진짜 KIS 호출. `POST /oauth2/tokenP`(single-flight + refresh skew 캐시), `GET /uapi/domestic-stock/v1/quotations/inquire-price`. `EGW00201` 레이트리밋 처리, KST 장 세션 판정, KRX 휴장일 캘린더, `runtime-policy.ts:85` 호스트명 allowlist
 - **`InformationOutcome` 규율** (available/unavailable/failed + freshness + license) — 백테스트에도 그대로 유용. "값을 모르면 지어내지 않는다"를 체결 엔진에 적용하면 곧 §3-7 신뢰도 판정
-- **`tests/property/money-conservation.property.test.ts`** — `fast-check` property 2개. 다만 범위는 `BrokerPaperBook`의 예약금 부기 검증이지, 체결·배당·분할을 가로지르는 원장 fold 보존 증명은 **아님**
+- ~~**`tests/property/money-conservation.property.test.ts`** — `fast-check` property 2개. 다만 범위는 `BrokerPaperBook`의 예약금 부기 검증이지, 체결·배당·분할을 가로지르는 원장 fold 보존 증명은 **아님**~~
+  **← 정정**: 대상(BrokerPaperBook)이 F9와 함께 Stage 1에서 삭제됨. T2-b에서 영속 원장 위에 재수립(§6 명문화됨)
 
 ### 치명적 결함 — 손대야 할 것
 
@@ -162,27 +165,57 @@ Ports & Adapters를 표방하는 저장소에서 모듈 간 경계가 새는 지
 ```
 Stage 0 — 체크포인트 커밋 ✅ 완료 (이 메모를 포함한 커밋. 모든 파괴적 작업의 전제)
 
-Stage 1 — 양쪽 계획 공통의 죽은 코드 삭제 (판단 리스크 0)   ← 다음 세션은 여기부터
-  · /workspace 페이지 + api/workspace/{layout,reset}
-  · dev-only 페이지 4개 (/f4-panels /f5-inbox /f6-portfolio /f8-paper) + tests/browser 대응 spec
-  · research-assistant 모듈 전체 (445줄)
-  · Alpaca 일체 — .env.example 5줄 + runtime-policy 스키마.
-    테스트의 "alpaca" 는 임의 provider 식별자 → "kis" 로 교체 (중복되면 "synthetic")
-  · 미사용 env 5개: GEMINI_API_KEY · KRX_API_KEY · MAILPIT_API_BASE_URL · MAILPIT_UI_URL · KIS_ENVIRONMENT
-    (src/ · scripts/ · compose.yaml 참조 0건 실측 확인됨)
+Stage 1 — ✅ 실행 완료 (2026-07-22, 4-에이전트 조사로 확장. 태그 pre-stage1 에서 복귀 가능)
+  삭제 65파일 ~8,100줄 + 수정 24파일. 원안 + 조사로 추가된 것:
+  · workspace 12파일 — /workspace 는 devOnly 가드가 없어 프로덕션 도달 가능했음.
+    **로그인 착지를 /workspace → / 로 재지정** (auth signin·callback 라우트, signin-form, 게스트 셸 링크 제거)
+  · dev 페이지 4개 + data-panel-presenter + browser spec 5개(paper-workspace.spec 은 이름과 달리 /f8-paper 스펙)
+    + 스크린샷 manifest 정합 + f4 픽스처는 ai-material-catalog 만 (market-catalog 은 게스트 폴백 = 프로덕션)
+  · research-assistant 전체 + paper-trading/internal/ai-resolver.ts (미배선 테스트 전용, contracts 의 유일 소비자)
+    — f8-paper-erasure.test.ts 는 트림으로 paper erasure 커버리지 보존
+  · **F9 paper-trading/broker/ 전체(1,206줄) + provider-connections/paper-transport/** — §8 폐기 모델의 구현체, TEST-ONLY
+  · platform/delivery/ (소비자 0 — composition/local-delivery-keyring 과 별개) + shared/queue + shared/server
+    (server-seam 예제는 platform/runtime 으로 대상 교체해 seam 검사 보존)
+  · Alpaca — env 7줄(5줄 아님) + runtime-policy 스키마 + assertCredentialPolicy KIS-only 리팩터
+    + playwright config 의 ALPACA env 주입 제거 + release-readiness 테스트 정합
+  · 미사용 env 5종 제거 + IDENTITY_PERSISTENCE 칸 추가(스키마엔 있었으나 템플릿에 없던 실변수)
+  · 문서: README·docs/release/architecture·privacy 배너, rights·provider-credentials 의 Alpaca/미사용 env 행 제거
+  게이트: check(typecheck·lint·test·seam)+build green. 테스트 1,375 → 1,160 (삭제 18파일 215개와 정확히 대조됨)
+  ⚠️ 감수한 커버리지 손실 2건:
+    1. 교차-provider 격리 테스트 (runtime-policy) — provider 가 KIS 뿐이라 성립 불가. 두 번째 브로커 도입 시 재수립
+    2. money-conservation property — 대상(BrokerPaperBook)이 F9 와 함께 삭제. **T2-b 에서 영속 원장 위에 재수립 (필수)**
 
-Stage 2 — 영속성 + 모듈 정리
+Stage 2 — 영속성 + 모듈 정리   ← 다음 세션은 여기부터
   T1. FencedKeyedStore → platform/ 으로 이동 (인터페이스 유지, 이동만)
   T2-a. compose.yaml 에 postgres named volume 추가 (인프라 영속성)  ← T2-b보다 먼저
   T2-b. Postgres 구현체 + paper 원장/outbox 테이블 마이그레이션      ← 최우선, 타협 불가
+    · **money-conservation property 를 새 영속 원장 위에 재수립** (Stage 1 손실분 복원 — 필수)
+    · scripts/backup-drill.ts 의 ALL_TABLES 하드코딩(현재 identity·personal-cache 7개뿐)에
+      paper 테이블 추가 — 안 하면 백업 게이트가 돈 원장을 안 본다
   T3. notification-center 삭제 (T1·T2 후에는 아무도 안 씀)
-  T4. actual-portfolio: calculation/ 만 남기고 broker-sync/·baseline/ 삭제
+  T4. actual-portfolio: calculation/ 만 남기고 broker-sync/·baseline/·journal/ 삭제
+    · **경계 주의 (실측)**: calculation/ 중 TWR(performance)·XIRR(personal-return)·reporting-pnl 은 깨끗하지만
+      corporate-actions·rebalancing·transfers 3개가 baseline/journal 타입에 의존 —
+      타입을 calculation 쪽으로 이전해 살릴지, 3개를 함께 삭제할지 이때 결정
+    · provider-connections/read-transport 도 함께 삭제 (유일 소비자 = broker-sync/sync-worker)
+    · tests/f10-*.test.ts 도 함께 삭제
 
 Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에 실행)
   · identity(1,446) · provider-connections(606) · auth/signin 라우트 · terminal-view(2,747)
   · credential-vault(234)는 남긴다 — CLI 브로커 키 암호화 저장에 필요 (§3-16)
   · 게스트 시세 터미널(/) 존치 여부를 이 시점에 결정 — 기본 배포는 npm publish,
     웹 데모는 배포 운영 비용(호스트+PG+Redis)을 감수할 때만
+  · **선행 필수 (실측된 지뢰들)**:
+    - `ErasureParticipant` 인터페이스(identity 소속)를 shared/ 로 이전 — keep 대상인
+      financial-information/data/personal-cache.ts 가 타입 의존 중. 안 옮기면 identity 삭제 시 컴파일 파손
+    - `test:persistence-pg` + compose `persistence-integration` 서비스 재작성 — 대상 4테스트 중 3개가 identity 의존
+    - backup-drill.ts 의 identity 테이블 5개·`identity_fence_seq` 하드코딩 제거
+    - tests/browser/auth-flow.spec.ts 는 auth 와 함께 삭제
+    - docs/release/ 6파일(setup·architecture·rights·privacy·backup·release)은 **삭제 금지, 재작성만** —
+      release-docs 테스트가 6파일의 존재를 하드 요구. browser/perf npm 스크립트를 지우면
+      setup.md·release.md 의 `npm run test:browser` 참조가 stale-ref 검사에 걸림 (문서를 같이 고칠 것)
+    - scripts/package-release.ts + release/manifest.ts + check-release-docs.ts (239줄, 웹 ZIP 릴리스 전제)
+      → npm publish 체제로 재정의할지 삭제할지 이때 결정 (CI 미배선이라 급하지 않음)
   · Stage 3 직후 문서 재정합: map.md Destination·spec.md 를 남은 시스템 기준으로 재작성,
     T8~T12 를 정식 티켓(42~)으로 작성, README 재작성(§9-4)
 
@@ -225,7 +258,7 @@ git remote · 문서 17개 파일 전부 치환. **4개 게이트 재확인 통�
 | 위치 | 문자열 | 이유 |
 |---|---|---|
 | `src/platform/credential-vault/aad.ts:14` | `"fakebloomberg/credential-vault/v1"` | **AES-256-GCM AAD.** 바꾸면 DB의 기존 암호문(사용자 KIS 키 등)을 영구히 복호화 불가 |
-| `src/platform/delivery/delivery-aad.ts:33` | `"fakebloomberg/delivery-vault/v1"` | 동일 |
+| ~~`src/platform/delivery/delivery-aad.ts:33`~~ | ~~`"fakebloomberg/delivery-vault/v1"`~~ | Stage 1에서 모듈째 삭제됨 (프로덕션 암호문이 존재한 적 없어 안전) |
 | `src/modules/notification-center/webhook-inbox.ts:58` | `"fakebloomberg/webhook-tombstone"` | 해시 도메인 분리자. 게다가 이 모듈은 T3에서 삭제 예정 |
 
 앞의 두 곳에는 이 이유를 설명하는 주석을 달아뒀다. 정말 바꾸려면 `/v2`로 버전을 올리고

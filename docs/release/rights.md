@@ -26,7 +26,6 @@ are empty and every `RUN_*_CONTRACT` flag defaults to `false`.
 | Provider | Scope | Default |
 | --- | --- | --- |
 | KIS Open API | `free_personal` quotes/chart/account/paper | opt-in contract only |
-| Alpaca Basic | free IEX / paper | opt-in contract only |
 | Gemini | AI over allowed materials | opt-in, key required |
 | DART / KRX | public filings / EOD | opt-in, key required |
 | US Treasury yield curve | public domain (17 U.S.C. §105), keyless daily XML, guest-redistributable | opt-in via `PUBLIC_MARKET_ENABLED` |

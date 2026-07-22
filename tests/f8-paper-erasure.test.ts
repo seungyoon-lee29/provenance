@@ -5,7 +5,6 @@ import type { WorkspaceViewerContext, ViewerContext } from "@/shared/contracts/v
 import { PaperTradingService } from "../src/modules/paper-trading/internal/service";
 import { InternalPaperSimulator, SIMULATION_V1 } from "../src/modules/paper-trading/internal/simulator";
 import { PaperTradingErasure } from "../src/modules/paper-trading/internal/paper-erasure";
-import { PaperAiMaterialResolver } from "../src/modules/paper-trading/internal/ai-resolver";
 import { ActualJournal } from "../src/modules/actual-portfolio/baseline/journal";
 import { ActualPortfolioService } from "../src/modules/actual-portfolio/baseline/portfolio-load";
 import type {
@@ -15,8 +14,8 @@ import type {
 } from "../src/modules/paper-trading/internal/contracts";
 
 /**
- * F8 B4 — SEC-09 erasure, the Paper-owned AI resolver and the BEHAVIORAL
- * Actual↔Paper mutual invariance that closes F6's residual AT-07 risk.
+ * F8 B4 — SEC-09 erasure and the BEHAVIORAL Actual↔Paper mutual invariance
+ * that closes F6's residual AT-07 risk.
  */
 
 const NOW = "2026-07-18T02:00:00.000Z";
@@ -35,7 +34,6 @@ function viewer(overrides?: Partial<WorkspaceViewerContext>): WorkspaceViewerCon
   };
 }
 
-const GUEST: ViewerContext = { kind: "guest", requestId: "req-guest" };
 const AAPL = brandReference<string, "PaperInstrumentReference">("instr:AAPL") as PaperInstrumentReference;
 const WORKSPACE = "workspace:a";
 
@@ -79,16 +77,11 @@ function harness(epochOf: (v: ViewerContext) => string = () => "epoch:1") {
     updateId: () => `update:${updateCounter += 1}`,
   });
   const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
-  const aiResolver = new PaperAiMaterialResolver({
-    journal: service.journal,
-    identity,
-    redactionPolicyVersion: "paper-redaction-v1",
-  });
   const erasure = new PaperTradingErasure({
     journal: service.journal,
-    stores: [...service.erasableStores(), { label: "paper-ai-materials", store: aiResolver.erasable }],
+    stores: [...service.erasableStores()],
   });
-  return { service, simulator, aiResolver, erasure };
+  return { service, simulator, erasure };
 }
 
 async function submit(service: PaperTradingService, payload: PaperOrderPayload, key: string) {
@@ -103,52 +96,14 @@ async function submit(service: PaperTradingService, payload: PaperOrderPayload, 
   return { order: outcome.order, account: prepared.intent.account };
 }
 
-describe("Paper-owned AI material resolver (§5.4/§6.1)", () => {
-  it("issues an opaque reference and resolves a redacted order-category envelope for the owner", async () => {
-    const { service, simulator, aiResolver } = harness();
-    const { account } = await submit(service, limitBuy(10, 110), "ai-seed");
-    simulator.ingest(WORKSPACE, account, observation());
-    const issued = aiResolver.issue({ account }, viewer());
-    expect(issued.status).toBe("issued");
-    if (issued.status !== "issued") return;
-    const outcome = await aiResolver.resolve(issued.reference, "research", viewer());
-    expect(outcome.status).toBe("available");
-    if (outcome.status !== "available") return;
-    expect(outcome.value.category).toBe("order");
-    expect(outcome.value.redactionPolicyVersion).toBe("paper-redaction-v1");
-    // Redaction: the summary must not leak intent references, idempotency
-    // keys or anything outside the public order surface.
-    expect(outcome.value.summary).not.toContain("paper-intent:");
-    expect(outcome.value.summary).not.toContain("idempotency");
-    expect(outcome.value.summary).toContain("Paper");
-  });
-
-  it("returns no value cross-workspace, cross-purpose, for guests and for a stale epoch", async () => {
-    let currentEpoch = "epoch:1";
-    const { service, aiResolver } = harness(() => currentEpoch);
-    const { account } = await submit(service, limitBuy(1, 10), "ai-guard");
-    const issued = aiResolver.issue({ account }, viewer());
-    if (issued.status !== "issued") throw new Error("issue failed");
-
-    const intruder = viewer({ workspaceReference: brandReference<string, "WorkspaceReference">("workspace:b") });
-    expect((await aiResolver.resolve(issued.reference, "research", intruder)).status).not.toBe("available");
-    expect((await aiResolver.resolve(issued.reference, "alert_evaluation", viewer())).status).not.toBe("available");
-    expect((await aiResolver.resolve(issued.reference, "research", GUEST)).status).not.toBe("available");
-    currentEpoch = "epoch:2";
-    expect((await aiResolver.resolve(issued.reference, "research", viewer())).status).not.toBe("available");
-  });
-});
-
 describe("SEC-09 administrative erasure", () => {
   async function erasedHarness() {
     const built = harness();
-    const { service, simulator, aiResolver, erasure } = built;
+    const { service, simulator, erasure } = built;
     const { order, account } = await submit(service, limitBuy(10, 110), "erase-seed");
     simulator.ingest(WORKSPACE, account, observation());
-    const issued = aiResolver.issue({ account }, viewer());
-    if (issued.status !== "issued") throw new Error("issue failed");
     await erasure.erase({ accountReference: "account:a", workspaceReference: WORKSPACE, scope: "workspace", fence: 5 });
-    return { ...built, order, account, materialReference: issued.reference };
+    return { ...built, order, account };
   }
 
   it("collects a receipt with real per-store shred counts and keeps the ORIGINAL receipt on a replayed sweep", async () => {
@@ -160,14 +115,13 @@ describe("SEC-09 administrative erasure", () => {
     // genesis + submit + fill = 3 journal entries shredded.
     expect(journalLine.shredded).toBe(3);
     expect(receipt!.lines.find((line) => line.label === "paper-intents")!.shredded).toBeGreaterThanOrEqual(1);
-    expect(receipt!.lines.find((line) => line.label === "paper-ai-materials")!.shredded).toBe(1);
 
     await context.erasure.erase({ accountReference: "account:a", workspaceReference: WORKSPACE, scope: "workspace", fence: 4 });
     expect(context.erasure.receiptFor(WORKSPACE)).toEqual(receipt);
   });
 
-  it("blocks every read/command/fill/resolver path after the fence with zero regeneration", async () => {
-    const { service, simulator, aiResolver, order, account, materialReference } = await erasedHarness();
+  it("blocks every read/command/fill path after the fence with zero regeneration", async () => {
+    const { service, simulator, order, account } = await erasedHarness();
     // Read: the shell holds no personal data any more.
     const shell = await service.open({ requestRevision: "post" }, viewer()).initial;
     if (shell.status !== "ready") throw new Error("open failed");
@@ -181,8 +135,6 @@ describe("SEC-09 administrative erasure", () => {
     expect(prepared).toEqual({ status: "refused", reason: "unknown_account" });
     // Fill: the simulator commits nothing behind the fence.
     expect(simulator.ingest(WORKSPACE, account, observation({ evidenceReference: "evidence:post" }))).toEqual([]);
-    // Resolver: the AI reference is gone.
-    expect((await aiResolver.resolve(materialReference, "research", viewer())).status).not.toBe("available");
     expect(service.journal.currentRevision(WORKSPACE, account)).toBe(0);
   });
 

@@ -22,14 +22,9 @@ const baseRuntimeSchema = z.object({
   ENABLED_PAID_ADAPTERS: z.string().default(""),
   ENABLED_PAID_ROUTES: z.string().default(""),
   ENABLED_PAID_SCHEDULES: z.string().default(""),
-  RUN_ALPACA_BASIC_DATA_CONTRACT: booleanFlagSchema,
   RUN_KIS_PERSONAL_DATA_CONTRACT: booleanFlagSchema,
-  RUN_ALPACA_PAPER_READ_CONTRACT: booleanFlagSchema,
   RUN_KIS_PAPER_READ_CONTRACT: booleanFlagSchema,
-  RUN_ALPACA_PAPER_ORDER_CONTRACT: booleanFlagSchema,
   RUN_KIS_PAPER_ORDER_CONTRACT: booleanFlagSchema,
-  ALPACA_API_KEY_ID: z.string().optional(),
-  ALPACA_API_SECRET_KEY: z.string().optional(),
   KIS_APP_KEY: z.string().optional(),
   KIS_APP_SECRET: z.string().optional(),
   KIS_REST_BASE: z.string().optional(),
@@ -115,18 +110,12 @@ function assertNoPaidComposition(parsed: z.infer<typeof baseRuntimeSchema>): voi
 }
 
 function assertCredentialPolicy(parsed: z.infer<typeof baseRuntimeSchema>): void {
-  const alpacaPair = [parsed.ALPACA_API_KEY_ID, parsed.ALPACA_API_SECRET_KEY].map(isConfigured);
   const kisPair = [parsed.KIS_APP_KEY, parsed.KIS_APP_SECRET].map(isConfigured);
-  if (alpacaPair[0] !== alpacaPair[1] || kisPair[0] !== kisPair[1]) {
+  if (kisPair[0] !== kisPair[1]) {
     throw new Error("process-global provider credentials must be configured as a complete pair");
   }
 
-  const hasGlobalCredential = alpacaPair[0] || kisPair[0];
-  const alpacaContractOptIn = [
-    parsed.RUN_ALPACA_BASIC_DATA_CONTRACT,
-    parsed.RUN_ALPACA_PAPER_READ_CONTRACT,
-    parsed.RUN_ALPACA_PAPER_ORDER_CONTRACT,
-  ].some(Boolean);
+  const hasGlobalCredential = kisPair[0];
   const kisContractOptIn = [
     parsed.RUN_KIS_PERSONAL_DATA_CONTRACT,
     parsed.RUN_KIS_PAPER_READ_CONTRACT,
@@ -144,7 +133,6 @@ function assertCredentialPolicy(parsed: z.infer<typeof baseRuntimeSchema>): void
     throw new Error("staging and production reject process-global provider credentials");
   }
   if (parsed.LOCAL_PROVIDER_CREDENTIAL_MODE !== "single_owner") {
-    if (alpacaPair[0] && !alpacaContractOptIn) throw new Error("Alpaca process-global credentials require an Alpaca contract opt-in");
     if (kisPair[0] && !kisContractOptIn) throw new Error("KIS process-global credentials require a KIS contract opt-in");
   }
 }

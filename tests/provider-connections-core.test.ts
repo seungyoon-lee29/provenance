@@ -26,8 +26,8 @@ import type {
 } from "../src/modules/provider-connections/core/contracts";
 
 // SYNTHETIC TEST DATA — none of these credentials are real.
-const SECRET = "SYNTHETIC-alpaca-key-PKABCD1234EFGH5678";
-const SECRET_2 = "SYNTHETIC-alpaca-key-PKZZZZ9999WWWW0000";
+const SECRET = "SYNTHETIC-kis-key-PKABCD1234EFGH5678";
+const SECRET_2 = "SYNTHETIC-kis-key-PKZZZZ9999WWWW0000";
 
 function version(value: string): VaultKeyVersion {
   return brandReference<string, "VaultKeyVersion">(value);
@@ -61,7 +61,7 @@ function saveCommand(overrides: Partial<SaveProviderConnectionCommand> = {}): Sa
   return {
     kind: "SaveProviderConnection",
     connectionReference: null,
-    provider: "alpaca",
+    provider: "kis",
     environment: "paper",
     capability: "paper_trading",
     credentialType: "paper-api-key",
@@ -87,7 +87,7 @@ describe("ProviderConnections core", () => {
     if (outcome.disposition !== "accepted") throw new Error("expected accepted");
 
     // View is masked: provider/environment/capability/generation/version/revision + last-4 hint only.
-    expect(outcome.view.provider).toBe("alpaca");
+    expect(outcome.view.provider).toBe("kis");
     expect(outcome.view.environment).toBe("paper");
     expect(outcome.view.capability).toBe("paper_trading");
     expect(outcome.view.maskedHint).toBe("5678");
@@ -123,7 +123,7 @@ describe("ProviderConnections core", () => {
       purpose: "provider_credential",
       workspaceReference: workspaceViewer().workspaceReference,
       providerConnectionReference: outcome.view.connectionReference,
-      provider: "alpaca",
+      provider: "kis",
       credentialType: "paper-api-key",
       environment: "paper",
     });

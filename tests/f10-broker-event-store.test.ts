@@ -7,7 +7,7 @@ import type { BrokerLineage, BrokerSyncAccountReference, BrokerSyncEvent, Extern
 
 const WORKSPACE = "ws-broker-sync-1";
 
-function connection(id = "conn-alpaca-live"): ProviderConnectionReference {
+function connection(id = "conn-kis-live"): ProviderConnectionReference {
   return brandReference<string, "ProviderConnectionReference">(id) as ProviderConnectionReference;
 }
 

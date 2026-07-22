@@ -20,12 +20,10 @@ const manifest = JSON.parse(readFileSync(resolve(ROOT, "tests/release/screenshot
 };
 
 describe("F11 screenshot provenance/rights manifest", () => {
-  it("declares the four required release scenes", () => {
+  it("declares the two required release scenes", () => {
     expect(manifest.screenshots.map((shot) => shot.file).sort()).toEqual([
-      "tests/browser/screenshots/explicit-unavailable.png",
       "tests/browser/screenshots/guest-desktop-public.png",
       "tests/browser/screenshots/guest-mobile-public.png",
-      "tests/browser/screenshots/paper-workspace.png",
     ]);
   });
 

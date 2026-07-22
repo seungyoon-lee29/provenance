@@ -34,7 +34,7 @@ export async function GET(
   );
   if (outcome.status !== "issued" || outcome.sessionProof === undefined) return failure;
 
-  const response = NextResponse.redirect(new URL("/workspace", request.url), { status: 302 });
+  const response = NextResponse.redirect(new URL("/", request.url), { status: 302 });
   setSessionCookie(response, outcome.sessionProof.value);
   return response;
 }

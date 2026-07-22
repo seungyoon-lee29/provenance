@@ -1,5 +1,8 @@
 # Privacy and data protection
 
+> ⚠️ 2026-07-22 방향 전환 — 이 문서가 서술하는 모듈 일부(research-assistant·notification-center·broker-sync 등)는
+> 삭제됐거나 삭제 예정이다. 재작성 전까지 이력 기준선으로만 읽을 것. 정본: [docs/notes/2026-07-22-pivot-backtest-strategy-engine.md](../notes/2026-07-22-pivot-backtest-strategy-engine.md)
+
 ## Credentials
 
 User provider credentials live only in server environment variables or an

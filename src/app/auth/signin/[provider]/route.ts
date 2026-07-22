@@ -8,7 +8,7 @@ import type { InternalRoute } from "@/modules/identity/contracts";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const RETURN_ROUTE: InternalRoute = { kind: "InternalRoute", path: "/workspace" };
+const RETURN_ROUTE: InternalRoute = { kind: "InternalRoute", path: "/" };
 
 export async function GET(
   request: NextRequest,

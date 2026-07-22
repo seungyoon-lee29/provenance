@@ -1,5 +1,9 @@
 # 한국어 금융 터미널 (`provenance`)
 
+> ⚠️ **2026-07-22 방향 전환 진행 중** — 제품 범위가 "한국 시장 백테스트 + 실시간 모의투자 엔진, CLI + MCP"로
+> 좁혀졌다. 아래 본문과 로드맵(F0~F11)은 재작성 전의 옛 서술이다. 현행 계획:
+> [docs/notes/2026-07-22-pivot-backtest-strategy-engine.md](docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)
+
 > **데이터 정직성(data honesty)을 1급 제약으로 설계한 Bloomberg 스타일 금융 터미널 MVP.**
 > 값을 모르면 값을 만들어내지 않는다 — 표시할 수 없는 데이터는 숫자 대신 *왜 없는지*를 보여준다.
 

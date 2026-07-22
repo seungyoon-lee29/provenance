@@ -25,7 +25,7 @@ function context(overrides: Partial<CredentialAadContext> = {}): CredentialAadCo
     purpose: "provider_credential",
     workspaceReference: brandReference<string, "WorkspaceReference">("workspace-1") as WorkspaceReference,
     providerConnectionReference: brandReference<string, "ProviderConnectionReference">("connection-1") as ProviderConnectionReference,
-    provider: "alpaca",
+    provider: "other-broker",
     credentialType: "paper-api-key",
     environment: "paper",
     ...overrides,

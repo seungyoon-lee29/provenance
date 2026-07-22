@@ -1,40 +1,25 @@
 import type {
-  AccountSecurityDelivery,
-  AdministrativeErasureCoordinator,
-  AiMaterialResolver,
-  AlertObservationResolver,
-  BrokerPaperExecutionPort,
-  BrokerReadPort,
-  ChannelEndpointVault,
-  DeliveryActionMaterialVault,
-  DeliveryKeyring,
-  EvidenceResolver,
-  IdentityExecutionResolver,
-  PortfolioEvidenceResolver,
-  PortfolioWorkQueue,
-  ProviderAuthorizationSeam,
-} from "../src/shared/server";
+  checkRuntimeDependencies,
+  closeRuntimeDependencies,
+  getDatabasePool,
+  getRedisClient,
+} from "../src/platform/runtime/dependencies";
 
-type ServerOnlyPorts<AuthorizedTransport> = Readonly<{
-  evidence: EvidenceResolver;
-  portfolioEvidence: PortfolioEvidenceResolver;
-  alertObservation: AlertObservationResolver;
-  aiMaterial: AiMaterialResolver;
-  identityExecution: IdentityExecutionResolver;
-  erasure: AdministrativeErasureCoordinator;
-  providerAuthorization: ProviderAuthorizationSeam<AuthorizedTransport>;
-  accountSecurityDelivery: AccountSecurityDelivery;
-  channelEndpointVault: ChannelEndpointVault;
-  deliveryActionMaterialVault: DeliveryActionMaterialVault;
-  deliveryKeyring: DeliveryKeyring;
-  brokerRead: BrokerReadPort;
-  brokerPaperExecution: BrokerPaperExecutionPort;
-  portfolioWorkQueue: PortfolioWorkQueue;
+// The prior server-only contracts barrel was retired along with the
+// external-broker execution modules it described (2026-07-22 pivot).
+// `src/platform/runtime/dependencies.ts` is the surviving server-only
+// module (real `pg`/`redis` clients that must never reach a client
+// bundle), so the seam check now pins its shape instead.
+type ServerOnlyRuntimeDependencies = Readonly<{
+  getDatabasePool: typeof getDatabasePool;
+  getRedisClient: typeof getRedisClient;
+  checkRuntimeDependencies: typeof checkRuntimeDependencies;
+  closeRuntimeDependencies: typeof closeRuntimeDependencies;
 }>;
 
-function acceptsServerOnlyPorts<AuthorizedTransport>(ports: ServerOnlyPorts<AuthorizedTransport>) {
-  return ports;
+function acceptsServerOnlyRuntimeDependencies(deps: ServerOnlyRuntimeDependencies) {
+  return deps;
 }
 
-void acceptsServerOnlyPorts;
+void acceptsServerOnlyRuntimeDependencies;
 process.stdout.write("server-only seam example passed\n");

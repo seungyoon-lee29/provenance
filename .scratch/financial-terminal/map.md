@@ -102,6 +102,8 @@
 
 ### 트랙 상태 (2026-07-20, 정직)
 
+- **2026-07-22 Stage 1 실행**: 죽은 코드 65파일 ~8,100줄 삭제(workspace·dev페이지 4종·research-assistant·F9 paper-trading/broker·platform/delivery·shared/queue·server·Alpaca 일체). 로그인 착지 /workspace → / 재지정. 게이트 green(테스트 1,160). 상세: pivot 메모 §6 Stage 1. 다음: Stage 2(영속성).
+
 개인용/게스트용 두 트랙 분리 운영(사용자 결정, 취업용 배포·운영 목표).
 - **개인용 (KIS, 로그인 owner 전용)**: 데이터 경로·위젯 마운트(page.tsx:45) 완료. **프론트↔백엔드 일치 컴파일러 강제**(위젯이 `InformationOutcome<MarketObservation>` 계약 타입 직접 소비, 커밋 4286c77). **✅ 실 KIS end-to-end 라이브 스모크 완료(2026-07-21)**: pg(single_owner) 부팅 → 자동 이메일 로그인(peek) → owner 세션으로 `/api/market` + workspace 위젯 실브라우저 렌더 확인 — 삼성전자(005930) 244,000 KRW·SK하이닉스(000660) 1,764,000 KRW, 폐장이라 정직하게 `stale`/`eod`, `audience:personal`(공용 유출 0). running-server 통합 스모크·위젯 브라우저 QA 잔여 **해소**. 티켓 29(휴장일 정직화)까지 **resolved** → **개인용 필수 미완 없음**. **선택적 확장만 이월**: per-user KIS 크리덴셜(현재 single_owner env only), SSE 실시간, 해외/선물·주문, 토큰 durable 캐시, 휴장일 커버연도 확장/임시공휴일(특일정보 키).
 - **게스트용 (공개·재배포 가능)**: 티켓 27 소스 확정 → 28(재무부 수익률 곡선)·30(스트립/로그인 배선)·32(ECB USD/KRW) resolved, 33(DART 공시) 마무리 중. guest shell이 `PUBLIC_MARKET_ENABLED=true`(+`DART_API_KEY`)로 실데이터 3소스(US10Y·USD/KRW·공시)를 서빙. 게스트 실시간 KOSPI/S&P/NASDAQ은 **재배포 가능 무료 소스가 존재하지 않아** 정직한 api_required 유지(로그인 owner는 티켓 31 KIS 지수로 조회). 남은 것: KRX EOD(재배포권 확인)·F11 배포 게이트.

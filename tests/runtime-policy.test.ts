@@ -43,26 +43,18 @@ describe("runtime policy", () => {
     ["paid route", { ENABLED_PAID_ROUTES: "premium-quote" }],
     ["paid schedule", { ENABLED_PAID_SCHEDULES: "premium-refresh" }],
     ["live submit", { ENABLE_LIVE_TRADING: "true" }],
-    ["partial Alpaca credential", { ALPACA_API_KEY_ID: "sentinel" }],
-    ["unbound global credential", { ALPACA_API_KEY_ID: "sentinel", ALPACA_API_SECRET_KEY: "sentinel" }],
+    ["partial KIS credential", { KIS_APP_KEY: "sentinel" }],
+    ["unbound global credential", { KIS_APP_KEY: "sentinel", KIS_APP_SECRET: "sentinel" }],
   ])("rejects %s before composition", (_label, override) => {
     expect(() => loadRuntimeConfig(environment(override))).toThrow();
   });
 
   it("allows complete process-global credentials only for an explicit contract job", () => {
     expect(() => loadRuntimeConfig(environment({
-      ALPACA_API_KEY_ID: "sentinel",
-      ALPACA_API_SECRET_KEY: "sentinel",
-      RUN_ALPACA_BASIC_DATA_CONTRACT: "true",
-    }))).not.toThrow();
-  });
-
-  it("does not let one provider contract flag authorize another provider credential", () => {
-    expect(() => loadRuntimeConfig(environment({
       KIS_APP_KEY: "sentinel",
       KIS_APP_SECRET: "sentinel",
-      RUN_ALPACA_BASIC_DATA_CONTRACT: "true",
-    }))).toThrow("KIS process-global credentials require a KIS contract opt-in");
+      RUN_KIS_PERSONAL_DATA_CONTRACT: "true",
+    }))).not.toThrow();
   });
 
   it("derives kisMarketEnabled only for single_owner with KIS creds + the paper-read contract", () => {

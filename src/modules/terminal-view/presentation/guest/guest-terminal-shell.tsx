@@ -82,7 +82,6 @@ function AccountControls({ account }: Readonly<{ account?: { reference: string }
   }
   return (
     <>
-      <a className={styles.accountAction} href="/workspace">워크스페이스</a>
       <button
         className={styles.accountAction}
         type="button"

@@ -31,7 +31,7 @@ describe.skipIf(!envExamplePresent)("F11 release readiness posture", () => {
 
   it("defaults every real-provider contract to not_run (opt-in off)", () => {
     const contractFlags = [...env.keys()].filter((key) => key.startsWith("RUN_") && key.endsWith("_CONTRACT"));
-    expect(contractFlags.length).toBeGreaterThanOrEqual(6);
+    expect(contractFlags.length).toBeGreaterThanOrEqual(3);
     for (const flag of contractFlags) expect(env.get(flag)).toBe("false");
   });
 
@@ -42,7 +42,7 @@ describe.skipIf(!envExamplePresent)("F11 release readiness posture", () => {
   });
 
   it("carries no non-empty credential value in the shipped example", () => {
-    for (const key of ["GEMINI_API_KEY", "ALPACA_API_KEY_ID", "ALPACA_API_SECRET_KEY", "KIS_APP_KEY", "KIS_APP_SECRET", "DART_API_KEY", "KRX_API_KEY", "GOOGLE_IDENTITY_CLIENT_SECRET", "GITHUB_IDENTITY_CLIENT_SECRET"]) {
+    for (const key of ["KIS_APP_KEY", "KIS_APP_SECRET", "DART_API_KEY", "GOOGLE_IDENTITY_CLIENT_SECRET", "GITHUB_IDENTITY_CLIENT_SECRET"]) {
       expect(env.get(key)).toBe("");
     }
   });

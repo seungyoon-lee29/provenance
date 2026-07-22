@@ -4,7 +4,7 @@ const baseURL = "http://127.0.0.1:3102";
 
 export default defineConfig({
   testDir: "./tests/performance",
-  testMatch: ["browser-shell-performance.spec.ts", "chart-performance.spec.ts", "layout-performance.spec.ts", "notification-performance.spec.ts"],
+  testMatch: ["browser-shell-performance.spec.ts", "chart-performance.spec.ts"],
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -30,14 +30,9 @@ export default defineConfig({
       ENABLED_PAID_ROUTES: "",
       ENABLED_PAID_SCHEDULES: "",
       F1_SCRIPTED_PROVIDER_DELAY_MS: "20",
-      RUN_ALPACA_BASIC_DATA_CONTRACT: "false",
       RUN_KIS_PERSONAL_DATA_CONTRACT: "false",
-      RUN_ALPACA_PAPER_READ_CONTRACT: "false",
       RUN_KIS_PAPER_READ_CONTRACT: "false",
-      RUN_ALPACA_PAPER_ORDER_CONTRACT: "false",
       RUN_KIS_PAPER_ORDER_CONTRACT: "false",
-      ALPACA_API_KEY_ID: "",
-      ALPACA_API_SECRET_KEY: "",
       KIS_APP_KEY: "",
       KIS_APP_SECRET: "",
       GOOGLE_IDENTITY_ENABLED: "false",

@@ -56,7 +56,7 @@ export function SignInForm({ initialError = false, providers = [] }: Readonly<{ 
       const data = (await response.json()) as { status?: string };
       if (data.status === "issued") {
         setStatus("로그인되었습니다. 이동합니다...");
-        window.location.assign("/workspace");
+        window.location.assign("/");
         return;
       }
       setStatus("코드가 올바르지 않습니다. 다시 확인해 주세요.");
