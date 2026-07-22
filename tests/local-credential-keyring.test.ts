@@ -9,7 +9,7 @@ import { loadLocalCredentialKeyring } from "../src/platform/credential-vault";
 const roots: string[] = [];
 
 function fixture(extra: Readonly<Record<string, unknown>> = {}) {
-  const root = mkdtempSync(path.join(tmpdir(), "fakebloomberg-keyring-"));
+  const root = mkdtempSync(path.join(tmpdir(), "provenance-keyring-"));
   roots.push(root);
   const secretRoot = path.join(root, ".secrets");
   mkdirSync(secretRoot, { mode: 0o700 });

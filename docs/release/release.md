@@ -26,7 +26,7 @@ provider lane is the release performance and correctness canon
 npm run package:release
 ```
 
-Builds `dist/release/fakebloomberg-release.zip` and `manifest.json`
+Builds `dist/release/provenance-release.zip` and `manifest.json`
 ([`scripts/package-release.ts`](../../scripts/package-release.ts)). The manifest
 lists every shipped file with its SHA-256 and category. Packaging **fails
 closed** if a tracked file fits no allowed category, if a credential pattern is

@@ -4,9 +4,9 @@ import { createClient, type RedisClientType } from "redis";
 import { DEFAULT_DATABASE_URL, DEFAULT_REDIS_URL } from "./defaults";
 
 type RuntimeGlobals = typeof globalThis & {
-  __fakeBloombergPool?: Pool;
-  __fakeBloombergRedis?: RedisClientType;
-  __fakeBloombergRedisConnect?: Promise<RedisClientType>;
+  __provenancePool?: Pool;
+  __provenanceRedis?: RedisClientType;
+  __provenanceRedisConnect?: Promise<RedisClientType>;
 };
 
 const runtimeGlobals = globalThis as RuntimeGlobals;
@@ -21,36 +21,36 @@ function redisUrl(): string {
 }
 
 export function getDatabasePool(): Pool {
-  runtimeGlobals.__fakeBloombergPool ??= new Pool({
+  runtimeGlobals.__provenancePool ??= new Pool({
     connectionString: databaseUrl(),
     connectionTimeoutMillis: dependencyTimeoutMs,
     max: 5,
     query_timeout: dependencyTimeoutMs,
     statement_timeout: dependencyTimeoutMs,
   });
-  return runtimeGlobals.__fakeBloombergPool;
+  return runtimeGlobals.__provenancePool;
 }
 
 export async function getRedisClient(): Promise<RedisClientType> {
-  if (runtimeGlobals.__fakeBloombergRedis?.isReady) {
-    return runtimeGlobals.__fakeBloombergRedis;
+  if (runtimeGlobals.__provenanceRedis?.isReady) {
+    return runtimeGlobals.__provenanceRedis;
   }
-  if (runtimeGlobals.__fakeBloombergRedis?.isOpen && runtimeGlobals.__fakeBloombergRedisConnect === undefined) {
-    runtimeGlobals.__fakeBloombergRedis.destroy();
-    runtimeGlobals.__fakeBloombergRedis = undefined;
+  if (runtimeGlobals.__provenanceRedis?.isOpen && runtimeGlobals.__provenanceRedisConnect === undefined) {
+    runtimeGlobals.__provenanceRedis.destroy();
+    runtimeGlobals.__provenanceRedis = undefined;
   }
-  if (runtimeGlobals.__fakeBloombergRedis === undefined) {
-    runtimeGlobals.__fakeBloombergRedis = createClient({
+  if (runtimeGlobals.__provenanceRedis === undefined) {
+    runtimeGlobals.__provenanceRedis = createClient({
       url: redisUrl(),
       socket: {
         connectTimeout: dependencyTimeoutMs,
         reconnectStrategy: false,
       },
     });
-    runtimeGlobals.__fakeBloombergRedis.on("error", () => undefined);
+    runtimeGlobals.__provenanceRedis.on("error", () => undefined);
   }
-  const client = runtimeGlobals.__fakeBloombergRedis;
-  runtimeGlobals.__fakeBloombergRedisConnect ??= new Promise<RedisClientType>((resolve, reject) => {
+  const client = runtimeGlobals.__provenanceRedis;
+  runtimeGlobals.__provenanceRedisConnect ??= new Promise<RedisClientType>((resolve, reject) => {
     let settled = false;
     const timeout = setTimeout(() => {
       if (settled) return;
@@ -71,11 +71,11 @@ export async function getRedisClient(): Promise<RedisClientType> {
     });
   });
   try {
-    return await runtimeGlobals.__fakeBloombergRedisConnect;
+    return await runtimeGlobals.__provenanceRedisConnect;
   } catch (error) {
-    if (runtimeGlobals.__fakeBloombergRedis?.isOpen) runtimeGlobals.__fakeBloombergRedis.destroy();
-    runtimeGlobals.__fakeBloombergRedis = undefined;
-    runtimeGlobals.__fakeBloombergRedisConnect = undefined;
+    if (runtimeGlobals.__provenanceRedis?.isOpen) runtimeGlobals.__provenanceRedis.destroy();
+    runtimeGlobals.__provenanceRedis = undefined;
+    runtimeGlobals.__provenanceRedisConnect = undefined;
     throw error;
   }
 }
@@ -91,8 +91,8 @@ async function pingRedis(client: RedisClientType): Promise<string> {
   } finally {
     clearTimeout(timeout);
     if (!client.isReady) {
-      runtimeGlobals.__fakeBloombergRedis = undefined;
-      runtimeGlobals.__fakeBloombergRedisConnect = undefined;
+      runtimeGlobals.__provenanceRedis = undefined;
+      runtimeGlobals.__provenanceRedisConnect = undefined;
     }
   }
 }
@@ -116,10 +116,10 @@ export async function checkRuntimeDependencies() {
 
 export async function closeRuntimeDependencies(): Promise<void> {
   const tasks: Promise<unknown>[] = [];
-  if (runtimeGlobals.__fakeBloombergRedis?.isOpen) tasks.push(runtimeGlobals.__fakeBloombergRedis.quit());
-  if (runtimeGlobals.__fakeBloombergPool) tasks.push(runtimeGlobals.__fakeBloombergPool.end());
+  if (runtimeGlobals.__provenanceRedis?.isOpen) tasks.push(runtimeGlobals.__provenanceRedis.quit());
+  if (runtimeGlobals.__provenancePool) tasks.push(runtimeGlobals.__provenancePool.end());
   await Promise.allSettled(tasks);
-  runtimeGlobals.__fakeBloombergRedis = undefined;
-  runtimeGlobals.__fakeBloombergRedisConnect = undefined;
-  runtimeGlobals.__fakeBloombergPool = undefined;
+  runtimeGlobals.__provenanceRedis = undefined;
+  runtimeGlobals.__provenanceRedisConnect = undefined;
+  runtimeGlobals.__provenancePool = undefined;
 }

@@ -13,13 +13,13 @@ type LoadHandoff = Readonly<{
 }>;
 
 type GuestLoadRegistryGlobal = typeof globalThis & {
-  __fakeBloombergGuestLoadHandoffs?: Map<string, LoadHandoff>;
+  __provenanceGuestLoadHandoffs?: Map<string, LoadHandoff>;
 };
 
 const registryGlobal = globalThis as GuestLoadRegistryGlobal;
-const handoffs = registryGlobal.__fakeBloombergGuestLoadHandoffs
+const handoffs = registryGlobal.__provenanceGuestLoadHandoffs
   ?? new Map<string, LoadHandoff>();
-registryGlobal.__fakeBloombergGuestLoadHandoffs = handoffs;
+registryGlobal.__provenanceGuestLoadHandoffs = handoffs;
 
 export function registerGuestTerminalLoad(
   requestId: string,

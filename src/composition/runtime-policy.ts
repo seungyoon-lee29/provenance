@@ -33,6 +33,10 @@ const baseRuntimeSchema = z.object({
   KIS_APP_KEY: z.string().optional(),
   KIS_APP_SECRET: z.string().optional(),
   KIS_REST_BASE: z.string().optional(),
+  // 실전(live) 키는 시세 조회 전용 — 모의 도메인에 없는 데이터(과거 분봉·지수 현재가·ETF)용.
+  // 주문 경로에는 배선하지 않는다. 배선 지점은 다음 티켓에서 결정한다.
+  KIS_LIVE_APP_KEY: z.string().optional(),
+  KIS_LIVE_APP_SECRET: z.string().optional(),
   GOOGLE_IDENTITY_ENABLED: booleanFlagSchema,
   GOOGLE_IDENTITY_CLIENT_ID: z.string().optional(),
   GOOGLE_IDENTITY_CLIENT_SECRET: z.string().optional(),

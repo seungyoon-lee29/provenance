@@ -1,4 +1,4 @@
-# 한국어 금융 터미널 (`fakebloomberg`)
+# 한국어 금융 터미널 (`provenance`)
 
 > **데이터 정직성(data honesty)을 1급 제약으로 설계한 Bloomberg 스타일 금융 터미널 MVP.**
 > 값을 모르면 값을 만들어내지 않는다 — 표시할 수 없는 데이터는 숫자 대신 *왜 없는지*를 보여준다.
@@ -93,8 +93,8 @@ src/
   외부 공급자는 저수준 HTTP 주입(seam)으로 대체하고, 실제 API는 **opt-in contract test**로 분리.
 - **Contract tests** — 실 KIS 등 외부 API 계약은 환경변수 게이트(`KIS_CONTRACT=1`)로만 실행.
 - **Property + Mutation** — `fast-check`(불변식 property) + `@stryker-mutator`(가드 kill 실증).
-- **적대적 리뷰** — 고위험 산출물(크리덴셜·돈·인증 경로)은 **다른 계열 모델**로 교차 공격 리뷰
-  후 확인된 지적만 수정. (Claude 산출물은 Codex가, 그 반대도 성립하게 운영)
+- **적대적 리뷰** — 고위험 산출물(크리덴셜·돈·인증 경로)은 구현과 다른 프레이밍의 blind 검수와
+  독립적인 test-authorship로 반례를 찾고, 직접 근거가 확인된 지적만 수정.
 - **Browser / A11y** — Playwright + `@axe-core/playwright`로 실 DOM·접근성·성능 예산 검증.
 - **CI parity** — 로컬 pre-commit 훅과 동일한 게이트를 GitHub Actions에서 원격 강제.
 
@@ -104,6 +104,26 @@ npm run test:mutation    # Stryker (no-live · egress 모듈)
 npm run verify:network-off
 npm run test:persistence-pg
 ```
+
+---
+
+## 에이전트 운영 모델
+
+이 저장소는 에이전트에게 기능 구현만 맡기지 않고 **작업 선택 → 소유권 → 검증 → 통합** 루프도 저장소 안에서 관리한다. 도구별 진입점은 짧게 유지하고, 프로젝트 상태와 안전 규칙은 모든 에이전트가 공유하는 Markdown 정본에 둔다.
+
+```text
+dependency map → frontier claim → single-file ownership
+               → implementation → deterministic gates
+               → adversarial review → resolve or human gate
+```
+
+- [공통 하한](./AGENTS.md): dirty worktree 보존, 단일 파일 owner, allowlist staging, 비밀·외부 실행 제한
+- [로컬 티켓 루프](./docs/agents/issue-tracker.md): dependency-aware frontier, claim, heartbeat, 검증 증거와 resolve
+- [협업·검수 등급](./docs/agents/collaboration.md): Prevent → Detect → Contain, blast-radius 기반 검증, 고위험 경로의 사람 게이트
+- [하네스 사례 연구](./docs/notes/harness-and-loop-engineering.md): 일회성 다중 검수를 property·mutation·network-off 상시 검증으로 바꾼 과정
+- [릴리스 게이트](./docs/release/release.md): credential pattern, `.scratch/`와 미분류 파일을 fail-closed로 차단하는 재현 가능한 패키징
+
+`.scratch/`는 스펙·티켓·중간 가설을 포함하는 작업 정본이다. 포트폴리오 설명은 위의 정제된 문서를 기준으로 하고, 현재 사실 여부는 코드·테스트와 `resolved` 티켓의 검증 결과로 확인한다.
 
 ---
 

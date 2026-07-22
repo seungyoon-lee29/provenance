@@ -15,7 +15,7 @@ import { classifyReleaseFiles, scanSecrets } from "./release/manifest";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_OUT_DIR = resolve(ROOT, "dist/release");
-export const RELEASE_ZIP_NAME = "fakebloomberg-release.zip";
+export const RELEASE_ZIP_NAME = "provenance-release.zip";
 
 function git(...args: string[]): string {
   return execFileSync("git", args, { cwd: ROOT, encoding: "utf8" }).trim();

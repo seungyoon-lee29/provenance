@@ -7,7 +7,7 @@ import { DEFAULT_DATABASE_URL } from "../src/platform/runtime/defaults";
 
 const execute = promisify(execFile);
 const baseUrl = new URL(process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL);
-const smokeDatabase = "fakebloomberg_migration_smoke";
+const smokeDatabase = "provenance_migration_smoke";
 
 async function runMigration(command: "up" | "down" | "status", databaseUrl: string): Promise<string> {
   const result = await execute(process.execPath, ["--import", "tsx", "scripts/migrate.ts", command], {

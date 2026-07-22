@@ -129,9 +129,9 @@ async function scenarioPostEraseRoundtrip(primaryUrl: string, adminUrl: string, 
   // Backup AFTER erase, restore into a pristine database, then migrate (must be a no-op reconcile).
   const dumpFile = path.join(dumpDir, "post-erase.sql");
   await pgDump(primaryUrl, dumpFile);
-  await psqlExec(adminUrl, "DROP DATABASE IF EXISTS fakebloomberg_restore");
-  await psqlExec(adminUrl, "CREATE DATABASE fakebloomberg_restore");
-  const restoreUrl = urlWithDatabase(primaryUrl, "fakebloomberg_restore");
+  await psqlExec(adminUrl, "DROP DATABASE IF EXISTS provenance_restore");
+  await psqlExec(adminUrl, "CREATE DATABASE provenance_restore");
+  const restoreUrl = urlWithDatabase(primaryUrl, "provenance_restore");
   await psqlFile(restoreUrl, dumpFile);
   await exec("npm", ["run", "db:migrate"], { env: { ...process.env, DATABASE_URL: restoreUrl } });
 
@@ -151,7 +151,7 @@ async function scenarioPostEraseRoundtrip(primaryUrl: string, adminUrl: string, 
     await restorePool.end();
   }
   await pool.end();
-  await psqlExec(adminUrl, "DROP DATABASE IF EXISTS fakebloomberg_restore");
+  await psqlExec(adminUrl, "DROP DATABASE IF EXISTS provenance_restore");
   console.log("drill 1 (post-erase roundtrip) passed");
 }
 

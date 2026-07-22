@@ -1,6 +1,6 @@
 # Setup
 
-FakeBloomberg is a TypeScript modular monolith: a Next.js app, an async worker,
+Provenance is a TypeScript modular monolith: a Next.js app, an async worker,
 PostgreSQL and Redis. The default runtime is **network-off with scripted
 providers** — no external API keys are required to build, test, or run the demo
 surfaces.

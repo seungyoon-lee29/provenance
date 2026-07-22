@@ -9,7 +9,7 @@ import { loadLocalDeliveryKeyring } from "../src/composition";
 const roots: string[] = [];
 
 function writeKeyring(value: unknown): { file: string; root: string } {
-  const parent = mkdtempSync(path.join(tmpdir(), "fakebloomberg-delivery-"));
+  const parent = mkdtempSync(path.join(tmpdir(), "provenance-delivery-"));
   roots.push(parent);
   const root = path.join(parent, ".secrets");
   mkdirSync(root, { mode: 0o700 });
