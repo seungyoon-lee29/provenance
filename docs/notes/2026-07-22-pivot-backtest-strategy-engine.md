@@ -226,6 +226,24 @@ Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에
   T8. 백테스트 엔진 — InternalPaperSimulator 를 과거 캔들로 확장 + 시간축 커서(look-ahead 차단)
   T9. 성과 리포트 — F7 TWR/XIRR 재사용 + MDD·승률 + 체결 신뢰도 집계
   T10. 전략 정의 층 + CLI + MCP  (선행 티켓 초안 있음: .scratch/financial-terminal/issues/40·41)
+    · 에이전트 인터페이스 설계 메모 (2026-07-22, HyeokjaeLee/koreainvestment-cli 전체 정독 결과):
+      [그대로 차용] ① SKILL.md 구조 — frontmatter description 에 한국어 트리거 문구 밀집 →
+        황금원칙 → 명령 치트시트 → 상호작용 패턴(사용자 발화 예시 + 실행 명령 + 파싱할 JSON 필드명) →
+        에러표(코드별 에이전트 행동) → 주문 전 안전 체크리스트 → "사람에게 제어를 돌려줘야 하는 경우"
+      ② README 에 "이 프롬프트를 에이전트에게 복사해줘" 온보딩 블록 + installation.md 를
+        "생략 금지" 결정론적 체크리스트로 ("WebFetch 말고 curl" 디테일 포함)
+      ③ 3단 권한 경계 — 신규 시크릿 입력=사람 전용 / 저장된 토큰 조회=에이전트 자유 /
+        주문=자연어 plan 확인 후 실행 (티켓 40 confirm token 철학과 일치)
+      ④ exit code 0(성공)/1(일반)/2(API)/3(인증) + 설정 0600 + HOME override env
+      ⑤ "패턴 0 — 프로파일 해석": 모호하면 list 먼저 → 실전 다중이면 질문. 기본은 항상 모의(paper)
+      [개선해서 차용] --json 은 전 명령 예외 없이 + 성공/실패 동일 envelope + stdout 순수성
+        (그 레포는 order 명령이 배너를 stdout 에 섞어 --json 파이프가 깨짐 — 반명제로 삼을 것).
+        confirm 위에 --dry-run 별도 제공 (그 레포엔 없음)
+      [반면교사] 테스트 0개 / 평문 YAML 크리덴셜(우리는 AES vault 재사용 = 차별점) / 에러만 비-JSON
+      · MCP 없음이 확인됨 — CLI+SKILL.md 만으로도 에이전트 대응이 성립한다는 사례.
+        우리는 41(MCP 카탈로그 3툴) + SKILL.md 양층으로 가면 차별화 유지
+      · 토스 공식 API 실측 인벤토리(oauth client_credentials, /api/v1/prices·orderbook·candles·orders,
+        x-tossinvest-account 헤더, {result} envelope)는 v2 토스 어댑터 때 이 레포 소스가 참조 지도가 됨
   T11. 실시간 모의투자 — 같은 엔진에 실시간 피드 연결
   T12. 호가 수집기 (돌리기 시작한 시점부터 정밀 모드 데이터가 쌓임)
 
