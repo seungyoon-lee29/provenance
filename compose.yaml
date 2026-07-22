@@ -25,6 +25,8 @@ services:
       interval: 2s
       timeout: 2s
       retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
     networks: [runtime]
 
   redis:
@@ -180,3 +182,8 @@ networks:
   ingress:
   runtime:
     internal: true
+
+# Stage 2 T2-a: without a named volume the ledger lives in the container layer
+# and one `docker compose down` erases it — infra half of the persistence fix.
+volumes:
+  postgres-data:
