@@ -84,7 +84,7 @@ function harness(nowRef: { value: string } = { value: NOW }) {
 async function submit(service: PaperTradingService, payload: PaperOrderPayload, key: string) {
   const prepared = await service.prepare({ payload }, viewer());
   if (prepared.status !== "issued") throw new Error(`prepare failed: ${prepared.status}`);
-  const outcome = service.change(
+  const outcome = await service.change(
     { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
     { idempotencyKey: key, expectedRevision: String(prepared.intent.accountRevision) },
     viewer(),
@@ -121,12 +121,12 @@ describe("journal boundary refuses unaffordable/forged fills (§9 overspend 0)",
     const { service } = harness(nowRef);
     const { order, account } = await submit(service, limitBuy(10, 110), "panel-attack");
     nowRef.value = "2026-07-18T02:05:00.000Z";
-    const cancel = service.change({ kind: "cancel", account, order }, { idempotencyKey: "panel-cxl", expectedRevision: "2" }, viewer());
+    const cancel = await service.change({ kind: "cancel", account, order }, { idempotencyKey: "panel-cxl", expectedRevision: "2" }, viewer());
     expect(cancel.status).toBe("applied");
 
     // The panel's forged fill: 10 shares at a price that overdraws the account
     // ($10,000.10 × 10 = $100,001 > $100,000), event time before cancellation.
-    const outcome = service.journal.appendSystem(WORKSPACE, account, "panel-forged-fill", forgedFill(String(order), 10, 10_000.1, { eventTime: "2026-07-18T02:01:00.000Z" }));
+    const outcome = await service.journal.appendSystem(WORKSPACE, account, "panel-forged-fill", forgedFill(String(order), 10, 10_000.1, { eventTime: "2026-07-18T02:01:00.000Z" }));
     expect(outcome.status).toBe("refused");
     const shell = await shellOf(service);
     const usd = shell.cash.find((row) => row.currency === "USD")!;
@@ -141,8 +141,8 @@ describe("journal boundary refuses unaffordable/forged fills (§9 overspend 0)",
     const { service } = harness(nowRef);
     const { order, account } = await submit(service, limitBuy(10, 110), "legit-late");
     nowRef.value = "2026-07-18T02:05:00.000Z";
-    service.change({ kind: "cancel", account, order }, { idempotencyKey: "legit-cxl", expectedRevision: "2" }, viewer());
-    const outcome = service.journal.appendSystem(WORKSPACE, account, "legit-late-fill", forgedFill(String(order), 10, 100.07, { eventTime: "2026-07-18T02:01:00.000Z" }));
+    await service.change({ kind: "cancel", account, order }, { idempotencyKey: "legit-cxl", expectedRevision: "2" }, viewer());
+    const outcome = await service.journal.appendSystem(WORKSPACE, account, "legit-late-fill", forgedFill(String(order), 10, 100.07, { eventTime: "2026-07-18T02:01:00.000Z" }));
     expect(outcome.status).toBe("applied");
     const shell = await shellOf(service);
     expect(shell.positions[0]!.quantity).toBe(10);
@@ -153,10 +153,10 @@ describe("journal boundary refuses unaffordable/forged fills (§9 overspend 0)",
     const { service } = harness(nowRef);
     const { order, account } = await submit(service, limitBuy(10, 110), "time-guards");
     nowRef.value = "2026-07-18T02:05:00.000Z";
-    service.change({ kind: "cancel", account, order }, { idempotencyKey: "tg-cxl", expectedRevision: "2" }, viewer());
-    const postCancel = service.journal.appendSystem(WORKSPACE, account, "tg-post", forgedFill(String(order), 1, 100, { eventTime: "2026-07-18T02:06:00.000Z", identity: "tg-post" }));
+    await service.change({ kind: "cancel", account, order }, { idempotencyKey: "tg-cxl", expectedRevision: "2" }, viewer());
+    const postCancel = await service.journal.appendSystem(WORKSPACE, account, "tg-post", forgedFill(String(order), 1, 100, { eventTime: "2026-07-18T02:06:00.000Z", identity: "tg-post" }));
     expect(postCancel.status).toBe("refused");
-    const preAccept = service.journal.appendSystem(WORKSPACE, account, "tg-pre", forgedFill(String(order), 1, 100, { eventTime: NOW, identity: "tg-pre" }));
+    const preAccept = await service.journal.appendSystem(WORKSPACE, account, "tg-pre", forgedFill(String(order), 1, 100, { eventTime: NOW, identity: "tg-pre" }));
     expect(preAccept.status).toBe("refused");
     expect((await shellOf(service)).orders[0]!.filledQuantity).toBe(0);
   });
@@ -164,21 +164,21 @@ describe("journal boundary refuses unaffordable/forged fills (§9 overspend 0)",
   it("refuses over-quantity fills, fills for unknown orders and non-positive quantities/prices", async () => {
     const { service } = harness();
     const { order, account } = await submit(service, limitBuy(10, 110), "qty-guards");
-    expect(service.journal.appendSystem(WORKSPACE, account, "q1", forgedFill(String(order), 11, 100, { identity: "q1" })).status).toBe("refused");
-    expect(service.journal.appendSystem(WORKSPACE, account, "q2", forgedFill("paper-order:nope:9", 1, 100, { identity: "q2" })).status).toBe("refused");
-    expect(service.journal.appendSystem(WORKSPACE, account, "q3", forgedFill(String(order), 0, 100, { identity: "q3" })).status).toBe("refused");
-    expect(service.journal.appendSystem(WORKSPACE, account, "q4", forgedFill(String(order), 1, -5, { identity: "q4" })).status).toBe("refused");
+    expect((await service.journal.appendSystem(WORKSPACE, account, "q1", forgedFill(String(order), 11, 100, { identity: "q1" }))).status).toBe("refused");
+    expect((await service.journal.appendSystem(WORKSPACE, account, "q2", forgedFill("paper-order:nope:9", 1, 100, { identity: "q2" }))).status).toBe("refused");
+    expect((await service.journal.appendSystem(WORKSPACE, account, "q3", forgedFill(String(order), 0, 100, { identity: "q3" }))).status).toBe("refused");
+    expect((await service.journal.appendSystem(WORKSPACE, account, "q4", forgedFill(String(order), 1, -5, { identity: "q4" }))).status).toBe("refused");
     expect((await shellOf(service)).orders[0]!.filledQuantity).toBe(0);
   });
 
   it("a redelivered dedupe key stays duplicate even though validation would now refuse it", async () => {
     const { service, simulator } = harness();
     const { order, account } = await submit(service, limitBuy(10, 110), "dup-guard");
-    simulator.ingest(WORKSPACE, account, observation());
+    await simulator.ingest(WORKSPACE, account, observation());
     // The order is now filled; replaying the SAME fill identity must answer
     // duplicate (converged), not refused.
     const identity = `fill:${String(order)}:evidence:obs-1`;
-    const replay = service.journal.appendSystem(WORKSPACE, account, identity, forgedFill(String(order), 10, 100.07, { identity }));
+    const replay = await service.journal.appendSystem(WORKSPACE, account, identity, forgedFill(String(order), 10, 100.07, { identity }));
     expect(replay).toEqual({ status: "duplicate" });
   });
 });
@@ -186,7 +186,7 @@ describe("journal boundary refuses unaffordable/forged fills (§9 overspend 0)",
 describe("journal boundary enforces the (post-split) limit on fills (codex lifecycle-axis findings)", () => {
   async function splitOrder(service: PaperTradingService) {
     const { order, account } = await submit(service, limitBuy(5, 110), "split-limit");
-    const outcome = service.journal.appendSystem(WORKSPACE, account, "action:boundary-split", {
+    const outcome = await service.journal.appendSystem(WORKSPACE, account, "action:boundary-split", {
       kind: "corporate_action_applied",
       action: brandReference<string, "PaperCorporateActionReference">("action:boundary-split") as never,
       instrument: AAPL,
@@ -199,7 +199,7 @@ describe("journal boundary enforces the (post-split) limit on fills (codex lifec
   it("refuses a stale pre-split-priced fill (5 @ $110 against the converted 10 @ $55 order)", async () => {
     const { service } = harness();
     const { order, account } = await splitOrder(service);
-    const stale = service.journal.appendSystem(WORKSPACE, account, "stale-price", forgedFill(String(order), 5, 110, { identity: "stale-price" }));
+    const stale = await service.journal.appendSystem(WORKSPACE, account, "stale-price", forgedFill(String(order), 5, 110, { identity: "stale-price" }));
     expect(stale.status).toBe("refused");
     const shell = await shellOf(service);
     expect(shell.positions).toHaveLength(0);
@@ -209,9 +209,9 @@ describe("journal boundary enforces the (post-split) limit on fills (codex lifec
   it("refuses an over-limit fill (10 @ $56 > $55) but accepts an at-limit fill", async () => {
     const { service } = harness();
     const { order, account } = await splitOrder(service);
-    const over = service.journal.appendSystem(WORKSPACE, account, "over-limit", forgedFill(String(order), 10, 56, { identity: "over-limit" }));
+    const over = await service.journal.appendSystem(WORKSPACE, account, "over-limit", forgedFill(String(order), 10, 56, { identity: "over-limit" }));
     expect(over.status).toBe("refused");
-    const atLimit = service.journal.appendSystem(WORKSPACE, account, "at-limit", forgedFill(String(order), 10, 55, { identity: "at-limit" }));
+    const atLimit = await service.journal.appendSystem(WORKSPACE, account, "at-limit", forgedFill(String(order), 10, 55, { identity: "at-limit" }));
     expect(atLimit.status).toBe("applied");
     const shell = await shellOf(service);
     // Money conservation: exactly 10 × $55 = $550 spent, reservation released.
@@ -225,8 +225,8 @@ describe("journal boundary refuses other forged system events", () => {
   it("refuses expiry on a filled order", async () => {
     const { service, simulator } = harness();
     const { order, account } = await submit(service, limitBuy(10, 110), "exp-guard");
-    simulator.ingest(WORKSPACE, account, observation());
-    const outcome = service.journal.appendSystem(WORKSPACE, account, "forged-expiry", { kind: "order_expired", order });
+    await simulator.ingest(WORKSPACE, account, observation());
+    const outcome = await service.journal.appendSystem(WORKSPACE, account, "forged-expiry", { kind: "order_expired", order });
     expect(outcome.status).toBe("refused");
     expect((await shellOf(service)).orders[0]!.execution).toBe("filled");
   });
@@ -234,14 +234,14 @@ describe("journal boundary refuses other forged system events", () => {
   it("refuses a second genesis and command-only bodies on the system path", async () => {
     const { service } = harness();
     const { account } = await submit(service, limitBuy(1, 10), "genesis-guard");
-    const reseed = service.journal.appendSystem(WORKSPACE, account, "second-genesis", {
+    const reseed = await service.journal.appendSystem(WORKSPACE, account, "second-genesis", {
       kind: "account_opened",
       seedCash: [{ amount: 1_000_000, currency: "USD" }],
     });
     expect(reseed.status).toBe("refused");
     expect((await shellOf(service)).cash.find((row) => row.currency === "USD")!.balance).toBe(100_000);
 
-    const smuggledSubmit = service.journal.appendSystem(WORKSPACE, account, "smuggled", {
+    const smuggledSubmit = await service.journal.appendSystem(WORKSPACE, account, "smuggled", {
       kind: "order_submitted",
       order: brandReference<string, "PaperOrderReference">("paper-order:smuggled:1"),
       payload: limitBuy(1, 10),
@@ -254,9 +254,9 @@ describe("journal boundary refuses other forged system events", () => {
   it("refuses a fractional-result split injected directly (bypassing lifecycle validation)", async () => {
     const { service, simulator } = harness();
     const { account } = await submit(service, limitBuy(5, 110), "frac-guard");
-    simulator.ingest(WORKSPACE, account, observation({ volume: 50 }));
+    await simulator.ingest(WORKSPACE, account, observation({ volume: 50 }));
     // Position 5 shares; a direct 3:2 split would make 7.5 — must be refused.
-    const outcome = service.journal.appendSystem(WORKSPACE, account, "forged-split", {
+    const outcome = await service.journal.appendSystem(WORKSPACE, account, "forged-split", {
       kind: "corporate_action_applied",
       action: brandReference<string, "PaperCorporateActionReference">("action:forged") as never,
       instrument: AAPL,

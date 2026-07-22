@@ -11,6 +11,11 @@ import { Pool } from "pg";
 import type { EntropySource, IdentityClock } from "../src/modules/identity/contracts";
 import { PgIdentityStore } from "../src/modules/identity/session-store.pg";
 import { PgPersonalCache } from "../src/modules/financial-information/data/personal-cache.pg";
+import { brandReference } from "../src/shared/contracts/brands";
+import type { InternalPaperAccountReference } from "../src/shared/contracts/brands";
+import { PaperJournal } from "../src/modules/paper-trading/internal/journal";
+import { PgPaperJournalStore } from "../src/modules/paper-trading/internal/journal-store.pg";
+import type { PaperOrderPayload } from "../src/modules/paper-trading/internal/contracts";
 
 /**
  * SEC-09 gate-2 stack proof (ticket 23 slice 3b-iv). Two backup/restore drills against REAL postgres
@@ -60,7 +65,32 @@ async function psqlExec(databaseUrl: string, sql: string): Promise<void> {
 }
 
 const ALL_TABLES =
-  "identity_receipt, identity_session, identity_account_fence, identity_account_workspace, identity_account, personal_cache_entry, personal_cache_fence";
+  "identity_receipt, identity_session, identity_account_fence, identity_account_workspace, identity_account, personal_cache_entry, personal_cache_fence, "
+  + "paper_journal_entry, paper_command_receipt, paper_system_key, paper_account_owner, paper_journal_fence";
+
+/** Seed the paper money ledger: genesis + one reserving limit-buy order — enough rows in every paper table. */
+async function seedPaperLedger(pool: Pool, workspace: string): Promise<InternalPaperAccountReference> {
+  const journal = await new PaperJournal(() => new Date().toISOString(), undefined, new PgPaperJournalStore(pool)).init();
+  const account = brandReference<string, "InternalPaperAccountReference">(`paper-account:drill:${workspace}`);
+  await journal.provision(workspace, account, [{ amount: 1_000_000, currency: "USD" }]);
+  const order = brandReference<string, "PaperOrderReference">(`paper-order:${String(account)}:2`);
+  const payload = {
+    instrument: brandReference<string, "PaperInstrumentReference">("instr:DRILL"),
+    venue: "NASDAQ", session: "regular", side: "buy", orderType: "limit",
+    limitPrice: { amount: 100, currency: "USD" }, quantity: 10, timeInForce: "GTC",
+  } as PaperOrderPayload;
+  const outcome = await journal.appendCommand(
+    workspace, account, "submit", { idempotencyKey: "drill-submit", expectedRevision: "1" }, "drill",
+    () => ({ entry: { kind: "order_submitted", order, payload, acceptedAt: new Date().toISOString(), reservation: { kind: "cash", unitPrice: payload.limitPrice! } }, order }),
+  );
+  assert.equal(outcome.status, "applied", "seed: paper submit lands");
+  return account;
+}
+
+/** Hydrate a fresh journal over the pool — what a server restart observes. */
+async function hydratePaper(pool: Pool): Promise<PaperJournal> {
+  return await new PaperJournal(() => new Date().toISOString(), undefined, new PgPaperJournalStore(pool)).init();
+}
 
 async function resetPrimary(databaseUrl: string): Promise<void> {
   await psqlExec(databaseUrl, `TRUNCATE ${ALL_TABLES} CASCADE`);
@@ -71,16 +101,19 @@ async function resetPrimary(databaseUrl: string): Promise<void> {
 type FenceHighWater = Readonly<{
   identity: ReadonlyArray<{ account: string; fence: number }>;
   cache: ReadonlyArray<{ workspace: string; fence: number }>;
+  paper: ReadonlyArray<{ workspace: string; fence: number }>;
   seq: number;
 }>;
 
 async function captureFenceHighWater(pool: Pool): Promise<FenceHighWater> {
   const identity = (await pool.query<{ account_reference: string; fence: string }>("SELECT account_reference, fence FROM identity_account_fence")).rows;
   const cache = (await pool.query<{ workspace: string; fence: string }>("SELECT workspace, fence FROM personal_cache_fence")).rows;
+  const paper = (await pool.query<{ workspace: string; fence: string }>("SELECT workspace, fence FROM paper_journal_fence")).rows;
   const seq = Number((await pool.query<{ v: string }>("SELECT last_value AS v FROM identity_fence_seq")).rows[0]!.v);
   return {
     identity: identity.map((r) => ({ account: r.account_reference, fence: Number(r.fence) })),
     cache: cache.map((r) => ({ workspace: r.workspace, fence: Number(r.fence) })),
+    paper: paper.map((r) => ({ workspace: r.workspace, fence: Number(r.fence) })),
     seq,
   };
 }
@@ -98,6 +131,13 @@ async function mergeFenceForward(pool: Pool, highWater: FenceHighWater): Promise
     await pool.query(
       `INSERT INTO personal_cache_fence (workspace, fence) VALUES ($1, $2)
        ON CONFLICT (workspace) DO UPDATE SET fence = GREATEST(personal_cache_fence.fence, EXCLUDED.fence)`,
+      [f.workspace, f.fence],
+    );
+  }
+  for (const f of highWater.paper) {
+    await pool.query(
+      `INSERT INTO paper_journal_fence (workspace, fence) VALUES ($1, $2)
+       ON CONFLICT (workspace) DO UPDATE SET fence = GREATEST(paper_journal_fence.fence, EXCLUDED.fence)`,
       [f.workspace, f.fence],
     );
   }
@@ -120,11 +160,17 @@ async function scenarioPostEraseRoundtrip(primaryUrl: string, adminUrl: string, 
   const session = await identity.issueSession(account.accountReference, ws1);
   await cache.write(ws1, "quote", "AAPL", 1);
   await cache.write(ws2, "quote", "MSFT", 1);
+  const paperAccount = await seedPaperLedger(pool, ws1);
   assert.equal((await identity.resolve(session.proof)).kind, "workspace", "seed: session resolves before erase");
 
-  // Erase (account scope): fence + shred sessions, then cascade the cache fence to EVERY workspace.
+  // Erase (account scope): fence + shred sessions, then cascade the cache AND
+  // paper-ledger fences to EVERY workspace (T2-b: the money ledger is durable
+  // PII surface now — the same one-fence procedure must cover it).
   const fence = await identity.erase(account.accountReference);
-  for (const ws of await identity.workspacesOf(account.accountReference)) await cache.eraseWorkspace(ws, fence + 1);
+  for (const ws of await identity.workspacesOf(account.accountReference)) {
+    await cache.eraseWorkspace(ws, fence + 1);
+    await (await hydratePaper(pool)).eraseWorkspace(ws, fence + 1);
+  }
 
   // Backup AFTER erase, restore into a pristine database, then migrate (must be a no-op reconcile).
   const dumpFile = path.join(dumpDir, "post-erase.sql");
@@ -147,6 +193,14 @@ async function scenarioPostEraseRoundtrip(primaryUrl: string, adminUrl: string, 
     assert.equal(reauth.state, "closed", "restore: recreation suppressed — account stays a closed tombstone");
     assert.equal(await rCache.size(ws1), 0, "restore: ws1 cache absent");
     assert.equal(await rCache.size(ws2), 0, "restore: ws2 cache absent (all workspaces cascaded)");
+    const rPaper = await hydratePaper(restorePool);
+    assert.equal(rPaper.list(ws1, paperAccount).length, 0, "restore: paper ledger absent");
+    assert.equal(rPaper.ownerOf(paperAccount), undefined, "restore: paper ownership absent");
+    const paperFence = await restorePool.query<{ fence: string }>("SELECT fence FROM paper_journal_fence WHERE workspace = $1", [ws1]);
+    assert.equal(Number(paperFence.rows[0]?.fence), fence + 1, "restore: paper deletion fence row present");
+    // recreation suppressed: a pre-erasure epoch (1) cannot re-open the account.
+    await rPaper.provision(ws1, paperAccount, [{ amount: 1, currency: "USD" }]);
+    assert.equal(rPaper.ownerOf(paperAccount), undefined, "restore: paper recreation suppressed behind the fence");
   } finally {
     await restorePool.end();
   }
@@ -167,18 +221,23 @@ async function scenarioStaleBackupRestore(primaryUrl: string, dumpDir: string): 
   const ws = await identity.primaryWorkspace(account);
   const session = await identity.issueSession(account.accountReference, ws);
   await cache.write(ws, "quote", "NVDA", 1);
+  const paperAccount = await seedPaperLedger(pool, ws);
   const staleDump = path.join(dumpDir, "stale-pre-erase.sql");
   await pgDump(primaryUrl, staleDump);
 
   // Erase happens AFTER the snapshot — the stale backup has no knowledge of it.
   const fence = await identity.erase(account.accountReference);
   await cache.eraseWorkspace(ws, fence + 1);
+  await (await hydratePaper(pool)).eraseWorkspace(ws, fence + 1);
   const highWater = await captureFenceHighWater(pool);
 
-  // Naive restore of the stale snapshot resurrects the account row + session + cache entry (pg_dump
-  // --clean dropped the fence tables and recreated them from the pre-erase state) …
+  // Naive restore of the stale snapshot resurrects the account row + session + cache entry + the
+  // paper money ledger (pg_dump --clean dropped the fence tables and recreated them from the
+  // pre-erase state) …
   await psqlFile(primaryUrl, staleDump);
   assert.equal(await identity.isErasedAccount(account.accountReference), false, "precondition: naive restore alone drops the fence");
+  const resurrected = await pool.query<{ n: number }>("SELECT COUNT(*)::int AS n FROM paper_journal_entry WHERE workspace = $1", [ws]);
+  assert.ok(resurrected.rows[0]!.n > 0, "precondition: naive restore resurrects paper ledger rows");
   // … so the restore procedure re-merges the forward-only deletion high-water the snapshot lacked.
   await mergeFenceForward(pool, highWater);
 
@@ -186,6 +245,10 @@ async function scenarioStaleBackupRestore(primaryUrl: string, dumpDir: string): 
   assert.equal(await identity.isErasedAccount(account.accountReference), true, "stale restore: fence dominates (account still erased)");
   assert.equal((await identity.resolve(session.proof)).kind, "guest", "stale restore: resurrected session stays dead behind the fence");
   assert.equal(await cache.isErased(ws, 1), true, "stale restore: resurrected cache entry stays suppressed");
+  // Paper rows carry their write epoch (≤ fence), so hydration re-judges and suppresses every one.
+  const stalePaper = await hydratePaper(pool);
+  assert.equal(stalePaper.list(ws, paperAccount).length, 0, "stale restore: resurrected paper entries stay suppressed behind the fence");
+  assert.equal(stalePaper.ownerOf(paperAccount), undefined, "stale restore: resurrected paper ownership stays suppressed");
   // A fresh erase must still advance beyond the restored high-water (sequence was not rewound).
   const fresh = await identity.ensureEmailAccount("post-restore@example.com");
   const nextFence = await identity.erase(fresh.accountReference);

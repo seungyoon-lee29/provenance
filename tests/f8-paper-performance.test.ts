@@ -69,7 +69,7 @@ describe("Internal Paper command budget", () => {
     for (let index = 0; index < 2_000; index += 1) {
       const prepared = await service.prepare({ payload: limitBuy(1, 10) }, viewer());
       if (prepared.status !== "issued") throw new Error("prepare failed");
-      const outcome = service.change(
+      const outcome = await service.change(
         { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
         { idempotencyKey: `perf-${index}`, expectedRevision: String(prepared.intent.accountRevision) },
         viewer(),
@@ -83,7 +83,7 @@ describe("Internal Paper command budget", () => {
       const prepared = await service.prepare({ payload: limitBuy(1, 10) }, viewer());
       if (prepared.status !== "issued") throw new Error("prepare failed");
       const start = performance.now();
-      const outcome = service.change(
+      const outcome = await service.change(
         { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
         { idempotencyKey: `warm-${run}`, expectedRevision: String(prepared.intent.accountRevision) },
         viewer(),

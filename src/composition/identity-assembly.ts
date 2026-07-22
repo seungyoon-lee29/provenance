@@ -33,6 +33,13 @@ export type IdentityStores = Readonly<{
  * NotificationCenter erasure is deliberately NOT wired here yet: its stores are in-memory (a crash
  * loses them — zero durable/backup residue) and it is not composed on this root, so wiring its full
  * dependency graph would be out of proportion to the SEC-09 durability concern. Tracked as residual.
+ *
+ * ⚠️ PaperTrading (Stage 2 T2-b) is now DURABLE (`PgPaperJournalStore`), but has zero production
+ * call sites — no route or worker constructs a `PaperTradingService`, so no paper row can exist in a
+ * deployed database and there is nothing for an erasure to miss today. THE MOMENT a consumer lands
+ * (T8+ backtest/CLI engine), it MUST register `PaperTradingErasure` here — or wherever that consumer
+ * composes identity — passing the SAME pool, so the identity fence and the money-ledger shred commit
+ * in one transaction. `PaperTradingErasure.erase` already accepts and threads the `tx` for this.
  */
 export function assembleIdentityStores(
   backend: IdentityPersistence,

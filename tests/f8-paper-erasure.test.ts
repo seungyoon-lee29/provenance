@@ -87,7 +87,7 @@ function harness(epochOf: (v: ViewerContext) => string = () => "epoch:1") {
 async function submit(service: PaperTradingService, payload: PaperOrderPayload, key: string) {
   const prepared = await service.prepare({ payload }, viewer());
   if (prepared.status !== "issued") throw new Error(`prepare failed: ${prepared.status}`);
-  const outcome = service.change(
+  const outcome = await service.change(
     { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
     { idempotencyKey: key, expectedRevision: String(prepared.intent.accountRevision) },
     viewer(),
@@ -101,7 +101,7 @@ describe("SEC-09 administrative erasure", () => {
     const built = harness();
     const { service, simulator, erasure } = built;
     const { order, account } = await submit(service, limitBuy(10, 110), "erase-seed");
-    simulator.ingest(WORKSPACE, account, observation());
+    await simulator.ingest(WORKSPACE, account, observation());
     await erasure.erase({ accountReference: "account:a", workspaceReference: WORKSPACE, scope: "workspace", fence: 5 });
     return { ...built, order, account };
   }
@@ -129,18 +129,18 @@ describe("SEC-09 administrative erasure", () => {
     expect(shell.cash).toHaveLength(0);
     expect(shell.positions).toHaveLength(0);
     // Command: the account no longer resolves; nothing is written.
-    const cancel = service.change({ kind: "cancel", account, order }, { idempotencyKey: "post-cxl", expectedRevision: "0" }, viewer());
+    const cancel = await service.change({ kind: "cancel", account, order }, { idempotencyKey: "post-cxl", expectedRevision: "0" }, viewer());
     expect(cancel).toEqual({ status: "refused", reason: "unknown_account" });
     const prepared = await service.prepare({ payload: limitBuy(1, 10) }, viewer());
     expect(prepared).toEqual({ status: "refused", reason: "unknown_account" });
     // Fill: the simulator commits nothing behind the fence.
-    expect(simulator.ingest(WORKSPACE, account, observation({ evidenceReference: "evidence:post" }))).toEqual([]);
+    expect(await simulator.ingest(WORKSPACE, account, observation({ evidenceReference: "evidence:post" }))).toEqual([]);
     expect(service.journal.currentRevision(WORKSPACE, account)).toBe(0);
   });
 
   it("suppresses a backup restore: a write at a pre-erasure epoch never lands", async () => {
     const { service, account } = await erasedHarness();
-    const restore = service.journal.appendSystem(WORKSPACE, account, "restore:genesis", {
+    const restore = await service.journal.appendSystem(WORKSPACE, account, "restore:genesis", {
       kind: "account_opened",
       seedCash: [{ amount: 100_000, currency: "USD" }],
     });
@@ -187,8 +187,8 @@ describe("behavioral Actual↔Paper mutual invariance (AT-07, ADR A04)", () => {
 
     // Paper activity of every kind.
     const { order, account } = await submit(service, limitBuy(10, 110), "iso-paper");
-    simulator.ingest(WORKSPACE, account, observation());
-    service.change({ kind: "cancel", account, order }, { idempotencyKey: "iso-cxl", expectedRevision: "3" }, viewer());
+    await simulator.ingest(WORKSPACE, account, observation());
+    await service.change({ kind: "cancel", account, order }, { idempotencyKey: "iso-cxl", expectedRevision: "3" }, viewer());
 
     const actualAfter = JSON.stringify(await actual.open({ sections: ["positions"], requestRevision: "iso" }, viewer()).initial);
     expect(actualAfter).toBe(actualBefore);

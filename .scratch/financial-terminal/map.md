@@ -102,6 +102,7 @@
 
 ### 트랙 상태 (2026-07-20, 정직)
 
+- **2026-07-23 Stage 2 T1·T2-a·T2-b 실행** (상세: [progress/stage2-persistence.md](./progress/stage2-persistence.md)): ① FencedKeyedStore 기판 → platform/persistence 이동(이동만, NC엔 participant만 잔존) ② compose postgres named volume(인프라 영속성) ③ **paper 원장 Postgres 영속화** — PaperJournal 에 PaperJournalStore 포트(메모리=오라클·pg 구현체, 마이그레이션 0005 5테이블, 행별 at_epoch 로 stale-restore 부활 억제), append=한 트랜잭션(entry+§8 receipt/exactly-once key), ack 전 durable. **money-conservation property 재수립**(Stage 1 손실분: 항등식+fail-closed·exactly-once 리플레이·재시작 보존·split 보존, 독립 오라클) + persistence 계약 스위트(메모리/pg 동일) + backup-drill 이 돈 원장 포함. **codex 적대 리뷰 BLOCK → 실결함 10건 수정**(낮은 fence 의 상위-epoch 데이터 삭제, 교차 workspace 이중 genesis, ack 유실 후 캐시 영구 stale, load 스냅샷 불일치, 서비스 미-hydration[수정 제거 시 실패 실증], command 경로로 두 번째 genesis 발행, NaN eventTime 시간가드 우회 등). 게이트 green: check 1,178 · 실 pg 41/41 · backup-drill 2/2 · build. 다음: T3(notification-center 삭제)·T4(actual-portfolio 축소).
 - **2026-07-22 Stage 1 실행**: 죽은 코드 65파일 ~8,100줄 삭제(workspace·dev페이지 4종·research-assistant·F9 paper-trading/broker·platform/delivery·shared/queue·server·Alpaca 일체). 로그인 착지 /workspace → / 재지정. 게이트 green(테스트 1,160). 상세: pivot 메모 §6 Stage 1. 다음: Stage 2(영속성).
 
 개인용/게스트용 두 트랙 분리 운영(사용자 결정, 취업용 배포·운영 목표).

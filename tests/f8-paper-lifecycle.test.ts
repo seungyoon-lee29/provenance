@@ -90,7 +90,7 @@ function harness(nowRef: { value: string } = { value: NOW }) {
 async function submit(service: PaperTradingService, payload: PaperOrderPayload, key: string, expectedRevision?: string) {
   const prepared = await service.prepare({ payload }, viewer());
   if (prepared.status !== "issued") throw new Error(`prepare failed: ${prepared.status}`);
-  const outcome = service.change(
+  const outcome = await service.change(
     { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
     { idempotencyKey: key, expectedRevision: expectedRevision ?? String(prepared.intent.accountRevision) },
     viewer(),
@@ -115,7 +115,7 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
     expect(before.orders[0]!.payload.limitPrice).toEqual({ amount: 110, currency: "USD" });
     expect(before.cash.find((row) => row.currency === "USD")!.reserved).toBe(550);
 
-    const applied = lifecycle.applySplit(WORKSPACE, account, {
+    const applied = await lifecycle.applySplit(WORKSPACE, account, {
       action: actionReference("action:split-2-1"),
       instrument: AAPL,
       numerator: 2,
@@ -131,7 +131,7 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
     expect(order.execution).toBe("open");
     expect(after.cash.find((row) => row.currency === "USD")!.reserved).toBe(550);
 
-    const replay = lifecycle.applySplit(WORKSPACE, account, {
+    const replay = await lifecycle.applySplit(WORKSPACE, account, {
       action: actionReference("action:split-2-1"),
       instrument: AAPL,
       numerator: 2,
@@ -146,13 +146,13 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
   it("scales a position's quantity while preserving its raw cost basis exactly once", async () => {
     const { service, simulator, lifecycle } = harness();
     const { account } = await submit(service, limitBuy(10, 110), "seed-position");
-    simulator.ingest(WORKSPACE, account, observation());
+    await simulator.ingest(WORKSPACE, account, observation());
     const before = await shellOf(service);
     // Hand-worked from the B2 fixture: 10 shares, basis 10 × 100.07 = $1,000.70.
     expect(before.positions[0]!.quantity).toBe(10);
     expect(before.positions[0]!.costBasis.amount).toBeCloseTo(1_000.7, 10);
 
-    lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-b"), instrument: AAPL, numerator: 2, denominator: 1 });
+    await lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-b"), instrument: AAPL, numerator: 2, denominator: 1 });
     const after = await shellOf(service);
     expect(after.positions[0]!.quantity).toBe(20);
     // Raw basis is NOT doubled — the adjustment applies exactly once to quantity.
@@ -162,13 +162,13 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
   it("scales a partially filled order's remaining quantity, filled quantity and reservation coherently", async () => {
     const { service, simulator, lifecycle } = harness();
     const { account } = await submit(service, limitBuy(25, 110), "partial");
-    simulator.ingest(WORKSPACE, account, observation());
+    await simulator.ingest(WORKSPACE, account, observation());
     // 10 of 25 filled; remaining 15 × $110 = $1,650 reserved.
     const before = await shellOf(service);
     expect(before.orders[0]!.filledQuantity).toBe(10);
     expect(before.cash.find((row) => row.currency === "USD")!.reserved).toBeCloseTo(1_650, 10);
 
-    lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-c"), instrument: AAPL, numerator: 2, denominator: 1 });
+    await lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-c"), instrument: AAPL, numerator: 2, denominator: 1 });
     const after = await shellOf(service);
     const order = after.orders[0]!;
     // 50 total, 20 filled, remaining 30 × $55 = $1,650 — value invariant holds.
@@ -184,9 +184,9 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
     const { service, lifecycle } = harness();
     const { account } = await submit(service, limitBuy(5, 110), "frac");
     // 3:2 on 5 shares → 7.5: refused, nothing changes.
-    const fractional = lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2"), instrument: AAPL, numerator: 3, denominator: 2 });
+    const fractional = await lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2"), instrument: AAPL, numerator: 3, denominator: 2 });
     expect(fractional).toEqual({ status: "refused", reason: "fractional_result" });
-    const invalid = lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-bad"), instrument: AAPL, numerator: 0, denominator: 1 });
+    const invalid = await lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-bad"), instrument: AAPL, numerator: 0, denominator: 1 });
     expect(invalid).toEqual({ status: "refused", reason: "invalid_adjustment" });
     const shell = await shellOf(service);
     expect(shell.orders[0]!.payload.quantity).toBe(5);
@@ -198,15 +198,15 @@ describe("2:1 split policy fixture (§9/AT-06)", () => {
     // Fully filled 10-share position (B2 fixture) — no open orders, so only the
     // position path is exercised: 10 × 3/2 = 15 is integral and applies.
     const { account } = await submit(service, limitBuy(10, 110), "redeliver-3-2");
-    simulator.ingest(WORKSPACE, account, observation());
-    const applied = lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2-again"), instrument: AAPL, numerator: 3, denominator: 2 });
+    await simulator.ingest(WORKSPACE, account, observation());
+    const applied = await lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2-again"), instrument: AAPL, numerator: 3, denominator: 2 });
     expect(applied.status).toBe("applied");
     expect((await shellOf(service)).positions[0]!.quantity).toBe(15);
 
     // §9: the Corporate Action reference IS the identity, so redelivery must be
     // a duplicate no-op — never re-validated against the already-transformed
     // state (15 × 3/2 = 22.5 would misreport fractional_result).
-    const replay = lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2-again"), instrument: AAPL, numerator: 3, denominator: 2 });
+    const replay = await lifecycle.applySplit(WORKSPACE, account, { action: actionReference("action:split-3-2-again"), instrument: AAPL, numerator: 3, denominator: 2 });
     expect(replay).toEqual({ status: "duplicate" });
     expect((await shellOf(service)).positions[0]!.quantity).toBe(15);
   });
@@ -216,16 +216,16 @@ describe("dividend entitlement (§9)", () => {
   it("credits per-share cash for the held position, exactly once across redeliveries", async () => {
     const { service, simulator, lifecycle } = harness();
     const { account } = await submit(service, limitBuy(10, 110), "div-seed");
-    simulator.ingest(WORKSPACE, account, observation());
+    await simulator.ingest(WORKSPACE, account, observation());
     const balanceBefore = (await shellOf(service)).cash.find((row) => row.currency === "USD")!.balance;
 
-    const applied = lifecycle.applyDividend(WORKSPACE, account, {
+    const applied = await lifecycle.applyDividend(WORKSPACE, account, {
       action: actionReference("action:div-1"),
       instrument: AAPL,
       perShare: { amount: 0.5, currency: "USD" },
     });
     expect(applied.status).toBe("applied");
-    const replay = lifecycle.applyDividend(WORKSPACE, account, {
+    const replay = await lifecycle.applyDividend(WORKSPACE, account, {
       action: actionReference("action:div-1"),
       instrument: AAPL,
       perShare: { amount: 0.5, currency: "USD" },
@@ -243,14 +243,14 @@ describe("dividend entitlement (§9)", () => {
   it("credits nothing without a position and refuses a non-positive rate", async () => {
     const { service, lifecycle } = harness();
     const { account } = await submit(service, limitBuy(1, 10), "no-pos");
-    const applied = lifecycle.applyDividend(WORKSPACE, account, {
+    const applied = await lifecycle.applyDividend(WORKSPACE, account, {
       action: actionReference("action:div-empty"),
       instrument: AAPL,
       perShare: { amount: 0.5, currency: "USD" },
     });
     // Recorded idempotently, but no cash moves for a zero position.
     expect(applied.status).toBe("applied");
-    const invalid = lifecycle.applyDividend(WORKSPACE, account, {
+    const invalid = await lifecycle.applyDividend(WORKSPACE, account, {
       action: actionReference("action:div-neg"),
       instrument: AAPL,
       perShare: { amount: -1, currency: "USD" },
@@ -268,20 +268,20 @@ describe("late valid fill after confirmed cancellation (§9)", () => {
     const { order, account } = await submit(service, limitBuy(10, 110), "late-fill");
     // Cancellation confirmed at 02:05.
     clock.value = "2026-07-18T02:05:00.000Z";
-    const cancel = service.change({ kind: "cancel", account, order }, { idempotencyKey: "cxl", expectedRevision: "2" }, viewer());
+    const cancel = await service.change({ kind: "cancel", account, order }, { idempotencyKey: "cxl", expectedRevision: "2" }, viewer());
     expect(cancel.status).toBe("applied");
     expect((await shellOf(service)).cash.find((row) => row.currency === "USD")!.reserved).toBe(0);
 
     // A late observation from 02:01 (after acceptance, before cancellation).
     const late = observation({ eventTime: "2026-07-18T02:01:00.000Z", dataClock: "2026-07-18T02:06:00.000Z", receivedAt: "2026-07-18T02:06:00.000Z", evidenceReference: "evidence:late" });
-    const events = simulator.ingest(WORKSPACE, account, late);
+    const events = await simulator.ingest(WORKSPACE, account, late);
     expect(events).toEqual([expect.objectContaining({ kind: "fill", order, quantity: 10 })]);
     // Exactly once: redelivery is silent.
-    expect(simulator.ingest(WORKSPACE, account, late)).toEqual([]);
+    expect(await simulator.ingest(WORKSPACE, account, late)).toEqual([]);
 
     // An observation from after the cancellation instant never fills.
     const post = observation({ eventTime: "2026-07-18T02:07:00.000Z", dataClock: "2026-07-18T02:07:00.000Z", evidenceReference: "evidence:post-cancel" });
-    expect(simulator.ingest(WORKSPACE, account, post)).toEqual([]);
+    expect(await simulator.ingest(WORKSPACE, account, post)).toEqual([]);
 
     const shell = await shellOf(service);
     const view = shell.orders[0]!;
@@ -298,10 +298,10 @@ describe("post-cancellation observations never fill (§9)", () => {
     const { service, simulator } = harness(nowRef);
     const { order, account } = await submit(service, limitBuy(10, 110), "cxl-then-obs");
     nowRef.value = "2026-07-18T02:05:00.000Z";
-    const cancel = service.change({ kind: "cancel", account, order }, { idempotencyKey: "cxl", expectedRevision: "2" }, viewer());
+    const cancel = await service.change({ kind: "cancel", account, order }, { idempotencyKey: "cxl", expectedRevision: "2" }, viewer());
     expect(cancel.status).toBe("applied");
     const post = observation({ eventTime: "2026-07-18T02:07:00.000Z", dataClock: "2026-07-18T02:07:00.000Z", evidenceReference: "evidence:after-cxl" });
-    expect(simulator.ingest(WORKSPACE, account, post)).toEqual([]);
+    expect(await simulator.ingest(WORKSPACE, account, post)).toEqual([]);
     const shell = await shellOf(service);
     expect(shell.orders[0]!.filledQuantity).toBe(0);
     expect(shell.positions).toHaveLength(0);
@@ -312,9 +312,9 @@ describe("cancel rejection keeps state intact (§9)", () => {
   it("a cancel on a filled order records a rejection and resurrects nothing", async () => {
     const { service, simulator } = harness();
     const { order, account } = await submit(service, limitBuy(10, 110), "cxl-filled");
-    simulator.ingest(WORKSPACE, account, observation());
+    await simulator.ingest(WORKSPACE, account, observation());
     const before = await shellOf(service);
-    const cancel = service.change({ kind: "cancel", account, order }, { idempotencyKey: "cxl-late", expectedRevision: "3" }, viewer());
+    const cancel = await service.change({ kind: "cancel", account, order }, { idempotencyKey: "cxl-late", expectedRevision: "3" }, viewer());
     expect(cancel.status).toBe("applied");
     const after = await shellOf(service);
     expect(after.orders[0]!.cancellation).toBe("rejected");
@@ -329,7 +329,7 @@ describe("concurrent funds invariant (AT-07)", () => {
     const { service, simulator } = harness();
     // A: 900 × $101 → $90,900 reserved, $9,100 available.
     const a = await submit(service, limitBuy(900, 101), "cf-a");
-    simulator.ingest(WORKSPACE, a.account, observation({ volume: 100, evidenceReference: "evidence:cf-1" }));
+    await simulator.ingest(WORKSPACE, a.account, observation({ volume: 100, evidenceReference: "evidence:cf-1" }));
     // Filled 10 @ 100.07 (≤ limit 101) → balance 98,999.30,
     // remaining 890 × $101 = $89,890 reserved, available $9,109.30.
     const shell = await shellOf(service);
@@ -341,7 +341,7 @@ describe("concurrent funds invariant (AT-07)", () => {
     // B: 92 × $100 = $9,200 > $9,109.30 available → refused, zero side effects.
     const preparedB = await service.prepare({ payload: limitBuy(92, 100) }, viewer());
     if (preparedB.status !== "issued") throw new Error("prepare failed");
-    const b = service.change(
+    const b = await service.change(
       { kind: "submit", account: preparedB.intent.account, intent: preparedB.intent.reference },
       { idempotencyKey: "cf-b", expectedRevision: String(preparedB.intent.accountRevision) },
       viewer(),
@@ -370,15 +370,15 @@ describe("three-axis literal trace (AT-07)", () => {
     };
     expect(await at()).toEqual(["acknowledged", "open", "none"]);
 
-    simulator.ingest(WORKSPACE, account, observation({ volume: 100, evidenceReference: "evidence:t1" }));
+    await simulator.ingest(WORKSPACE, account, observation({ volume: 100, evidenceReference: "evidence:t1" }));
     expect(await at()).toEqual(["acknowledged", "partially_filled", "none"]);
 
     nowRef.value = "2026-07-18T02:05:00.000Z";
-    service.change({ kind: "cancel", account, order }, { idempotencyKey: "trace-cxl", expectedRevision: "3" }, viewer());
+    await service.change({ kind: "cancel", account, order }, { idempotencyKey: "trace-cxl", expectedRevision: "3" }, viewer());
     expect(await at()).toEqual(["acknowledged", "partially_filled", "confirmed"]);
 
     const late = observation({ eventTime: "2026-07-18T02:02:00.000Z", dataClock: "2026-07-18T02:06:00.000Z", evidenceReference: "evidence:t2" });
-    simulator.ingest(WORKSPACE, account, late);
+    await simulator.ingest(WORKSPACE, account, late);
     // The late valid fill completes execution while cancellation stays
     // confirmed — the axes are independent by construction.
     expect(await at()).toEqual(["acknowledged", "filled", "confirmed"]);

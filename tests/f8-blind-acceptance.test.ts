@@ -488,7 +488,7 @@ describe("Reservation CAS boundary — exact values (spec §9)", () => {
 });
 
 describe("Simulator slippage — hand-calculated literals (simulation-v1)", () => {
-  it("Example A: buy 100 @ $100, vol=2000 → fills 100 @ $100.06 (slippage=6bps)", () => {
+  it("Example A: buy 100 @ $100, vol=2000 → fills 100 @ $100.06 (slippage=6bps)", async () => {
     // participation = 100/2000 = 0.05
     // slippageBps = min(25, 5 + 20×0.05) = min(25, 6) = 6
     // execPrice = ceil_tick(100 + 100×6/10000) = ceil_tick(100.06) = $100.06
@@ -499,7 +499,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
     // We create the order through service, then feed an observation to the simulator
     // The result is the fill array — inspect quantity and price
     const obs = mkObs({ price: 100, volume: 2000, eventTime: "2026-07-18T02:01:00.000Z" });
-    const results = simulator.ingest(WORKSPACE, brandReference("account:workspace:a:main"), obs);
+    const results = await simulator.ingest(WORKSPACE, brandReference("account:workspace:a:main"), obs);
     // No open orders yet — result is empty (no orders to fill)
     expect(results.length).toBe(0);
   });
@@ -517,7 +517,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
     clockVal = "2026-07-18T02:01:00.000Z";
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     const obs = mkObs({ price: 100, volume: 2000, eventTime: "2026-07-18T02:01:00.000Z" });
-    const fills = simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills = await simulator.ingest(WORKSPACE, intent.account, obs);
 
     expect(fills.length).toBeGreaterThan(0);
     const fill = fills[0]!;
@@ -544,7 +544,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
     clockVal = "2026-07-18T02:01:00.000Z";
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     const obs = mkObs({ price: 100, volume: 100, eventTime: "2026-07-18T02:01:00.000Z" });
-    const fills = simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills = await simulator.ingest(WORKSPACE, intent.account, obs);
 
     expect(fills.length).toBeGreaterThan(0);
     const fill = fills[0]!;
@@ -572,7 +572,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     // vol=2000, price=$100 → execPrice buy = $100.06 > limit $100.05 → NO FILL
     const obs = mkObs({ price: 100, volume: 2000, eventTime: "2026-07-18T02:01:00.000Z" });
-    const fills = simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills = await simulator.ingest(WORKSPACE, intent.account, obs);
 
     // Limit is adversely exceeded — must be 0 fills
     const actualFills = fills.filter((f) => f.kind === "fill");
@@ -596,7 +596,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
       dataClock: "2026-07-17T23:00:00.000Z", // dataClock before acceptedAt
       freshness: "delayed",
     });
-    const fills1 = simulator.ingest(WORKSPACE, intent.account, staleClock);
+    const fills1 = await simulator.ingest(WORKSPACE, intent.account, staleClock);
     const actualFills1 = fills1.filter((f) => f.kind === "fill");
     expect(actualFills1.length).toBe(0);
 
@@ -608,7 +608,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
       dataClock: "2026-07-18T02:01:00.000Z",
       freshness: "delayed",
     });
-    const fills2 = simulator.ingest(WORKSPACE, intent.account, freshClock);
+    const fills2 = await simulator.ingest(WORKSPACE, intent.account, freshClock);
     const actualFills2 = fills2.filter((f) => f.kind === "fill");
     expect(actualFills2.length).toBeGreaterThan(0);
   });
@@ -628,7 +628,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
       eventTime: "2026-07-18T02:01:00.000Z",
       freshness: "hard_expired",
     });
-    const fills = simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills = await simulator.ingest(WORKSPACE, intent.account, obs);
     expect(fills.filter((f) => f.kind === "fill").length).toBe(0);
   });
 
@@ -643,7 +643,7 @@ describe("Simulator slippage — hand-calculated literals (simulation-v1)", () =
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     // eventTime == acceptedAt exactly — must NOT fill (spec: strictly >)
     const obs = mkObs({ price: 100, volume: 2000, eventTime: fixedClock, dataClock: fixedClock });
-    const fills = simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills = await simulator.ingest(WORKSPACE, intent.account, obs);
     expect(fills.filter((f) => f.kind === "fill").length).toBe(0);
   });
 });
@@ -660,8 +660,8 @@ describe("Duplicate fill exactly-once (spec §9)", () => {
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     const obs = mkObs({ price: 100, volume: 2000, eventTime: "2026-07-18T02:01:00.000Z" });
 
-    const fills1 = simulator.ingest(WORKSPACE, intent.account, obs);
-    const fills2 = simulator.ingest(WORKSPACE, intent.account, obs); // exact replay
+    const fills1 = await simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills2 = await simulator.ingest(WORKSPACE, intent.account, obs); // exact replay
 
     const count1 = fills1.filter((f) => f.kind === "fill").reduce((s, f) => s + (f.kind === "fill" ? f.quantity : 0), 0);
     const count2 = fills2.filter((f) => f.kind === "fill").reduce((s, f) => s + (f.kind === "fill" ? f.quantity : 0), 0);
@@ -771,7 +771,7 @@ describe("Dividend (spec §9 lifecycle)", () => {
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     // vol=3000, cap=300 → fills all 3
     const obs = mkObs({ price: 100, volume: 3000, eventTime: "2026-07-18T02:01:00.000Z" });
-    const fills = simulator.ingest(WORKSPACE, intent.account, obs);
+    const fills = await simulator.ingest(WORKSPACE, intent.account, obs);
     const filledQty = fills.filter((f) => f.kind === "fill").reduce((s, f) => s + (f.kind === "fill" ? f.quantity : 0), 0);
     expect(filledQty).toBe(3);
 
@@ -926,7 +926,7 @@ describe("Paper open state accuracy", () => {
     clockVal = "2026-07-18T02:01:00.000Z";
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
     const obs = mkObs({ price: 100, volume: 100, eventTime: "2026-07-18T02:01:00.000Z" });
-    simulator.ingest(WORKSPACE, intent.account, obs);
+    await simulator.ingest(WORKSPACE, intent.account, obs);
 
     const openAfter = await (await service.open({ requestRevision: "0" }, viewer)).initial;
     if (openAfter.status !== "ready") throw new Error("open failed after fill");

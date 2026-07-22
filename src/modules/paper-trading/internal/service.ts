@@ -19,7 +19,7 @@ import type {
   PaperTradingCommand,
 } from "./contracts";
 import { PaperJournal } from "./journal";
-import type { CommandDecision, PaperAccountState } from "./journal";
+import type { CommandDecision, PaperAccountState, PaperJournalStore } from "./journal";
 
 /**
  * F8 `PaperTrading.open/prepare/change` (spec §9/§6, SEC-01/06; ADR A04).
@@ -56,6 +56,8 @@ export type PaperTradingDependencies = Readonly<{
   observations: PaperObservationPort;
   policy: PaperTradingPolicy;
   updateId: () => string;
+  /** T2-b: durable journal store (pg in production wiring); omitted = in-memory (tests, backtest). */
+  journalStore?: PaperJournalStore;
 }>;
 
 export type PaperSectionKey = "orders" | "blotter";
@@ -109,12 +111,21 @@ export class PaperTradingService {
   readonly journal: PaperJournal;
   readonly #intents = new FencedKeyedStore<IntentRecord>();
   #intentCounter = 0;
+  /**
+   * Journal hydration. Every public entry point awaits it BEFORE any
+   * synchronous journal read (ownerOf/currentRevision/state), or a service
+   * constructed over a durable store would judge ownership against an empty
+   * cache and refuse its own persisted account (codex T2-b finding).
+   */
+  readonly #ready: Promise<unknown>;
 
   constructor(private readonly deps: PaperTradingDependencies) {
-    this.journal = new PaperJournal(deps.now);
+    this.journal = new PaperJournal(deps.now, undefined, deps.journalStore);
+    this.#ready = this.journal.init();
   }
 
   async prepare(request: PaperPrepareRequest, viewer: ViewerContext): Promise<PaperPrepareOutcome> {
+    await this.#ready;
     if (!this.#authorized(viewer)) return { status: "denied" };
     const workspace = String(viewer.workspaceReference);
     if (!validPayload(request.payload)) return { status: "refused", reason: "invalid_payload" };
@@ -122,7 +133,7 @@ export class PaperTradingService {
     let account = request.account;
     if (account === undefined) {
       account = this.#defaultAccount(workspace);
-      this.journal.provision(workspace, account, this.deps.policy.seedCash);
+      await this.journal.provision(workspace, account, this.deps.policy.seedCash);
     }
     const owner = this.journal.ownerOf(account);
     if (owner === undefined) return { status: "refused", reason: "unknown_account" };
@@ -156,7 +167,8 @@ export class PaperTradingService {
     return { status: "issued", intent: view };
   }
 
-  change(command: PaperTradingCommand, control: Readonly<{ idempotencyKey: string; expectedRevision: string }>, viewer: ViewerContext): PaperCommandOutcome {
+  async change(command: PaperTradingCommand, control: Readonly<{ idempotencyKey: string; expectedRevision: string }>, viewer: ViewerContext): Promise<PaperCommandOutcome> {
+    await this.#ready;
     if (!this.#authorized(viewer)) return { status: "denied" };
     const workspace = String(viewer.workspaceReference);
     // Account ownership is fixed at genesis in the Paper store. An unknown id
@@ -167,7 +179,7 @@ export class PaperTradingService {
     if (owner !== workspace) return { status: "denied" };
 
     const canonicalPayload = JSON.stringify(command);
-    const outcome = this.journal.appendCommand(
+    const outcome = await this.journal.appendCommand(
       workspace,
       command.account,
       command.kind,
@@ -190,23 +202,28 @@ export class PaperTradingService {
     }
     const workspace = String(viewer.workspaceReference);
     const account = this.#defaultAccount(workspace);
-    this.journal.provision(workspace, account, this.deps.policy.seedCash);
     const sequences = new Map<PaperSectionKey, number>();
     for (const [section, cursor] of Object.entries(request.resume ?? {})) {
       const resumed = Number.parseInt(cursor.split(":")[1] ?? "", 10);
       if (Number.isInteger(resumed) && resumed >= 0) sequences.set(section as PaperSectionKey, resumed);
     }
 
-    const initial: PaperInitialShell = {
-      status: "ready",
-      requestRevision: request.requestRevision,
-      account,
-      ...presentState(this.journal.state(workspace, account), account),
-    };
+    // ONE hydration+provision promise shared by initial and refresh: a refresh
+    // racing ahead of initial must not observe the pre-genesis empty state
+    // (codex T2-b finding).
+    const provisioned = (async () => {
+      await this.#ready;
+      await this.journal.provision(workspace, account, this.deps.policy.seedCash);
+    })();
 
     return {
-      initial: Promise.resolve(initial),
-      refresh: (section) => Promise.resolve(this.#refresh(section, request, viewer, workspace, account, sequences)),
+      initial: provisioned.then((): PaperInitialShell => ({
+        status: "ready",
+        requestRevision: request.requestRevision,
+        account,
+        ...presentState(this.journal.state(workspace, account), account),
+      })),
+      refresh: (section) => provisioned.then(() => this.#refresh(section, request, viewer, workspace, account, sequences)),
     };
   }
 

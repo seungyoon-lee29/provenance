@@ -79,7 +79,7 @@ async function submitOrder(
   if (prepared.status !== "issued") throw new Error(`prepare failed: ${prepared.status}`);
   const shell = await service.open({ requestRevision: "r1" }, asViewer).initial;
   if (shell.status !== "ready") throw new Error("open failed");
-  return service.change(
+  return await service.change(
     { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
     { idempotencyKey, expectedRevision: String(prepared.intent.accountRevision) },
     asViewer,
@@ -157,21 +157,21 @@ describe("submit", () => {
     const control = { idempotencyKey: "idem-trio", expectedRevision: String(prepared.intent.accountRevision) };
     const command = { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference } as const;
 
-    const first = service.change(command, control, viewer());
+    const first = await service.change(command, control, viewer());
     expect(first.status).toBe("applied");
-    const replay = service.change(command, control, viewer());
+    const replay = await service.change(command, control, viewer());
     expect(replay).toEqual(first);
 
     const otherIntent = await service.prepare({ payload: limitBuy(1, 50) }, viewer());
     if (otherIntent.status !== "issued") throw new Error("prepare failed");
-    const different = service.change(
+    const different = await service.change(
       { kind: "submit", account: otherIntent.intent.account, intent: otherIntent.intent.reference },
       control,
       viewer(),
     );
     expect(different.status).toBe("conflict");
 
-    const stale = service.change(
+    const stale = await service.change(
       { kind: "submit", account: otherIntent.intent.account, intent: otherIntent.intent.reference },
       { idempotencyKey: "idem-stale", expectedRevision: "1" },
       viewer(),
@@ -200,10 +200,10 @@ describe("intent one-time and binding re-checks (AT-07)", () => {
     const prepared = await service.prepare({ payload: limitBuy(10, 100) }, viewer());
     if (prepared.status !== "issued") throw new Error("prepare failed");
     const command = { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference } as const;
-    const first = service.change(command, { idempotencyKey: "one", expectedRevision: "1" }, viewer());
+    const first = await service.change(command, { idempotencyKey: "one", expectedRevision: "1" }, viewer());
     expect(first.status).toBe("applied");
     // New idempotency key + already-consumed intent: refused, nothing lands.
-    const reuse = service.change(command, { idempotencyKey: "two", expectedRevision: "2" }, viewer());
+    const reuse = await service.change(command, { idempotencyKey: "two", expectedRevision: "2" }, viewer());
     expect(reuse).toEqual({ status: "refused", reason: "intent_consumed" });
     const shell = await readShell(service);
     expect(shell.orders).toHaveLength(1);
@@ -217,7 +217,7 @@ describe("intent one-time and binding re-checks (AT-07)", () => {
     if (prepared.status !== "issued") throw new Error("prepare failed");
     // 10 minutes and 1 ms later the intent is dead.
     nowRef.value = "2026-07-18T02:10:00.001Z";
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
       { idempotencyKey: "late", expectedRevision: "1" },
       viewer(),
@@ -236,7 +236,7 @@ describe("intent one-time and binding re-checks (AT-07)", () => {
     // carrying the new epoch still must not consume the old-epoch intent.
     currentEpoch = "epoch:2";
     const rotated = viewer({ accountAuthorizationEpoch: brandReference<string, "AccountAuthorizationEpoch">("epoch:2") });
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
       { idempotencyKey: "rotated", expectedRevision: "1" },
       rotated,
@@ -253,7 +253,7 @@ describe("intent one-time and binding re-checks (AT-07)", () => {
     // Another order lands first → account revision advances past the binding.
     const other = await submitOrder(service, limitBuy(2, 20), "first-in");
     expect(other.status).toBe("applied");
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: staleIntent.intent.account, intent: staleIntent.intent.reference },
       { idempotencyKey: "stale-intent", expectedRevision: "2" },
       viewer(),
@@ -271,7 +271,7 @@ describe("intent one-time and binding re-checks (AT-07)", () => {
       workspaceReference: brandReference<string, "WorkspaceReference">("workspace:b"),
       accountReference: brandReference<string, "AccountReference">("account:b"),
     });
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
       { idempotencyKey: "intrude", expectedRevision: "1" },
       intruder,
@@ -290,7 +290,7 @@ describe("forged Actual account (AT-07, ADR A04)", () => {
     // Simulates a client casting an Actual account id onto the Paper wire —
     // the branded types forbid this in checked code, so cast through unknown.
     const forged = brandReference<string, "InternalPaperAccountReference">("actual-account:a1") as never;
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: forged, intent: brandReference<string, "PaperOrderIntentReference">("paper-intent:workspace:a:1") as never },
       { idempotencyKey: "forge", expectedRevision: "1" },
       viewer(),
@@ -311,7 +311,7 @@ describe("reservation CAS (§9: overspend/oversell 0)", () => {
     // 20 × $100 = $2,000 > $1,000 available → refused, nothing lands.
     const prepared = await service.prepare({ payload: limitBuy(20, 100) }, viewer());
     if (prepared.status !== "issued") throw new Error("prepare failed");
-    const second = service.change(
+    const second = await service.change(
       { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
       { idempotencyKey: "over", expectedRevision: "2" },
       viewer(),
@@ -330,7 +330,7 @@ describe("reservation CAS (§9: overspend/oversell 0)", () => {
     const sell: PaperOrderPayload = { ...limitBuy(1, 10), side: "sell" };
     const prepared = await service.prepare({ payload: sell }, viewer());
     if (prepared.status !== "issued") throw new Error("prepare failed");
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
       { idempotencyKey: "oversell", expectedRevision: "1" },
       viewer(),
@@ -345,7 +345,7 @@ describe("reservation CAS (§9: overspend/oversell 0)", () => {
     const market: PaperOrderPayload = { ...limitBuy(1, 10), orderType: "market", limitPrice: undefined };
     const prepared = await service.prepare({ payload: market }, viewer());
     if (prepared.status !== "issued") throw new Error("prepare failed");
-    const outcome = service.change(
+    const outcome = await service.change(
       { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
       { idempotencyKey: "market-no-obs", expectedRevision: "1" },
       viewer(),
@@ -365,9 +365,9 @@ describe("journal system-event exactly-once (§9 dedupe layer)", () => {
       instrument: AAPL,
       perShare: { amount: 1, currency: "USD" },
     } as const;
-    const first = service.journal.appendSystem("workspace:a", account, "action:div-1", body);
+    const first = await service.journal.appendSystem("workspace:a", account, "action:div-1", body);
     expect(first.status).toBe("applied");
-    const replay = service.journal.appendSystem("workspace:a", account, "action:div-1", body);
+    const replay = await service.journal.appendSystem("workspace:a", account, "action:div-1", body);
     expect(replay).toEqual({ status: "duplicate" });
     // Revision advanced exactly once for the pair.
     expect(service.journal.currentRevision("workspace:a", account)).toBe(3);
@@ -379,7 +379,7 @@ describe("cancellation axis (§9)", () => {
     const service = makeService();
     const submitted = await submitOrder(service, limitBuy(10, 100), "to-cancel");
     if (submitted.status !== "applied") throw new Error("submit failed");
-    const cancel = service.change(
+    const cancel = await service.change(
       { kind: "cancel", account: (await readShell(service)).account, order: submitted.order },
       { idempotencyKey: "cancel-1", expectedRevision: "2" },
       viewer(),
@@ -400,18 +400,18 @@ describe("cancellation axis (§9)", () => {
     const submitted = await submitOrder(service, limitBuy(5, 40), "c2");
     if (submitted.status !== "applied") throw new Error("submit failed");
     const account = (await readShell(service)).account;
-    const unknown = service.change(
+    const unknown = await service.change(
       { kind: "cancel", account, order: brandReference<string, "PaperOrderReference">("paper-order:nope:9") as never },
       { idempotencyKey: "c-unknown", expectedRevision: "2" },
       viewer(),
     );
     expect(unknown).toEqual({ status: "refused", reason: "unknown_order" });
 
-    const first = service.change({ kind: "cancel", account, order: submitted.order }, { idempotencyKey: "c-a", expectedRevision: "2" }, viewer());
+    const first = await service.change({ kind: "cancel", account, order: submitted.order }, { idempotencyKey: "c-a", expectedRevision: "2" }, viewer());
     expect(first.status).toBe("applied");
     // The cancellation axis is terminal at confirmed: a second cancel is a
     // side-effect-free refusal, not another journal row (blind-gate finding).
-    const second = service.change({ kind: "cancel", account, order: submitted.order }, { idempotencyKey: "c-b", expectedRevision: "3" }, viewer());
+    const second = await service.change({ kind: "cancel", account, order: submitted.order }, { idempotencyKey: "c-b", expectedRevision: "3" }, viewer());
     expect(second).toEqual({ status: "refused", reason: "already_cancelled" });
     const shell = await readShell(service);
     expect(shell.orders[0]!.cancellation).toBe("confirmed");

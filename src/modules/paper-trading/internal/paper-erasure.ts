@@ -36,17 +36,22 @@ export class PaperTradingErasure {
     }>,
   ) {}
 
-  erase(context: ErasureContext): Promise<void> {
+  /**
+   * `tx` is the identity erase transaction (ticket 23 slice 3b-vi): the durable
+   * journal shred MUST run on it, or a later rollback of the outer transaction
+   * would restore the live account while the money ledger stayed deleted
+   * (codex T2-b finding).
+   */
+  async erase(context: ErasureContext, tx?: unknown): Promise<void> {
     const workspace = context.workspaceReference;
     const prior = this.#receipts.get(workspace);
-    if (prior !== undefined && prior.fence >= context.fence) return Promise.resolve();
+    if (prior !== undefined && prior.fence >= context.fence) return;
 
     const lines = [
-      { label: "paper-journal", shredded: this.deps.journal.eraseWorkspace(workspace, context.fence) },
+      { label: "paper-journal", shredded: await this.deps.journal.eraseWorkspace(workspace, context.fence, tx) },
       ...this.deps.stores.map(({ label, store }) => ({ label, shredded: store.eraseSubject(workspace, context.fence) })),
     ];
     this.#receipts.set(workspace, { workspace, fence: context.fence, lines });
-    return Promise.resolve();
   }
 
   receiptFor(workspace: string): PaperErasureReceipt | undefined {

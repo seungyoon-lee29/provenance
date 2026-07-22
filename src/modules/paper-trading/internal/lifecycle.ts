@@ -34,7 +34,7 @@ export type DividendEntitlement = Readonly<{
 export class PaperLifecycleIngestion {
   constructor(private readonly deps: Readonly<{ journal: PaperJournal }>) {}
 
-  applySplit(workspace: string, account: InternalPaperAccountReference, split: SplitAdjustment): SystemAppendOutcome {
+  applySplit(workspace: string, account: InternalPaperAccountReference, split: SplitAdjustment): Promise<SystemAppendOutcome> {
     return this.deps.journal.appendSystem(workspace, account, String(split.action), {
       kind: "corporate_action_applied",
       action: split.action,
@@ -43,7 +43,7 @@ export class PaperLifecycleIngestion {
     });
   }
 
-  applyDividend(workspace: string, account: InternalPaperAccountReference, dividend: DividendEntitlement): SystemAppendOutcome {
+  applyDividend(workspace: string, account: InternalPaperAccountReference, dividend: DividendEntitlement): Promise<SystemAppendOutcome> {
     return this.deps.journal.appendSystem(workspace, account, String(dividend.action), {
       kind: "dividend_applied",
       action: dividend.action,

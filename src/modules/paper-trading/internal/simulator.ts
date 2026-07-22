@@ -100,7 +100,7 @@ export class InternalPaperSimulator {
     }>,
   ) {}
 
-  ingest(workspace: string, account: InternalPaperAccountReference, observation: PaperMarketObservation): readonly SimulationEvent[] {
+  async ingest(workspace: string, account: InternalPaperAccountReference, observation: PaperMarketObservation): Promise<readonly SimulationEvent[]> {
     if (observation.session !== "regular") return [];
 
     const events: SimulationEvent[] = [];
@@ -114,7 +114,7 @@ export class InternalPaperSimulator {
     for (const order of this.#candidates(journal.state(workspace, account), observation)) {
       if (order.payload.timeInForce !== "DAY") continue;
       if (utcDay(observation.eventTime) <= utcDay(order.acceptedAt)) continue;
-      const applied = journal.appendSystem(workspace, account, `expire:${String(order.order)}`, {
+      const applied = await journal.appendSystem(workspace, account, `expire:${String(order.order)}`, {
         kind: "order_expired",
         order: order.order,
       });
@@ -181,7 +181,7 @@ export class InternalPaperSimulator {
         evidenceReference: observation.evidenceReference,
         policyVersion: this.deps.policy.policyVersion,
       };
-      const applied = journal.appendSystem(workspace, account, String(identity), { kind: "fill_applied", fill });
+      const applied = await journal.appendSystem(workspace, account, String(identity), { kind: "fill_applied", fill });
       if (applied.status !== "applied") continue;
       events.push({ kind: "fill", order: order.order, quantity: allocation, price: fill.price });
       cumulative += allocation;

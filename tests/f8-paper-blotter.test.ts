@@ -69,7 +69,7 @@ function observation(overrides?: Partial<PaperMarketObservation>): PaperMarketOb
 async function submit(service: PaperTradingService, payload: PaperOrderPayload, key: string) {
   const prepared = await service.prepare({ payload }, viewer());
   if (prepared.status !== "issued") throw new Error(`prepare failed: ${prepared.status}`);
-  const outcome = service.change(
+  const outcome = await service.change(
     { kind: "submit", account: prepared.intent.account, intent: prepared.intent.reference },
     { idempotencyKey: key, expectedRevision: String(prepared.intent.accountRevision) },
     viewer(),
@@ -96,13 +96,13 @@ describe("Paper Blotter presentation (§9/UF-07)", () => {
     const a = await submit(service, limitBuy(25, 110), "bl-a");
     // b: DAY, limit 120 — gets nothing from obs-1 (a consumed the full 10% cap).
     const b = await submit(service, limitBuy(4, 120, "DAY"), "bl-b");
-    simulator.ingest(WORKSPACE, a.account, observation());
+    await simulator.ingest(WORKSPACE, a.account, observation());
     nowRef.value = "2026-07-18T02:05:00.000Z";
-    const cancel = service.change({ kind: "cancel", account: a.account, order: a.order }, { idempotencyKey: "bl-cxl", expectedRevision: "4" }, viewer());
+    const cancel = await service.change({ kind: "cancel", account: a.account, order: a.order }, { idempotencyKey: "bl-cxl", expectedRevision: "4" }, viewer());
     expect(cancel.status).toBe("applied");
     // Next-day observation expires the DAY order (a is GTC + cancelled → untouched).
-    simulator.ingest(WORKSPACE, a.account, observation({ eventTime: "2026-07-19T14:30:00.000Z", dataClock: "2026-07-19T14:30:00.000Z", evidenceReference: "evidence:next-day" }));
-    lifecycle.applyDividend(WORKSPACE, a.account, {
+    await simulator.ingest(WORKSPACE, a.account, observation({ eventTime: "2026-07-19T14:30:00.000Z", dataClock: "2026-07-19T14:30:00.000Z", evidenceReference: "evidence:next-day" }));
+    await lifecycle.applyDividend(WORKSPACE, a.account, {
       action: brandReference<string, "PaperCorporateActionReference">("action:div") as PaperCorporateActionReference,
       instrument: AAPL,
       perShare: { amount: 0.5, currency: "USD" },
