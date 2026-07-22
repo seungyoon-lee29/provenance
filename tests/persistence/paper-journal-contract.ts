@@ -280,6 +280,44 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       expect(stale.state(WS, acct).cash.get("USD")?.reserved).toBe(1_000);
     });
 
+    // codex T2-b HIGH: a second writer folding the same revision silently
+    // overwrote the first one's money entry while BOTH receipts survived.
+    // Single-writer is the design; a violation must be LOUD, never silent —
+    // and the loser must recover rather than stay wedged.
+    it("a second writer at the same revision fails loudly and loses nothing already committed", async () => {
+      const store = await makeStore();
+      const acct = account();
+      const winner = await new PaperJournal(clock(), undefined, store).init();
+      await winner.provision(WS, acct, [{ amount: 10_000, currency: "USD" }]);
+      // A second journal hydrated at the SAME revision — neither knows the other.
+      const loser = await new PaperJournal(clock(), undefined, store).init();
+      expect(loser.currentRevision(WS, acct)).toBe(winner.currentRevision(WS, acct));
+
+      const committed = await submitBuy(winner, acct, "race-winner", 10, 100);
+      if (committed.outcome.status !== "applied") throw new Error(`winner failed: ${committed.outcome.status}`);
+      const winningRevision = committed.outcome.revision;
+      // Different idempotency key, same revision → not a replay, a collision.
+      await expect(submitBuy(loser, acct, "race-loser", 7, 50)).rejects.toThrow();
+
+      // The winner's entry is intact and unique at that revision.
+      const snapshot = await store.load();
+      const atRevision = snapshot.entries.filter((row) => row.workspace === WS && row.entry.revision === winningRevision);
+      expect(atRevision).toHaveLength(1);
+      expect(atRevision[0]!.entry.kind).toBe("order_submitted");
+      const rehydrated = await new PaperJournal(clock(), undefined, store).init();
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.reserved).toBe(1_000); // 10 × 100, the winner only
+
+      // The loser reconciles instead of staying wedged: the collision flagged its
+      // cache stale, so its next attempt rehydrates and comes back as a CLEAN CAS
+      // rejection carrying the true revision — not a throw, not a silent write.
+      const stale = await submitBuy(loser, acct, "race-recover", 1, 100);
+      expect(stale.outcome).toEqual({ status: "rejected", currentRevision: winningRevision });
+      // Retrying at the revision that rejection reported lands above the winner.
+      const recovered = await submitBuy(loser, acct, "race-recover-2", 1, 100);
+      expect(recovered.outcome.status).toBe("applied");
+      expect(loser.state(WS, acct).cash.get("USD")?.reserved).toBe(1_100);
+    });
+
     // codex T2-b HIGH: a malformed event time parsed to NaN, every temporal
     // guard evaluated false, and the fill landed on a cancelled order.
     it("refuses a fill whose event time is not a real instant", async () => {

@@ -46,12 +46,14 @@ T2-b: `db/migrations/0005_paper_trading.{up,down}.sql`(신규) ·
 
 ## Validation
 
-- `npm run check`: **1,178 통과** / 46 skip (typecheck · lint 0 error · seam 2종). T1 시점 1,160 → T2-b 후 1,178.
+- `npm run check`: **1,179 통과** / 47 skip (typecheck · lint 0 error · seam 2종). T1 시점 1,160 → T2-b 후 1,179.
 - `npm run build`: green.
 - **실 postgres**: `migration-smoke` green(up·재적용 멱등·down·재적용) ·
-  `persistence-integration` **41/41 green**(계약 스위트가 메모리/pg 동일 통과) · `backup-drill` **2 시나리오 green**.
-- **fix가 실제로 버그를 잡는지 실증**: service hydration 수정을 임시로 제거하니 재시작 계약 테스트가
-  `unknown_account`로 실패 → 복원 후 통과. (mutation kill 확인)
+  `persistence-integration` **42/42 green**(계약 스위트가 메모리/pg 동일 통과) · `backup-drill` **2 시나리오 green**.
+- **fix가 실제로 버그를 잡는지 실증 2건**(mutation kill):
+  ① service hydration 수정을 임시 제거 → 재시작 계약 테스트가 `unknown_account`로 실패, 복원 후 통과.
+  ② revision 충돌 가드(`#claimRevision`)를 임시 제거 → 패자의 append가 거절 대신 **조용히 성공**(덮어쓰기),
+  복원 후 통과.
 
 ## Review
 
@@ -69,7 +71,7 @@ codex 적대 리뷰 1회(4축: crash-consistency / fence·erasure / §8·§9 회
 | 오라클 | command 경로가 server-only kind를 실어 **두 번째 genesis를 발행**(현금 100→200)해도 오라클이 축복 | `PaperCommandBody` 타입 + 런타임 backstop. 계약 테스트 추가 |
 | 오라클 | 잘못된 `eventTime`이 `NaN`으로 파싱되어 모든 시간 가드를 통과, 취소된 주문에 체결이 착지 | `Date.parse` 유한성 검사 추가. 계약 테스트 추가 |
 | 오라클 | 확정 취소된 단주 주문이 정당한 액면분할을 `fractional_result`로 거부 | fold의 `reserving()` 술어와 일치시킴. 계약 테스트 추가 |
-| 오라클 | 메모리 store가 같은 revision을 조용히 덮어씀(pg는 UNIQUE로 막음) | 메모리도 revision 충돌 시 loud 실패 |
+| 오라클 | 메모리 store가 같은 revision을 조용히 덮어씀(pg는 UNIQUE로 막음) | 메모리도 revision 충돌 시 loud 실패. 계약 테스트 추가(후속 커밋) — 가드 제거 시 패자가 조용히 성공함을 실증 |
 
 **기각/범위 밖으로 판정한 2건**: "프로덕션이 `PgPaperJournalStore`를 구성하지 않는다" / "`PaperTradingErasure`가
 identity 컴포지션에 등록되지 않았다". 실측 결과 **paper-trading은 프로덕션 호출부가 0건**이다(pivot 메모 §5-③의
