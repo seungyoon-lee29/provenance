@@ -18,7 +18,15 @@ identity/세션/캐시가 사라지던 인프라 레이어 결함 봉쇄.
 **T2-b — paper 원장 Postgres 영속화 + money-conservation 재수립.**
 `PaperJournal`에 `PaperJournalStore` 포트를 넣었다. 읽기는 기존처럼 in-memory fold(동기), 쓰기는 **ack 전 durable**:
 applied append는 store 커밋이 먼저고 그 다음 캐시 반영. append 1건 = 1 트랜잭션(entry + §8 receipt / exactly-once
-system key + owner). 재설계가 아니라 구현체 추가 — 메모리 구현체가 오라클이자 기본값이라 기존 호출자는 의미가 안 바뀐다.
+system key + owner). 메모리 구현체가 오라클이자 기본값이라 기존 호출자의 **의미**는 바뀌지 않는다.
+
+> **← 정정 (메모 전제 대비)**: pivot 메모 §6은 "`FencedKeyedStore`가 이미 seam이라 재설계가 아니라
+> **구현체 추가**"를 전제했으나 **틀렸다**. 동기 KV 인터페이스로는 entry+receipt+system_key+owner를
+> 한 트랜잭션으로 묶을 수 없어(=T2-b의 핵심 보증) 기존 seam에 끼우는 길이 없었다. 실제로는 **새 포트**
+> (`PaperJournalStore`, `journal.ts:146`)를 도입하고 `FencedKeyedStore`를 **읽기용 캐시로 강등**했다
+> (`journal.ts:369·375`). 이 쪽이 낫다 — 캐시와 durable 진실이 타입으로 갈려 hydration·fence 재심사가
+> 명시적 단계가 됐고 pg가 메모리와 같은 계약 스위트를 통과한다. 대신 **작업량 추정이 어긋났다**:
+> service·simulator·lifecycle·paper-erasure + f8 테스트 8파일에 async 리플이 났다. 상세는 메모 §6 T2 문단.
 
 - 마이그레이션 `0005_paper_trading`: 5테이블(entry·receipt·system_key·owner·fence). 각 행에 `at_epoch`을 두어
   **hydration이 행마다 fence에 재심사** → stale backup이 되살린 행은 살아나지 못한다.
@@ -87,6 +95,13 @@ identity 컴포지션에 등록되지 않았다". 실측 결과 **paper-trading�
   그때 **erasure participant 등록이 필수**(같은 pool, `tx` 스레딩). 미등록 시 SEC-09 구멍이 열린다.
 - **단일 writer 전제**: 프로세스가 여럿이면 revision UNIQUE가 예외로 터진다(조용한 손상 대신 큰 소리로 실패하도록
   택한 것). 다중 writer가 필요해지면 account 단위 durable CAS가 선행돼야 한다.
+- **intent 참조가 재시작을 가로질러 충돌할 수 있다 (T2-b가 새로 도달 가능하게 만든 경로)**:
+  `service.ts:112`의 `#intents`는 여전히 휘발성 `FencedKeyedStore`인데 참조가
+  `paper-intent:{workspace}:{카운터}`이고 `#intentCounter`는 **프로세스마다 1부터 재시작**한다(`service.ts:143-147`).
+  T2-b 이후 원장은 재시작을 살아남으므로, 재시작 전 참조를 들고 있던 호출자가 재시작 후 새로 발급된 **다른 intent**에
+  매칭될 수 있다. 제출 payload는 저장된 record에서 나오므로(`#decideSubmit`) 의도하지 않은 주문 payload가 실행되는 형태다.
+  **심각도 낮음** — 소비자 0건, 같은 workspace 한정, 돈 경계(journal) 자체는 아니며 auth epoch·account revision
+  재검사가 상당수를 걸러낸다. **해소는 T8+ 소비자 배선 시점**: 참조를 카운터 대신 UUID로 바꾸거나 intent도 durable로.
 - `load()`가 전량 로드다(`ponytail:` 표기). workspace 단위 페이징은 규모가 요구할 때.
 - 메모리 store는 프로세스와 함께 죽는다 — 테스트·백테스트용이며 그게 의도다.
 - notification-center·actual-portfolio의 원장은 여전히 in-memory. T3·T4에서 삭제 예정이라 영속화하지 않았다.
