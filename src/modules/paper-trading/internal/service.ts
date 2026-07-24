@@ -337,7 +337,7 @@ export class PaperTradingService {
   }
 
   #defaultAccount(workspace: string): InternalPaperAccountReference {
-    return brandReference<string, "InternalPaperAccountReference">(`paper-account:internal:${workspace}`);
+    return defaultPaperAccount(workspace);
   }
 
   #authorized(viewer: ViewerContext): viewer is WorkspaceViewerContext {
@@ -358,6 +358,13 @@ function validPayload(payload: PaperOrderPayload): boolean {
     if (Math.abs(ticks - Math.round(ticks)) > 1e-6) return false;
   }
   return true;
+}
+
+/** The one place the default Internal Paper Account reference is derived —
+ * exported so composition surfaces (CLI) can address the account without
+ * re-deriving the format (T8 S2). */
+export function defaultPaperAccount(workspace: string): InternalPaperAccountReference {
+  return brandReference<string, "InternalPaperAccountReference">(`paper-account:internal:${workspace}`);
 }
 
 export function presentState(state: PaperAccountState, account: InternalPaperAccountReference): Readonly<{

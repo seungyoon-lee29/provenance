@@ -1,6 +1,6 @@
 # T8 — 백테스트 엔진 (InternalPaperSimulator × 과거 캔들 + 시간축 커서)
 
-상태: **claimed** (2026-07-24). Owner: main(Fable 5). Claimed at: 2026-07-24. Last heartbeat: 2026-07-24 (S1 코어 green).
+상태: **claimed** (2026-07-24). Owner: main(Fable 5). Claimed at: 2026-07-24. Last heartbeat: 2026-07-24 (S1·S2 green).
 
 정본 문맥: pivot 메모 §6 "이후 — 엔진" T8 + §3 결정 3(캔들 only)·6(엔진 하나, 정밀도 모드)·
 7(신뢰도 판정)·8(백테스트 먼저 — 결정론·CI 가능). 스케치: [design/t8-transaction-cost-model-v1.md](../design/t8-transaction-cost-model-v1.md).
@@ -32,7 +32,8 @@
 - **캔들 타입 재사용** — F2 `ChartBar`(periodStart·OHLCV·priceBasis·complete,
   financial-information/chart/contracts.ts:30). 새 타입 발명 금지.
 - **관측치 매핑** — bar → `PaperMarketObservation`(price=close, volume, eventTime=bar 마감,
-  dataClock=eventTime, freshness="stale"[과거 데이터의 정직한 라벨], evidence=bar 유래 참조).
+  dataClock=eventTime, freshness=~~"stale"~~ **"realtime"** [← 정정 (S1 구현 시): 시뮬레이션
+  클록 틀에서 bar 는 zero-age — 진행 절 "설계 배움" 참조], evidence=bar 유래 참조).
   acceptedAt=bar N 마감이면 bar N 관측으로는 체결 불가(strict >), bar N+1 부터 체결 —
   종가 접수·익봉 체결의 업계 관례가 엔진 불변식에서 공짜로 나온다.
 
@@ -75,3 +76,21 @@
   - import 관례 실측: `@/` 는 타입 전용(런타임 소거), 값 import 는 상대경로 (vitest 에 alias 없음).
   - 게이트: check 586(579+7) green · build green. blind/codex/Standards/mutation 은 S1~S2 묶음
     resolve 전 (커밋 트레일러 pending).
+- **S2 CLI 골격 + composition 배선** (2026-07-24): `src/cli/{main,commands}.ts` +
+  `composition/paper-assembly.ts`. **PgPaperJournalStore 첫 프로덕션 소비자** — §6 검증기록 ①
+  선행 조건 이행 + Stage 3 선행 조건(CLI 골격) 충족. 명령 3종: `backtest run --series --strategy
+  --seed`(러너 S1 소비, 전략은 dynamic import TS 함수), `paper open --seed --currency`(durable
+  genesis-once), `paper account`(read-only — **open() 우회 필수**: open 은 provision 을 내장해
+  읽기가 빈 seed genesis 를 만들어버림 → journal hydrate 직접 경로). T10 메모 차용 이행:
+  --json 전 명령·성공/실패 동일 envelope·stdout 순수성(스트림 소유는 entry 만)·exit 0/1/2/3.
+  - CLI workspace 는 `cli:` 네임스페이스로 web workspace 와 분리 — PaperTradingErasure 의 web
+    코디네이터 배선은 **의도적 유예**(Stage 3 에서 잘릴 표면에 배선하지 않음, SEC-09 구멍 없음
+    은 네임스페이스 분리가 근거. 계정 lifecycle 을 소유할 CLI 쪽 erasure 는 T11).
+  - 실표면 QA: `npm run cli -- backtest run … --json | python json.load` 파이프 무결(fill 1·
+    cash 899,940·exit 0), usage 오류 envelope+exit 1, human 오류는 stderr. `paper account` 는
+    로컬 DB 인증 실패를 api envelope+exit 2 로 정확 분류(크래시·비밀 누출 0).
+  - service.ts 변경 두 줄: `presentState`(S1)·`defaultPaperAccount` export — 파생 로직 중복 방지.
+  - 게이트: check 593(+CLI 핸들러 7) green · build green. durable happy path 는 pg 레인
+    (`paper-cli.pg.test.ts`: genesis-once·재-open 원본 보존·fresh 조립 재읽기) — compose 환경에서 실행.
+  - **S2 잔여**: pg 레인 실행은 compose 기동 환경 필요(로컬 스모크는 인증 실패 — 컴포즈 미기동
+    상태였음). packaged bin/npm-publish 형태는 Stage 3 릴리스 재정의 때.

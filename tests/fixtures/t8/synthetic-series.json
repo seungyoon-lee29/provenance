@@ -1,0 +1,11 @@
+{
+  "note": "SYNTHETIC TEST DATA — T8 CLI fixture, not real market data",
+  "instrument": "instr:BT",
+  "venue": "KRX",
+  "currency": "KRW",
+  "bars": [
+    { "periodStart": "2026-01-05T06:30:00.000Z", "close": 10000, "volume": 100000, "complete": true },
+    { "periodStart": "2026-01-06T06:30:00.000Z", "close": 10000, "volume": 100000, "complete": true },
+    { "periodStart": "2026-01-07T06:30:00.000Z", "close": 10000, "volume": 100000, "complete": true }
+  ]
+}

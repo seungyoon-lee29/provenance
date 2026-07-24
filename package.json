@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "cli": "tsx src/cli/main.ts",
     "build": "next build",
     "start": "next start",
     "worker:dev": "tsx watch src/worker/main.ts",
@@ -24,7 +25,7 @@
     "db:status": "tsx scripts/migrate.ts status",
     "verify:network-off": "tsx scripts/verify-network-off.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
-    "test:persistence-pg": "vitest run tests/persistence/personal-cache.pg.test.ts tests/persistence/identity-store.pg.test.ts tests/persistence/erase-atomicity.pg.test.ts tests/persistence/identity-composition.pg.test.ts tests/persistence/paper-journal.pg.test.ts tests/property/money-conservation.property.test.ts",
+    "test:persistence-pg": "vitest run tests/persistence/personal-cache.pg.test.ts tests/persistence/identity-store.pg.test.ts tests/persistence/erase-atomicity.pg.test.ts tests/persistence/identity-composition.pg.test.ts tests/persistence/paper-journal.pg.test.ts tests/persistence/paper-cli.pg.test.ts tests/property/money-conservation.property.test.ts",
     "verify:backup-drill": "tsx scripts/backup-drill.ts",
     "package:release": "tsx scripts/package-release.ts",
     "check:release-docs": "tsx scripts/check-release-docs.ts",
