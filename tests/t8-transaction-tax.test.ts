@@ -45,7 +45,7 @@ describe("T8 S3 transaction tax", () => {
     const sellFill = taxed.orders.find((o) => o.payload.side === "sell")!.fills[0]!;
     const proceeds = sellFill.quantity * sellFill.price.amount; // gross, KRW scale 1
     const expectedTax = Math.floor((proceeds * 20) / 10_000);
-    expect(sellFill.costs).toEqual({ sellTransactionTaxMinor: expectedTax, taxClass: "equity", taxPolicyVersion: KRX_TAX_POLICY_VERSION });
+    expect(sellFill.costs).toEqual({ sellTransactionTaxMinor: expectedTax, taxPolicyVersion: KRX_TAX_POLICY_VERSION });
     // Tax is the ONLY difference from the untaxed run.
     expect(untaxed.cash[0]!.balance - taxed.cash[0]!.balance).toBe(expectedTax);
     expect(taxed.costModel).toBe(KRX_TAX_POLICY_VERSION);
@@ -85,7 +85,7 @@ describe("T8 S3 transaction tax", () => {
 
     const sellFill = (tax: number, order = sell) => ({
       kind: "fill_applied" as const,
-      fill: { identity: brandReference<string, "PaperFillIdentity">(`forge-${tax}-${String(order)}`), order, quantity: 10, price: { amount: 9_500, currency: "KRW" }, eventTime: T(7), receivedAt: T(7), evidenceReference: `e-${tax}`, policyVersion: "simulation-v1", costs: { sellTransactionTaxMinor: tax, taxClass: "equity" as const, taxPolicyVersion: KRX_TAX_POLICY_VERSION } },
+      fill: { identity: brandReference<string, "PaperFillIdentity">(`forge-${tax}-${String(order)}`), order, quantity: 10, price: { amount: 9_500, currency: "KRW" }, eventTime: T(7), receivedAt: T(7), evidenceReference: `e-${tax}`, policyVersion: "simulation-v1", costs: { sellTransactionTaxMinor: tax, taxPolicyVersion: KRX_TAX_POLICY_VERSION } },
     });
 
     // gross = 10 × 9,500 = 95,000. A tax above that would fabricate cash.
@@ -97,9 +97,38 @@ describe("T8 S3 transaction tax", () => {
     expect((await journal.appendSystem(ws, acct, "ok", sellFill(190))).status).toBe("applied");
   });
 
-  it("rate table matches the module for a 1,000,000-won sale across the tax-year tiers", () => {
-    expect(sellTransactionTaxMinor(1_000_000, "equity", "2025-06-01T04:00:00.000Z")).toBe(1_500);
-    expect(sellTransactionTaxMinor(1_000_000, "equity", "2026-06-01T04:00:00.000Z")).toBe(2_000);
+  it("rate table matches the module for a 1,000,000-won sale across EVERY verified tax-year tier", () => {
+    const at = (year: number) => sellTransactionTaxMinor(1_000_000, "equity", `${year}-06-01T04:00:00.000Z`);
+    expect([at(2020), at(2021), at(2022), at(2023), at(2024), at(2025), at(2026)]).toEqual([2_500, 2_300, 2_300, 2_000, 1_800, 1_500, 2_000]);
     expect(sellTransactionTaxMinor(1_000_000, "etf_etn", "2026-06-01T04:00:00.000Z")).toBe(0);
+    // KST year boundary and floor (codex/blind gate).
+    expect(sellTransactionTaxMinor(1_000_000, "equity", "2025-12-31T15:30:00.000Z")).toBe(2_000);
+    expect(sellTransactionTaxMinor(999, "equity", "2025-06-01T04:00:00.000Z")).toBe(1);
+    expect(sellTransactionTaxMinor(-1_000_000, "equity", "2026-06-01T04:00:00.000Z")).toBe(0);
+  });
+
+  // ── codex gate regressions (2026-07-25) ──
+
+  it("journal entries are deep-frozen: a validated fill cannot be mutated after append (append-only is runtime-true)", async () => {
+    const taxed = await run("equity");
+    if (taxed.status !== "complete") throw new Error(taxed.status);
+    const sellFill = taxed.orders.find((o) => o.payload.side === "sell")!.fills[0]!;
+    expect(() => { (sellFill.costs as { sellTransactionTaxMinor: number }).sellTransactionTaxMinor = -1; }).toThrow(TypeError);
+    expect(() => { (sellFill as { quantity: number }).quantity = 999; }).toThrow(TypeError);
+  });
+
+  it("fails closed on a taxClass declared for a non-KRW series (KRX tax is a KRW levy)", async () => {
+    const usd: BacktestSeries = { instrument: "instr:US", venue: "NASDAQ", currency: "USD", taxClass: "equity", bars: [5, 6].map((d) => ({ periodStart: T(d), close: 100, volume: 1_000_000, complete: true })) };
+    expect(await runBacktest({ runId: "x", seedCash: [{ amount: 1_000_000, currency: "USD" }], series: usd, strategy: () => [] })).toEqual({ status: "refused", reason: "tax_class_currency_mismatch" });
+  });
+
+  it("fails closed on a taxed sale in a year with no verified rate (pre-2020)", async () => {
+    const old: BacktestSeries = { ...series("equity"), bars: [{ periodStart: "2019-06-01T04:00:00.000Z", close: 10_000, volume: 1_000_000, complete: true }] };
+    expect(await runBacktest({ runId: "x", seedCash: [{ amount: 1_000_000, currency: "KRW" }], series: old, strategy: () => [] })).toEqual({ status: "refused", reason: "unsupported_tax_year" });
+  });
+
+  it("rejects a timezone-less bar time (environment-dependent parsing)", async () => {
+    const local: BacktestSeries = { ...series(undefined), bars: [{ periodStart: "2026-01-05T04:00:00", close: 10_000, volume: 1_000_000, complete: true }] };
+    expect(await runBacktest({ runId: "x", seedCash: [{ amount: 1_000_000, currency: "KRW" }], series: local, strategy: () => [] })).toEqual({ status: "refused", reason: "invalid_bar_time" });
   });
 });

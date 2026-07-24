@@ -3,8 +3,8 @@ import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
 import { currencyMinorUnitScale } from "../internal/contracts";
-import { KRX_TAX_POLICY_VERSION } from "../internal/krx-transaction-tax";
-import type { KrxTaxClass } from "../internal/krx-transaction-tax";
+import type { KrxTaxClass } from "../internal/contracts";
+import { KRX_TAX_POLICY_VERSION, isSupportedTaxDate } from "../internal/krx-transaction-tax";
 import type {
   PaperCashRow,
   PaperMarketObservation,
@@ -149,7 +149,9 @@ export type BacktestOutcome =
         | "no_seed_cash"
         | "invalid_seed_cash"
         | "unsupported_price_basis"
-        | "invalid_strategy_result";
+        | "invalid_strategy_result"
+        | "tax_class_currency_mismatch"
+        | "unsupported_tax_year";
     }>;
 
 /** True when `amount` is a positive, finite whole number of the currency's
@@ -168,6 +170,12 @@ function isRepresentableCash(money: PaperMoney): boolean {
  * report — the typed `reason` when refused, else the raw status. */
 function refusalStatus(outcome: Readonly<{ status: string; reason?: string }>): string {
   return outcome.status === "refused" && outcome.reason !== undefined ? outcome.reason : outcome.status;
+}
+
+/** An ISO instant carries a timezone iff its time part ends in Z or ±hh:mm —
+ * otherwise Date.parse reads it as local time (environment-dependent). */
+function hasTimezone(iso: string): boolean {
+  return /T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/.test(iso);
 }
 
 function observationOf(series: BacktestSeries, bar: BacktestBar): PaperMarketObservation {
@@ -202,12 +210,25 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   // Seed cash reaches the money ledger — validate it at this boundary, the
   // journal's account_opened trusts the amounts (codex gate BLOCKER).
   if (!config.seedCash.every(isRepresentableCash)) return { status: "refused", reason: "invalid_seed_cash" };
+  // KRX transaction tax is a KRW-market levy — a taxClass on a non-KRW series is
+  // a data error, refused rather than charged in the wrong currency (codex gate).
+  if (series.taxClass !== undefined && series.currency !== "KRW") return { status: "refused", reason: "tax_class_currency_mismatch" };
   for (let index = 0; index < series.bars.length; index += 1) {
     const bar = series.bars[index]!;
     if (!bar.complete) return { status: "refused", reason: "incomplete_bar" };
-    if (!Number.isFinite(Date.parse(bar.periodStart))) return { status: "refused", reason: "invalid_bar_time" };
+    // Require a timezone-qualified instant: a bare local time (no Z/offset)
+    // parses against the runner's local zone, so identical series bytes would
+    // yield different fills — and, at a year boundary, different tax (codex gate).
+    if (!Number.isFinite(Date.parse(bar.periodStart)) || !hasTimezone(bar.periodStart)) {
+      return { status: "refused", reason: "invalid_bar_time" };
+    }
     if (index > 0 && Date.parse(bar.periodStart) <= Date.parse(series.bars[index - 1]!.periodStart)) {
       return { status: "refused", reason: "non_monotonic_series" };
+    }
+    // A taxed sale in a year with no verified rate must fail closed, not
+    // fabricate one (codex gate HIGH: pre-2020 rates aren't year-keyable).
+    if (series.taxClass !== undefined && !isSupportedTaxDate(bar.periodStart)) {
+      return { status: "refused", reason: "unsupported_tax_year" };
     }
   }
 

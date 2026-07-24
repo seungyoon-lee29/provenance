@@ -1,7 +1,7 @@
 import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
-import { currencyMinorUnitScale, minorUnitsOf } from "./contracts";
+import { currencyMinorUnitScale, grossMinorOf, minorUnitsOf } from "./contracts";
 import type { PaperFill, PaperFillCosts, PaperMarketObservation, PaperMoney } from "./contracts";
 import type { PaperAccountState, PaperJournal, PaperOrderState } from "./journal";
 import { KRX_TAX_POLICY_VERSION, sellTransactionTaxMinor } from "./krx-transaction-tax";
@@ -177,12 +177,13 @@ export class InternalPaperSimulator {
       // aggregate-rounded gross the fold uses, so the stored value matches.
       const currencyMinor = observation.price.currency;
       const costs: PaperFillCosts | undefined = (() => {
-        if (side !== "sell" || observation.taxClass === undefined) return undefined;
-        const grossMinor = minorUnitsOf(allocation * price, currencyMinor);
+        // KRX transaction tax: sells only, KRW only (the tax is a KRW-market
+        // levy — a mis-declared non-KRW taxClass never charges), and only when
+        // the source declared a class.
+        if (side !== "sell" || observation.taxClass === undefined || currencyMinor !== "KRW") return undefined;
+        const grossMinor = grossMinorOf(allocation, { amount: price, currency: currencyMinor });
         const taxMinor = sellTransactionTaxMinor(grossMinor, observation.taxClass, observation.eventTime);
-        return taxMinor > 0
-          ? { sellTransactionTaxMinor: taxMinor, taxClass: observation.taxClass, taxPolicyVersion: KRX_TAX_POLICY_VERSION }
-          : undefined;
+        return taxMinor > 0 ? { sellTransactionTaxMinor: taxMinor, taxPolicyVersion: KRX_TAX_POLICY_VERSION } : undefined;
       })();
       const fill: PaperFill = {
         identity,

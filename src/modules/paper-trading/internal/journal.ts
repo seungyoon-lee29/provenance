@@ -3,7 +3,7 @@ import type { InternalPaperAccountReference, PaperOrderReference } from "../../.
 
 import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import type { Executor } from "../../../platform/persistence/pg";
-import { fromMinorUnits, minorUnitsOf, toMinorUnits } from "./contracts";
+import { fromMinorUnits, grossMinorOf, minorUnitsOf, toMinorUnits } from "./contracts";
 import type { PaperMinorMoney } from "./contracts";
 import type {
   PaperCommandOutcome,
@@ -349,7 +349,7 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
         const tax = fill.costs.sellTransactionTaxMinor;
         if (order.payload.side !== "sell") return "invalid_fill";
         if (!Number.isInteger(tax) || tax < 0) return "invalid_fill";
-        if (tax > minorUnitsOf(fill.quantity * fill.price.amount, fill.price.currency)) return "invalid_fill";
+        if (tax > grossMinorOf(fill.quantity, fill.price)) return "invalid_fill";
       }
       const reservingNow = order.cancellation !== "confirmed";
       if (order.payload.side === "buy") {
@@ -682,8 +682,24 @@ export class PaperJournal {
     const entryReference = brandReference<string, "PaperJournalEntryReference">(
       `paper-entry:${String(account)}:${revision}`,
     );
-    return { ...body, entryReference, account, revision, recordedAt: this.now() };
+    // Deep-freeze the applied entry so "append-only" is a RUNTIME truth, not
+    // just a type-level `Readonly`. The memory store and the fold cache share
+    // this reference; without the freeze a holder of `list()` could mutate a
+    // validated fill's quantity or stored tax AFTER validation and the next
+    // fold would apply the tampered value, minting or destroying cash (codex
+    // gate HIGH). The PG store re-parses JSONB, so it is already immutable.
+    return deepFreeze({ ...body, entryReference, account, revision, recordedAt: this.now() });
   }
+}
+
+/** Recursively freeze a value so nested money objects (fill, price, costs)
+ * cannot be mutated after they are recorded. */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const key of Object.keys(value)) deepFreeze((value as Record<string, unknown>)[key]);
+  }
+  return value;
 }
 
 /** An order still holds its remaining reservation only in these axis states. */
@@ -750,10 +766,9 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           fills: [...order.fills, entry.fill],
         });
         const currency = entry.fill.price.currency;
-        // Round the AGGREGATE, not per share: a sub-tick price (e.g. a $0.005
-        // dividend or off-tick fill) times N shares must round once, or per-unit
-        // rounding creates/destroys cash (codex Stage 2-c: 3¢ vs the correct 2¢).
-        const grossMinor = minorUnitsOf(entry.fill.quantity * entry.fill.price.amount, currency);
+        // Aggregate-rounded gross (shared helper) — sub-tick price × N shares
+        // rounds once, or per-unit rounding creates/destroys cash.
+        const grossMinor = grossMinorOf(entry.fill.quantity, entry.fill.price);
         const instrumentKey = String(order.payload.instrument);
         const position = positions.get(instrumentKey) ?? { quantity: 0, costBasis: { minorUnits: 0, currency } };
         if (order.payload.side === "buy") {

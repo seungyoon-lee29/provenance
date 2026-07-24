@@ -1,7 +1,5 @@
 import type { Brand, InternalPaperAccountReference, PaperOrderReference } from "@/shared/contracts/brands";
 
-import type { KrxTaxClass } from "./krx-transaction-tax";
-
 /**
  * F8 Internal Paper Trading contracts (spec §9, UF-07, AT-07; ADR A04).
  *
@@ -53,6 +51,14 @@ export function toMinorUnits(money: PaperMoney): number {
   return minorUnitsOf(money.amount, money.currency);
 }
 
+/** Gross proceeds/cost of a fill in integer minor units — aggregate-rounded
+ * ONCE (never per share). The single definition the simulator, the fold and the
+ * fill validator all share, so a sub-tick price rounds identically at every
+ * site (they previously reimplemented this and had to comment "must match"). */
+export function grossMinorOf(quantity: number, price: PaperMoney): number {
+  return minorUnitsOf(quantity * price.amount, price.currency);
+}
+
 export function fromMinorUnits(minorUnits: number, currency: string): PaperMoney {
   return { amount: minorUnits / currencyMinorUnitScale(currency), currency };
 }
@@ -73,13 +79,19 @@ export type SubmissionState = "draft" | "pending_submission" | "acknowledged" | 
 export type ExecutionState = "not_started" | "open" | "partially_filled" | "filled" | "expired";
 export type CancellationState = "none" | "requested" | "confirmed" | "rejected";
 
+/** Instrument tax classification the data source declares (T8 S3). Domain data
+ * — the RATE LOGIC keyed on it lives in krx-transaction-tax.ts, which imports
+ * this type, so the generic contract never depends on Korea-specific behaviour. */
+export type KrxTaxClass = "equity" | "etf_etn";
+
 /** Realized costs charged against a fill (T8 S3). Present only on taxed sells;
  * absent means zero cost. Buys carry no costs (Korean transaction tax is
- * sell-only). Stored append-only so a rate-table change never rewrites history. */
+ * sell-only). Stored append-only so a rate-table change never rewrites history.
+ * The class is not stored — the report discloses the policy version, and the
+ * amount is the only value the fold consumes (design doc D2). */
 export type PaperFillCosts = Readonly<{
   /** Sell transaction tax in integer minor units, floored. */
   sellTransactionTaxMinor: number;
-  taxClass: KrxTaxClass;
   taxPolicyVersion: string;
 }>;
 

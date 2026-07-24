@@ -167,6 +167,47 @@
 세금은 관측치가 `taxClass` 선언 시 매도에만(데이터 소스 책임). 미선언=무세(기존 USD F8 불변).
 DB: 무마이그레이션(costs 는 entry JSONB 내부). 리포트에 `costModel` 고지(정직성).
 
+### S3 게이트 (tier top, 진행 중)
+
+**Standards 축 완료** — 판정·조치(수렴 후 일괄 수정):
+- **[하드 위반] contracts.ts(generic)가 KrxTaxClass 를 KR 모듈에서 import** — 내 D5 논지("generic 저널에
+  KRX import 안 함")와 모순. 저널 본체는 안 하지만 공유 contract 한 단계 위에서 샘. → **의존성 역전**:
+  KrxTaxClass 타입 정의를 contracts.ts(도메인 데이터)로 옮기고 krx-transaction-tax.ts 가 거기서 import(로직).
+- **[YAGNI] PaperFillCosts.taxClass 는 write-only**(저널 미독) + 스케치 D2 에도 없음 → **제거**.
+  costs 는 sellTransactionTaxMinor + taxPolicyVersion 만(D2 원안 복귀).
+- **[중복, 판단] grossMinor 3중 재구현**(simulator/fold/검증) → `grossMinorOf(fill)` 헬퍼 추출.
+- 나머지(순수함수·floor·명명·costs? optionality) clean.
+- **blind 완료**(sonnet, 계약만): **19/20, 발견 1** — `sellTransactionTaxMinor(음수 gross)`가 0 클램프
+  없이 -2000 반환(음수 세금=현금 유입, 도메인 위반). 실 fill 경로는 gross>0 라 도달 불가지만 exported
+  함수라 방어 필요 → **`Math.max(0, …)` 클램프**(저널이 이미 tax≥0 구조 거절하나 함수 자체 방어). 나머지
+  19(연도별 rate·KST 경계·floor·E2E 세금/ETF/매수무세·돈 항등·결정론·연도교차) 독립 유도 일치.
+- **codex 완료**(task-mrz453wo, 재프레이밍 후): **REJECT — HIGH 2·MEDIUM 4·LOW 1**. 실코드 프로브로
+  전건 재현 판정 후 조치:
+
+  **확정 수정 (실측 재현)**:
+  | 심각도 | 지적 | 재현 | 조치 |
+  |---|---|---|---|
+  | HIGH | append 후 `fill.costs`/`fill.quantity` 변조로 검증 우회(Memory store, 백테스트 기본) — 현금 창조 | -8,990,000 유출 | `#buildEntry` 에 **deepFreeze** — append-only 를 런타임 진실로. list()/fold 캐시 공유 참조 동결(PG 는 JSONB 재파싱이라 이미 불변) |
+  | HIGH | `≤2022=23bp` 가 2020(=25)·pre-2019(mid-year 30→25)에 틀림 — 역사 백테스트 오차 | 2020 2300≠2500 | 표 정정(2020=25·2021-22=23) + **<2020 fail-closed**(runner `unsupported_tax_year`). 2019 이하는 연도-키 불가라 지어내지 않음 |
+  | MED | BigInt 미사용 → safe-int gross 에서 1원 오차(D4 위반) | 481≠480 | `Number(BigInt(gross)*BigInt(bp)/10000n)` — blind 음수클램프(`gross<=0→0`)도 동시 해결 |
+  | MED | taxClass 가 currency 무관 → USD 에 KRX 세 적용 | USD 199 차감 | runner `tax_class_currency_mismatch` + 시뮬레이터 KRW 가드 이중 |
+  | MED | TZ 없는 bar time 이 로컬존 해석 → 환경의존 결과 | TZ=UTC vs Asia/Seoul 상이 | runner `hasTimezone` 정규식 — Z/offset 없으면 `invalid_bar_time` |
+  | MED | property 가 stored tax 읽어 rate 독립검증 아님(D5) | — | property 에 **독립 rate 재계산**(2026=20bp first-principles) 추가. + blind 파일이 전 tier·KST·floor 독립검증(상시 회귀) |
+  | LOW | vitest 가 demo() 미실행 + 테스트가 2025/26 만 검증 | — | rate 테스트를 **전 tier(2020~2026)+KST+floor+음수** 로 확장 |
+
+  **Standards 수정**(위 3건): KrxTaxClass 정의를 contracts 로 이전(tax 모듈이 import·re-export, 의존성 역전),
+  `PaperFillCosts.taxClass` 제거(write-only·D2 원안), `grossMinorOf` 헬퍼로 3중 중복 통일.
+  **blind 정합**: 원래 준 스펙(`≤2022=23`)이 codex 로 오류 판명 → blind 참조표를 검증값으로 정정(단언 무약화, 사유 기록).
+  **mutation 실증 2건**: deepFreeze 제거→변조 회귀 사망 · 2020세율 되돌림→tier 회귀 사망(복원 통과).
+  **codex 반증(성립)**: generic 저널의 KRX import 없음 확인, 부분체결 aggregate floor, 취소 후 late fill 단일적용,
+  cross-currency costs 표현불가 — 추가 결함 아님.
+
+### S3 게이트 종합 판정 (tier top)
+
+4축 완주: **Standards ✅**(하드 1 수정) · **blind ✅**(19/20→발견 1[음수클램프] 수정) ·
+**codex ✅**(REJECT→HIGH 2·MED 4·LOW 1 전건 재현·수정) · **mutation ✅**(2건). check 641 green.
+잔여: S4(성과 리포트). 1차 법령 대조·절사 관행은 design §4 체크리스트 잔여(구현 전 확인).
+
 **구현 완료** (2026-07-25, 게이트 전):
 - 신규 `krx-transaction-tax.ts`(순수, self-check demo) — `sellTransactionTaxMinor(gross,class,dateIso)`.
 - `PaperFill.costs?`(sellTransactionTaxMinor·taxClass·taxPolicyVersion) + `PaperMarketObservation.taxClass?`.

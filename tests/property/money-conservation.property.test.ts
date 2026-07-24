@@ -147,7 +147,7 @@ async function drive(ops: readonly Op[], store: PaperJournalStore): Promise<Driv
         receivedAt: eventTime,
         evidenceReference: `evidence:${sequence}`,
         policyVersion: "simulation-v1",
-        ...(taxMinor > 0 ? { costs: { sellTransactionTaxMinor: taxMinor, taxClass: "equity" as const, taxPolicyVersion: KRX_TAX_POLICY_VERSION } } : {}),
+        ...(taxMinor > 0 ? { costs: { sellTransactionTaxMinor: taxMinor, taxPolicyVersion: KRX_TAX_POLICY_VERSION } } : {}),
       };
       const body = { kind: "fill_applied" as const, fill };
       if ((await journal.appendSystem(WS, acct, dedupeKey, body)).status === "applied") systemEvents.push({ dedupeKey, body });
@@ -263,6 +263,16 @@ function moneyConservationProperties(makeStore: () => Promise<PaperJournalStore>
         expect(usd.balance).toBeGreaterThanOrEqual(0);
         expect(usd.reserved).toBeGreaterThanOrEqual(0);
         expect(position?.quantity ?? 0).toBeGreaterThanOrEqual(0);
+
+        // D5 independent rate check: the stored tax equals the rate recomputed
+        // from FIRST PRINCIPLES here (all fills are in 2026 → 20bp), not via the
+        // production sellTransactionTaxMinor. A wrong 2026 constant fails here —
+        // beyond the fold-vs-stored conservation the rest of the property proves.
+        for (const entry of entries) {
+          if (entry.kind !== "fill_applied" || entry.fill.costs === undefined) continue;
+          const gross = minorUnitsOf(entry.fill.quantity * entry.fill.price.amount, entry.fill.price.currency);
+          expect(entry.fill.costs.sellTransactionTaxMinor).toBe(Math.floor((gross * 20) / 10_000));
+        }
       }),
       { numRuns: runs },
     );
