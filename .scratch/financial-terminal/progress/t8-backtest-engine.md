@@ -94,8 +94,12 @@
   - service.ts 변경 두 줄: `presentState`(S1)·`defaultPaperAccount` export — 파생 로직 중복 방지.
   - 게이트: check 593(+CLI 핸들러 7) green · build green. durable happy path 는 pg 레인
     (`paper-cli.pg.test.ts`: genesis-once·재-open 원본 보존·fresh 조립 재읽기) — compose 환경에서 실행.
-  - **S2 잔여**: pg 레인 실행은 compose 기동 환경 필요(로컬 스모크는 인증 실패 — 컴포즈 미기동
-    상태였음). packaged bin/npm-publish 형태는 Stage 3 릴리스 재정의 때.
+  - **S2 잔여 해소 (2026-07-25)**: pg 레인 실행 완료 — `docker compose --profile verify run
+    persistence-integration`(정식 레인, postgres 기동 + migrate 의존 자동) → **57/57 green**
+    (`paper-journal.pg.test.ts` 20 = PgPaperJournalStore 계약 스위트 실 Postgres 통과,
+    `paper-cli.pg.test.ts` 2, erase/identity/cache + money-conservation property 포함).
+    S4b `realizedSales`·교차통화 가드도 PG-hydrate fold 경유로 검증됨. compose down 정리 확인
+    (잔여 컨테이너 0). packaged bin/npm-publish 형태는 Stage 3 릴리스 재정의 때.
 
 ## 게이트 (tier top — S1~S2 묶음, 2026-07-24 진행 중)
 
