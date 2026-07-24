@@ -14,12 +14,21 @@ export type { KrxTaxClass } from "./contracts";
  * net to the SAME combined sell rate every year, so a single `equity` rate
  * covers both; ETF/ETN sales are transaction-tax exempt.
  *
- * The verified range is 2020–present (web 3 sources + 국가법령정보센터, 2026-07-25).
- * 2019 and earlier are NOT year-keyable — the 2019-06-03 mid-year cut (30→25bp)
- * means one year holds two rates — so the table returns `null` there and the
- * caller (backtest runner) fails closed rather than fabricate a wrong historical
- * rate ("값을 모르면 지어내지 않는다"). 1차 법령 대조와 절사 관행 확인은 design
- * doc §4 체크리스트 잔여.
+ * The verified range is 2020–present, cross-checked against the 증권거래세법
+ * 시행령 부칙 (효력 발생일), not only secondary press: every 2020–2026 rate step
+ * takes effect on Jan 1 (2021·2023·2024·2025·2026 양도분), so keying on the KST
+ * year is exact. 2019 and earlier are NOT year-keyable — the 2019-06-03 mid-year
+ * cut (대통령령 29788: 30→25bp) holds two rates in one year — so the table
+ * returns `null` and the caller (backtest runner) fails closed rather than
+ * fabricate a wrong historical rate ("값을 모르면 지어내지 않는다").
+ *
+ * Two immaterial (≤ a few 원/fill) simulation simplifications, disclosed not
+ * fixed (design doc §4, 2026-07-25): (1) the year keys on the trade instant, not
+ * the legal T+2 settlement (양도) date — differs only for sells in a rate-change
+ * year's last ~2 sessions; (2) one combined-rate floor is taken, whereas KOSPI
+ * is legally 거래세+농특세 floored separately (≤1원 gap; KOSDAQ, 거래세-only, is
+ * exact). Floor-to-1원 follows the 원-미만 버림 관례 — finer than the industry's
+ * own admitted 원-미만 rounding drift.
  *
  * The type `KrxTaxClass` lives in the domain contract (`contracts.ts`); this
  * module owns the RATE LOGIC and imports the type, so the generic contract
