@@ -20,6 +20,9 @@ export type PaperCorporateActionReference = Brand<string, "PaperCorporateActionR
 
 export type PaperMoney = Readonly<{ amount: number; currency: string }>;
 
+/** Money in EXACT integer minor units — the ledger fold's internal money type. */
+export type PaperMinorMoney = Readonly<{ minorUnits: number; currency: string }>;
+
 /**
  * Minor units per major currency unit — the one shared tick/scale mapping for
  * both paper lanes (review carry-over: consolidates the per-file ternaries).
@@ -27,6 +30,29 @@ export type PaperMoney = Readonly<{ amount: number; currency: string }>;
  */
 export function currencyMinorUnitScale(currency: string): number {
   return currency === "KRW" ? 1 : 100;
+}
+
+/**
+ * The ledger folds money in EXACT integer minor units (KRW: won, USD: cents),
+ * never float major units — so cash conservation is exact and needs no epsilon.
+ * `toMinorUnits` is the one boundary where an incoming display `PaperMoney`
+ * (adapter/user float) is rounded into the integer domain; `fromMinorUnits`
+ * is the one boundary back out, at presentation only. Inside the fold nothing
+ * divides by the scale (Stage 2-c acceptance: zero non-integer float ops).
+ */
+export function minorUnitsOf(majorAmount: number, currency: string): number {
+  // ponytail: minor units are JS `number` (safe-integer, ≤ 2^53 ≈ $90T in cents).
+  // The paper sim never approaches that; move to bigint only if an institutional
+  // book ever needs it (codex Stage 2-c noted the theoretical ceiling).
+  return Math.round(majorAmount * currencyMinorUnitScale(currency));
+}
+
+export function toMinorUnits(money: PaperMoney): number {
+  return minorUnitsOf(money.amount, money.currency);
+}
+
+export function fromMinorUnits(minorUnits: number, currency: string): PaperMoney {
+  return { amount: minorUnits / currencyMinorUnitScale(currency), currency };
 }
 
 export type PaperOrderPayload = Readonly<{

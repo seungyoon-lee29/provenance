@@ -3,7 +3,8 @@ import type { InternalPaperAccountReference, PaperOrderReference } from "../../.
 
 import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import type { Executor } from "../../../platform/persistence/pg";
-import { currencyMinorUnitScale } from "./contracts";
+import { fromMinorUnits, minorUnitsOf, toMinorUnits } from "./contracts";
+import type { PaperMinorMoney } from "./contracts";
 import type {
   PaperCommandOutcome,
   PaperCorporateActionReference,
@@ -87,8 +88,10 @@ export type PaperOrderState = Readonly<{
   fills: readonly PaperFill[];
 }>;
 
+/** `balance`/`reserved` are EXACT integer minor units (see contracts fromMinorUnits);
+ * the currency is the map key. Presentation converts back to major units. */
 export type PaperCashState = Readonly<{ balance: number; reserved: number }>;
-export type PaperPositionState = Readonly<{ quantity: number; reserved: number; costBasis: PaperMoney }>;
+export type PaperPositionState = Readonly<{ quantity: number; reserved: number; costBasis: PaperMinorMoney }>;
 
 export type PaperAccountState = Readonly<{
   cash: ReadonlyMap<string, PaperCashState>;
@@ -293,6 +296,15 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
         // T2-b finding: a cancelled odd-lot order blocked a legitimate split).
         if (order.cancellation === "confirmed") continue;
         if (!wholeShares(order.payload.quantity) || !wholeShares(order.filledQuantity)) return "fractional_result";
+        // A split that would drive a live limit price below one minor unit (a
+        // $0.01 limit through a 3:1 split → $0.0033 → 0¢) is unrepresentable in the
+        // cents ledger: it would zero the order's reservation, free cash that must
+        // stay held, and leave an order no positive fill can ever satisfy. Refuse
+        // it — fail closed, same as the fractional-share veto (codex Stage 2-c HIGH).
+        if (order.payload.limitPrice !== undefined
+            && Math.round((toMinorUnits(order.payload.limitPrice) * denominator) / numerator) < 1) {
+          return "fractional_result";
+        }
       }
       return undefined;
     }
@@ -316,9 +328,8 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       const limit = order.payload.limitPrice;
       if (limit !== undefined) {
         if (fill.price.currency !== limit.currency) return "invalid_fill";
-        const per = currencyMinorUnitScale(limit.currency);
-        const fillTicks = Math.round(fill.price.amount * per);
-        const limitTicks = Math.round(limit.amount * per);
+        const fillTicks = toMinorUnits(fill.price);
+        const limitTicks = toMinorUnits(limit);
         if (order.payload.side === "buy" && fillTicks > limitTicks) return "order_not_fillable";
         if (order.payload.side === "sell" && fillTicks < limitTicks) return "order_not_fillable";
       }
@@ -333,11 +344,12 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       if (order.payload.side === "buy") {
         const cash = state.cash.get(fill.price.currency);
         if (cash === undefined) return "insufficient_cash";
-        const ownReservation = reservingNow && order.reservation.kind === "cash"
-          ? (order.payload.quantity - order.filledQuantity) * order.reservation.unitPrice.amount
+        // All minor units — cash conservation is exact, so no epsilon slack.
+        const ownReservationMinor = reservingNow && order.reservation.kind === "cash"
+          ? minorUnitsOf((order.payload.quantity - order.filledQuantity) * order.reservation.unitPrice.amount, order.reservation.unitPrice.currency)
           : 0;
-        const available = cash.balance - cash.reserved + ownReservation;
-        if (fill.quantity * fill.price.amount > available + EPSILON) return "insufficient_cash";
+        const availableMinor = cash.balance - cash.reserved + ownReservationMinor;
+        if (minorUnitsOf(fill.quantity * fill.price.amount, fill.price.currency) > availableMinor) return "insufficient_cash";
         return undefined;
       }
       const position = state.positions.get(String(order.payload.instrument));
@@ -476,7 +488,19 @@ export class PaperJournal {
       const accountKey = `${workspace}|${String(account)}`;
       const currentRevision = this.#revisions.get(accountKey) ?? 0;
       if (control.expectedRevision !== String(currentRevision)) {
-        return { status: "rejected", currentRevision };
+        // A stale revision may just be a cache that missed a durable commit —
+        // and that commit could be THIS very idempotency key. §8 gives the
+        // original receipt precedence over the revision CAS, so rehydrate and
+        // check for the durable receipt before rejecting (codex Stage 2-c: a
+        // same-key retry whose cache lagged was rejected instead of replayed).
+        this.#staleCache = true;
+        await this.#ensureFresh();
+        const durable = this.#receipts.get(receiptKey);
+        if (durable !== undefined) {
+          return durable.canonicalPayload === canonicalPayload ? durable.outcome : { status: "conflict" };
+        }
+        const freshRevision = this.#revisions.get(accountKey) ?? 0;
+        return { status: "rejected", currentRevision: freshRevision };
       }
 
       const decision = decide({ state: this.state(workspace, account), revision: currentRevision });
@@ -495,7 +519,23 @@ export class PaperJournal {
       const entry = this.#buildEntry(account, decision.entry, revision);
       const outcome: PaperCommandOutcome = { status: "applied", revision, order: decision.order };
       const committed = await this.#commit(() => this.#store.appendCommand({ workspace, entry, atEpoch, receiptKey, canonicalPayload, outcome }));
-      if (committed.status === "duplicate" || committed.status === "conflict") {
+      if (committed.status === "duplicate") {
+        // The durable store already holds this idempotency key — a concurrent
+        // writer committed it first, or an earlier COMMIT ack was lost. §8: the
+        // ORIGINAL receipt wins, so rehydrate and replay it. The same payload
+        // returns the original outcome (an idempotent retry, NOT a conflict);
+        // only a DIFFERENT payload under the same key is a real conflict.
+        // (Stage 2-c item 4: a concurrent same-key retry used to get a spurious
+        // conflict here — the loser never reconciled to the winner's receipt.)
+        this.#staleCache = true;
+        await this.#ensureFresh();
+        const reconciled = this.#receipts.get(receiptKey);
+        if (reconciled !== undefined) {
+          return reconciled.canonicalPayload === canonicalPayload ? reconciled.outcome : { status: "conflict" };
+        }
+        return { status: "conflict" };
+      }
+      if (committed.status === "conflict") {
         // The durable store knows something the cache does not — rebuild before the next decision.
         this.#staleCache = true;
         return { status: "conflict" };
@@ -644,15 +684,19 @@ function reserving(order: PaperOrderState): boolean {
 }
 
 export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAccountState {
+  // Cash, cost basis and reservations fold in EXACT integer minor units — this
+  // is the one place money conservation is decided, so it is never float (Stage
+  // 2-c). Incoming display prices become minor units at `toMinorUnits`; nothing
+  // here divides by the scale.
   const cashBalance = new Map<string, number>();
-  const positions = new Map<string, { quantity: number; costBasis: { amount: number; currency: string } }>();
+  const positions = new Map<string, { quantity: number; costBasis: PaperMinorMoney }>();
   const orders = new Map<string, PaperOrderState>();
 
   for (const entry of entries) {
     switch (entry.kind) {
       case "account_opened": {
         for (const seed of entry.seedCash) {
-          cashBalance.set(seed.currency, (cashBalance.get(seed.currency) ?? 0) + seed.amount);
+          cashBalance.set(seed.currency, (cashBalance.get(seed.currency) ?? 0) + toMinorUnits(seed));
         }
         break;
       }
@@ -695,22 +739,29 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           fills: [...order.fills, entry.fill],
         });
         const currency = entry.fill.price.currency;
-        const gross = entry.fill.quantity * entry.fill.price.amount;
+        // Round the AGGREGATE, not per share: a sub-tick price (e.g. a $0.005
+        // dividend or off-tick fill) times N shares must round once, or per-unit
+        // rounding creates/destroys cash (codex Stage 2-c: 3¢ vs the correct 2¢).
+        const grossMinor = minorUnitsOf(entry.fill.quantity * entry.fill.price.amount, currency);
         const instrumentKey = String(order.payload.instrument);
-        const position = positions.get(instrumentKey) ?? { quantity: 0, costBasis: { amount: 0, currency } };
+        const position = positions.get(instrumentKey) ?? { quantity: 0, costBasis: { minorUnits: 0, currency } };
         if (order.payload.side === "buy") {
-          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) - gross);
+          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) - grossMinor);
           positions.set(instrumentKey, {
             quantity: position.quantity + entry.fill.quantity,
-            costBasis: { amount: position.costBasis.amount + gross, currency: position.costBasis.currency },
+            costBasis: { minorUnits: position.costBasis.minorUnits + grossMinor, currency: position.costBasis.currency },
           });
         } else {
-          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + gross);
-          // Average-cost basis relief — a published simulation-v1 assumption.
-          const averageBasis = position.quantity > 0 ? position.costBasis.amount / position.quantity : 0;
+          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + grossMinor);
+          // Average-cost basis relief (simulation-v1), rounded to the minor unit.
+          // The final share of a position relieves `minorUnits · 1 / 1` = the whole
+          // remaining basis, so a full liquidation returns cost basis to exactly 0.
+          const reliefMinor = position.quantity > 0
+            ? Math.round((position.costBasis.minorUnits * entry.fill.quantity) / position.quantity)
+            : 0;
           positions.set(instrumentKey, {
             quantity: position.quantity - entry.fill.quantity,
-            costBasis: { amount: position.costBasis.amount - averageBasis * entry.fill.quantity, currency: position.costBasis.currency },
+            costBasis: { minorUnits: position.costBasis.minorUnits - reliefMinor, currency: position.costBasis.currency },
           });
         }
         break;
@@ -736,11 +787,16 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           if (!reserving(order)) continue;
           const payload = order.payload;
           const adjustedQuantity = (payload.quantity * numerator) / denominator;
-          const adjustedLimit = payload.limitPrice === undefined
-            ? undefined
-            : { amount: (payload.limitPrice.amount * denominator) / numerator, currency: payload.limitPrice.currency };
+          // The split inverts the price by its ratio, then quantizes to the minor
+          // unit — a split-adjusted price is exact-representable, never a float like
+          // $3.3333. Cash derived from it is re-read through toMinorUnits, so it
+          // stays exact. (The ratio divide is inherent to a split; the money value
+          // it produces is an integer minor amount.)
+          const splitPrice = (price: PaperMoney): PaperMoney =>
+            fromMinorUnits(Math.round((toMinorUnits(price) * denominator) / numerator), price.currency);
+          const adjustedLimit = payload.limitPrice === undefined ? undefined : splitPrice(payload.limitPrice);
           const adjustedReservation: PaperReservationSpec = order.reservation.kind === "cash"
-            ? { kind: "cash", unitPrice: { amount: (order.reservation.unitPrice.amount * denominator) / numerator, currency: order.reservation.unitPrice.currency } }
+            ? { kind: "cash", unitPrice: splitPrice(order.reservation.unitPrice) }
             : order.reservation;
           orders.set(key, {
             ...order,
@@ -755,7 +811,7 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
         const position = positions.get(String(entry.instrument));
         if (position !== undefined && position.quantity > 0) {
           const currency = entry.perShare.currency;
-          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + position.quantity * entry.perShare.amount);
+          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + minorUnitsOf(position.quantity * entry.perShare.amount, currency));
         }
         break;
       }
@@ -770,7 +826,7 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
     const remaining = order.payload.quantity - order.filledQuantity;
     if (order.reservation.kind === "cash") {
       const currency = order.reservation.unitPrice.currency;
-      cashReserved.set(currency, (cashReserved.get(currency) ?? 0) + remaining * order.reservation.unitPrice.amount);
+      cashReserved.set(currency, (cashReserved.get(currency) ?? 0) + minorUnitsOf(remaining * order.reservation.unitPrice.amount, currency));
     } else {
       const key = String(order.payload.instrument);
       quantityReserved.set(key, (quantityReserved.get(key) ?? 0) + remaining);

@@ -44,8 +44,8 @@ export class PgPaperJournalStore implements PaperJournalStore {
       // does not know). Report it as a duplicate so the journal rehydrates
       // instead of raising a raw constraint error (codex T2-b finding).
       const receipted = await client.query(
-        "INSERT INTO paper_command_receipt (workspace, receipt_key, canonical_payload, at_epoch, outcome) VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING",
-        [append.workspace, append.receiptKey, append.canonicalPayload, append.atEpoch, JSON.stringify(append.outcome)],
+        "INSERT INTO paper_command_receipt (workspace, receipt_key, canonical_payload, at_epoch, outcome, entry_reference) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT DO NOTHING",
+        [append.workspace, append.receiptKey, append.canonicalPayload, append.atEpoch, JSON.stringify(append.outcome), String(append.entry.entryReference)],
       );
       if ((receipted.rowCount ?? 0) === 0) return { status: "duplicate" };
       // The revision UNIQUE stays a hard error on purpose: a collision here
@@ -78,8 +78,8 @@ export class PgPaperJournalStore implements PaperJournalStore {
         }
       }
       const inserted = await client.query(
-        "INSERT INTO paper_system_key (workspace, scoped_key, at_epoch) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
-        [append.workspace, append.scopedKey, append.atEpoch],
+        "INSERT INTO paper_system_key (workspace, scoped_key, at_epoch, entry_reference) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING",
+        [append.workspace, append.scopedKey, append.atEpoch, String(append.entry.entryReference)],
       );
       // ROLLBACK on the duplicate path would also be fine; nothing else was
       // written for this workspace-scoped key, and the owner claim (if any)

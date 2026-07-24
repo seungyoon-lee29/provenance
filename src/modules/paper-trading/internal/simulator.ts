@@ -1,7 +1,7 @@
 import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
-import { currencyMinorUnitScale } from "./contracts";
+import { currencyMinorUnitScale, minorUnitsOf } from "./contracts";
 import type { PaperFill, PaperMarketObservation, PaperMoney } from "./contracts";
 import type { PaperAccountState, PaperJournal, PaperOrderState } from "./journal";
 
@@ -236,11 +236,12 @@ export class InternalPaperSimulator {
     if (side === "buy") {
       const cash = state.cash.get(currency);
       if (cash === undefined) return false;
-      const ownReservation = reservingNow && order.reservation.kind === "cash"
-        ? (order.payload.quantity - order.filledQuantity) * order.reservation.unitPrice.amount
+      // Cash state is exact minor units (Stage 2-c) — compare in minor, no slack.
+      const ownReservationMinor = reservingNow && order.reservation.kind === "cash"
+        ? minorUnitsOf((order.payload.quantity - order.filledQuantity) * order.reservation.unitPrice.amount, order.reservation.unitPrice.currency)
         : 0;
-      const available = cash.balance - cash.reserved + ownReservation;
-      return allocation * price <= available + EPSILON;
+      const availableMinor = cash.balance - cash.reserved + ownReservationMinor;
+      return minorUnitsOf(allocation * price, currency) <= availableMinor;
     }
     const position = state.positions.get(String(order.payload.instrument));
     if (position === undefined) return false;

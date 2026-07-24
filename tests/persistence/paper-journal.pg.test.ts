@@ -1,8 +1,11 @@
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { brandReference } from "../../src/shared/contracts/brands";
+import { toMinorUnits } from "../../src/modules/paper-trading/internal/contracts";
+import { PaperJournal } from "../../src/modules/paper-trading/internal/journal";
 import { PgPaperJournalStore } from "../../src/modules/paper-trading/internal/journal-store.pg";
-import { paperJournalContract } from "./paper-journal-contract";
+import { decideBuy, limitBuy, paperJournalContract } from "./paper-journal-contract";
 
 // Runs only in the compose persistence-integration profile (real postgres +
 // migrated schema). The network-off unit lane has no DB, so PG_INTEGRATION is
@@ -73,5 +76,49 @@ describe.skipIf(!PG)("PgPaperJournalStore (real postgres)", () => {
     })).rejects.toThrow();
     const receipts = await pool.query("SELECT COUNT(*)::int AS n FROM paper_command_receipt WHERE workspace = 'ws-atomic'");
     expect(receipts.rows[0].n).toBe(1);
+  });
+
+  // Stage 2-c item 4 — the codex-unadjudicated question: when two PROCESSES retry
+  // the same idempotency key at once (two journals over one durable store), does
+  // the loser get the ORIGINAL receipt (§8) or a spurious conflict? The store maps
+  // the receipt ON CONFLICT to a duplicate; this proves the journal cache layer
+  // reconciles that to the original applied outcome, and money reserves exactly once.
+  it("concurrent same-key retries across two journals: the loser replays the ORIGINAL receipt, money reserves once", async () => {
+    const WS = "ws-race-key";
+    const acct = brandReference<string, "InternalPaperAccountReference">("acct-race-key");
+    const now = () => new Date(0).toISOString();
+    for (let i = 0; i < 20; i++) {
+      await pool.query(`TRUNCATE ${TABLES}`);
+      // One store per journal — two independent processes racing one command.
+      const j1 = await new PaperJournal(now, undefined, new PgPaperJournalStore(pool)).init();
+      await j1.provision(WS, acct, [{ amount: 10_000, currency: "USD" }]);
+      const j2 = await new PaperJournal(now, undefined, new PgPaperJournalStore(pool)).init();
+
+      const revision = j1.currentRevision(WS, acct);
+      const order = brandReference<string, "PaperOrderReference">(`paper-order:${String(acct)}:${revision + 1}`);
+      const payload = limitBuy(10, 100);
+      const control = { idempotencyKey: `race-${i}`, expectedRevision: String(revision) };
+      const canonical = JSON.stringify({ key: `race-${i}`, quantity: 10, price: 100 });
+
+      const [a, b] = await Promise.all([
+        j1.appendCommand(WS, acct, "submit", control, canonical, decideBuy(payload, order) as never),
+        j2.appendCommand(WS, acct, "submit", control, canonical, decideBuy(payload, order) as never),
+      ]);
+
+      // §8: same key + same payload → both observe the ORIGINAL applied outcome,
+      // never a conflict. The two are byte-identical.
+      expect(a.status).toBe("applied");
+      expect(b.status).toBe("applied");
+      expect(a).toEqual(b);
+
+      // Money moved once: exactly one submit entry, reservation counted once.
+      const entries = await pool.query<{ n: number }>(
+        "SELECT COUNT(*)::int AS n FROM paper_journal_entry WHERE account = $1 AND (entry->>'kind') = 'order_submitted'",
+        [String(acct)],
+      );
+      expect(entries.rows[0]?.n).toBe(1);
+      const rehydrated = await new PaperJournal(now, undefined, new PgPaperJournalStore(pool)).init();
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.reserved).toBe(toMinorUnits({ amount: 1_000, currency: "USD" }));
+    }
   });
 });

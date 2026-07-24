@@ -18,6 +18,7 @@ import type {
   PaperPrepareRequest,
   PaperTradingCommand,
 } from "./contracts";
+import { fromMinorUnits, minorUnitsOf } from "./contracts";
 import { PaperJournal } from "./journal";
 import type { CommandDecision, PaperAccountState, PaperJournalStore } from "./journal";
 
@@ -282,12 +283,13 @@ export class PaperTradingService {
     if (payload.side === "buy") {
       const unitPrice = this.#reservationUnitPrice(payload);
       if (unitPrice === undefined) return { refuse: "no_valid_observation" };
-      const required = payload.quantity * unitPrice.amount;
+      const requiredMinor = minorUnitsOf(payload.quantity * unitPrice.amount, unitPrice.currency);
       const cash = context.state.cash.get(unitPrice.currency);
-      const available = (cash?.balance ?? 0) - (cash?.reserved ?? 0);
+      const availableMinor = (cash?.balance ?? 0) - (cash?.reserved ?? 0);
       // CAS: the overspend guard runs against the folded state inside the same
       // synchronous append — a concurrent submit sees the reservation or loses.
-      if (available < required - 1e-9) return { refuse: "insufficient_cash" };
+      // All minor units (Stage 2-c) — exact, no epsilon slack.
+      if (availableMinor < requiredMinor) return { refuse: "insufficient_cash" };
       return { entry: { kind: "order_submitted", order, payload, acceptedAt, reservation: { kind: "cash", unitPrice } }, order };
     }
 
@@ -363,9 +365,16 @@ function presentState(state: PaperAccountState, account: InternalPaperAccountRef
   positions: readonly PaperPositionRow[];
   orders: readonly PaperOrderView[];
 }> {
+  // The fold carries exact integer minor units; presentation is the one boundary
+  // back to display major units (Stage 2-c).
   const cash: PaperCashRow[] = [];
   for (const [currency, row] of state.cash) {
-    cash.push({ currency, balance: row.balance, reserved: row.reserved, available: row.balance - row.reserved });
+    cash.push({
+      currency,
+      balance: fromMinorUnits(row.balance, currency).amount,
+      reserved: fromMinorUnits(row.reserved, currency).amount,
+      available: fromMinorUnits(row.balance - row.reserved, currency).amount,
+    });
   }
   const positions: PaperPositionRow[] = [];
   for (const [instrument, row] of state.positions) {
@@ -374,7 +383,7 @@ function presentState(state: PaperAccountState, account: InternalPaperAccountRef
       instrument: brandReference<string, "PaperInstrumentReference">(instrument),
       quantity: row.quantity,
       reserved: row.reserved,
-      costBasis: row.costBasis,
+      costBasis: fromMinorUnits(row.costBasis.minorUnits, row.costBasis.currency),
     });
   }
   const orders: PaperOrderView[] = [];

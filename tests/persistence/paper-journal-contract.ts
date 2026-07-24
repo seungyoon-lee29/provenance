@@ -4,6 +4,7 @@ import { brandReference } from "../../src/shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../src/shared/contracts/brands";
 import type { WorkspaceViewerContext } from "../../src/shared/contracts/viewer-context";
 import type { PaperFill, PaperOrderPayload } from "../../src/modules/paper-trading/internal/contracts";
+import { toMinorUnits } from "../../src/modules/paper-trading/internal/contracts";
 import { PaperJournal } from "../../src/modules/paper-trading/internal/journal";
 import type { CommandDecision, PaperJournalStore } from "../../src/modules/paper-trading/internal/journal";
 import { PaperTradingService } from "../../src/modules/paper-trading/internal/service";
@@ -32,7 +33,7 @@ function clock(): () => string {
   return () => new Date(NOW_BASE + ++tick * 1_000).toISOString();
 }
 
-function limitBuy(quantity: number, price: number): PaperOrderPayload {
+export function limitBuy(quantity: number, price: number): PaperOrderPayload {
   return {
     instrument: brandReference<string, "PaperInstrumentReference">("instr:CONTRACT"),
     venue: "NASDAQ",
@@ -46,7 +47,7 @@ function limitBuy(quantity: number, price: number): PaperOrderPayload {
 }
 
 /** Mirrors the service submit decision: reserve cash at the limit price. */
-function decideBuy(payload: PaperOrderPayload, order: PaperOrderReference): (context: { state: unknown; revision: number }) => CommandDecision {
+export function decideBuy(payload: PaperOrderPayload, order: PaperOrderReference): (context: { state: unknown; revision: number }) => CommandDecision {
   return () => ({
     entry: {
       kind: "order_submitted",
@@ -118,7 +119,7 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       await journal.provision(WS, acct, [{ amount: 10_000, currency: "USD" }]);
       await journal.provision("ws-thief", acct, [{ amount: 999_999, currency: "USD" }]);
       expect(journal.ownerOf(acct)).toBe(WS);
-      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(10_000);
+      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 10_000, currency: "USD" }));
       expect(journal.state("ws-thief", acct).cash.size).toBe(0);
     });
 
@@ -154,8 +155,8 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
 
       const rehydrated = await new PaperJournal(clock(), undefined, store).init();
       expect((await rehydrated.appendSystem(WS, acct, String(fill.identity), { kind: "fill_applied", fill })).status).toBe("duplicate");
-      // money moved exactly once: 10 × 100 out of the 10,000 seed.
-      expect(rehydrated.state(WS, acct).cash.get("USD")?.balance).toBe(9_000);
+      // money moved exactly once: 10 × 100 out of the 10,000 seed (in minor units).
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 9_000, currency: "USD" }));
       expect(rehydrated.state(WS, acct).positions.get("instr:CONTRACT")?.quantity).toBe(10);
     });
 
@@ -200,7 +201,7 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       // a genuinely new post-erasure authorized epoch may open a fresh account.
       epoch = 6;
       await rehydrated.provision(WS, acct, [{ amount: 777, currency: "USD" }]);
-      expect(rehydrated.state(WS, acct).cash.get("USD")?.balance).toBe(777);
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 777, currency: "USD" }));
     });
 
     it("fence is monotonic: a stale lower erase never rolls the watermark back", async () => {
@@ -228,12 +229,12 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       await journal.eraseWorkspace(WS, 9);
       epoch = 10; // a genuinely new post-erasure authorized epoch
       await journal.provision(WS, acct, [{ amount: 777, currency: "USD" }]);
-      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(777);
+      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 777, currency: "USD" }));
 
       expect(await journal.eraseWorkspace(WS, 4)).toBe(0); // stale erase shreds nothing
-      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(777);
+      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 777, currency: "USD" }));
       const rehydrated = await new PaperJournal(clock(), () => epoch, store).init();
-      expect(rehydrated.state(WS, acct).cash.get("USD")?.balance).toBe(777);
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 777, currency: "USD" }));
       expect(rehydrated.ownerOf(acct)).toBe(WS);
     });
 
@@ -254,7 +255,7 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       const rehydrated = await new PaperJournal(clock(), undefined, store).init();
       expect(rehydrated.ownerOf(acct)).toBe("ws-a");
       expect(rehydrated.state("ws-b", acct).cash.size).toBe(0);
-      expect(rehydrated.state("ws-a", acct).cash.get("USD")?.balance).toBe(10_000);
+      expect(rehydrated.state("ws-a", acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 10_000, currency: "USD" }));
     });
 
     // codex T2-b HIGH: a store that already applied the command (lost COMMIT
@@ -277,7 +278,58 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       );
       // Hydration already carried the receipt, so this is the ORIGINAL outcome.
       expect(replay).toEqual(first.outcome);
-      expect(stale.state(WS, acct).cash.get("USD")?.reserved).toBe(1_000);
+      expect(stale.state(WS, acct).cash.get("USD")?.reserved).toBe(toMinorUnits({ amount: 1_000, currency: "USD" }));
+    });
+
+    // Stage 2-c item 4: the case the test above does NOT cover — the loser's cache
+    // hydrated BEFORE the winner committed, so it never saw the receipt and must go
+    // to the store. A duplicate there used to map to a spurious `conflict`; §8 says
+    // the same key + same payload replays the ORIGINAL receipt.
+    it("a same-key retry the cache never saw reconciles to the ORIGINAL receipt, not a conflict (§8)", async () => {
+      const store = await makeStore();
+      const acct = account();
+      const winner = await new PaperJournal(clock(), undefined, store).init();
+      await winner.provision(WS, acct, [{ amount: 10_000, currency: "USD" }]);
+      // Hydrated before the submit → the loser's cache will not hold the receipt.
+      const loser = await new PaperJournal(clock(), undefined, store).init();
+
+      const first = await submitBuy(winner, acct, "shared-key", 10, 100);
+      expect(first.outcome.status).toBe("applied");
+
+      // Same key + same payload the loser never saw: it hits the store, gets a
+      // duplicate, and must reconcile to the ORIGINAL outcome, not a conflict.
+      const replay = await submitBuy(loser, acct, "shared-key", 10, 100);
+      expect(replay.outcome).toEqual(first.outcome);
+      const rehydrated = await new PaperJournal(clock(), undefined, store).init();
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.reserved).toBe(toMinorUnits({ amount: 1_000, currency: "USD" })); // reserved exactly once
+
+      // A DIFFERENT payload under the same key is still a genuine conflict.
+      const conflicting = await submitBuy(loser, acct, "shared-key", 999, 1);
+      expect(conflicting.outcome.status).toBe("conflict");
+    });
+
+    // codex Stage 2-c HIGH: the revision CAS must not pre-empt §8. A retry whose
+    // expectedRevision lags the durable store (a queued replay, a slow writer) was
+    // rejected as stale BEFORE the durable receipt was consulted — §8 gives the
+    // original receipt precedence over the revision check.
+    it("a same-key retry with a STALE expectedRevision replays the ORIGINAL receipt, not a stale-revision rejection (§8)", async () => {
+      const store = await makeStore();
+      const acct = account();
+      const winner = await new PaperJournal(clock(), undefined, store).init();
+      await winner.provision(WS, acct, [{ amount: 10_000, currency: "USD" }]);
+      const loser = await new PaperJournal(clock(), undefined, store).init(); // cache pinned at genesis
+
+      const target = await submitBuy(winner, acct, "target", 10, 100); // applied at revision 2
+      expect(target.outcome.status).toBe("applied");
+      await submitBuy(winner, acct, "filler", 1, 100); // advances the durable store to revision 3
+
+      // The loser (cache at revision 1) replays "target" with the revision it was
+      // accepted at (2) — mismatching its cache. The revision CAS must NOT reject it.
+      const replay = await loser.appendCommand(
+        WS, acct, "submit", { idempotencyKey: "target", expectedRevision: "2" }, JSON.stringify({ key: "target", quantity: 10, price: 100 }),
+        decideBuy(limitBuy(10, 100), brandReference<string, "PaperOrderReference">(`paper-order:${String(acct)}:2`)) as never,
+      );
+      expect(replay).toEqual(target.outcome);
     });
 
     // codex T2-b HIGH: a second writer folding the same revision silently
@@ -305,7 +357,7 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       expect(atRevision).toHaveLength(1);
       expect(atRevision[0]!.entry.kind).toBe("order_submitted");
       const rehydrated = await new PaperJournal(clock(), undefined, store).init();
-      expect(rehydrated.state(WS, acct).cash.get("USD")?.reserved).toBe(1_000); // 10 × 100, the winner only
+      expect(rehydrated.state(WS, acct).cash.get("USD")?.reserved).toBe(toMinorUnits({ amount: 1_000, currency: "USD" })); // 10 × 100, the winner only
 
       // The loser reconciles instead of staying wedged: the collision flagged its
       // cache stale, so its next attempt rehydrates and comes back as a CLEAN CAS
@@ -315,7 +367,7 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
       // Retrying at the revision that rejection reported lands above the winner.
       const recovered = await submitBuy(loser, acct, "race-recover-2", 1, 100);
       expect(recovered.outcome.status).toBe("applied");
-      expect(loser.state(WS, acct).cash.get("USD")?.reserved).toBe(1_100);
+      expect(loser.state(WS, acct).cash.get("USD")?.reserved).toBe(toMinorUnits({ amount: 1_100, currency: "USD" }));
     });
 
     // codex T2-b HIGH: a malformed event time parsed to NaN, every temporal
@@ -347,7 +399,7 @@ export function paperJournalContract(label: string, makeStore: () => Promise<Pap
           order: brandReference<string, "PaperOrderReference">("paper-order:mint"),
         } as never),
       )).rejects.toThrow(/server-only/);
-      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(100);
+      expect(journal.state(WS, acct).cash.get("USD")?.balance).toBe(toMinorUnits({ amount: 100, currency: "USD" }));
     });
 
     // codex T2-b HIGH: the journal-level restart clauses stayed green while a
