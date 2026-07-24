@@ -243,3 +243,71 @@ design §4 체크리스트 두 항목을 메인이 1차 출처 직독으로 종�
 **codex ✅**(REJECT → 실측 재현 4 수정 + Standards 3 + claim 3 정직화 + 이월 2) · **mutation ✅**(2건).
 S1~S2 슬라이스 **게이트 통과**. 잔여: S3(거래세)·S4(리포트) — 각자 착수 시 재-게이트.
 - mutation 실증: blind·codex 완료 후 (소스를 부수므로 라이브 트리 검증과 충돌)
+
+## S4 — 성과 리포트 v1 (착수 2026-07-25, tier 선언)
+
+**Blast radius / tier**: `paper-trading/backtest/`(guarded 경로) — 리포트 수치가 사용자 투자 판단
+입력(틀린 TWR/MDD = 그럴듯한 거짓 성과)이라 **tier top**. 단 **read-only 집계** — fold·money
+mutation 무접촉, 시드/체결은 기존 엔진이 이미 생성하고 러너는 그 상태를 읽어 집계만 한다.
+blast radius 낮음(S1 선례 — 코드 경로 기준 top 유지).
+
+**범위 (사용자 결정 S4a, 2026-07-25 — 승률 분리)**:
+- TWR·XIRR: `actual-portfolio/calculation/` 순수함수 **재사용**(`computePortfolioReturn`·
+  `computePersonalReturn`) — pivot 결정 11의 실현("TWR·XIRR은 순수라 실계좌 없이 재사용"). 백테스트는
+  시드 1회 투입 + 종가 종결이라 window/valuations/flows 로 깔끔히 매핑. coverage-typed 결과
+  (unavailable+reason) 그대로 노출 = InformationOutcome 규율.
+- MDD: equity curve(봉별 cash+포지션×종가, minor units) max peak-to-trough — 신규 순수함수.
+- 체결 신뢰도: participation = 체결량/봉거래량 집계(max·mean). 결정 7("주문량/호가잔량")의 **캔들-모드
+  프록시** — 과거 호가잔량 원천 부재라 봉거래량으로 대체(정직 고지). 시뮬 10% 캡이 천장.
+- **승률은 S4b**(별도 슬라이스): 매도별 실현손익 필요 → fold 평균원가 relief(journal.ts:790)를 공유
+  헬퍼로 순수 추출해야 하고 그건 guarded 코어 변경이라 분리.
+
+**요구 게이트**(resolve 전): blind test-authorship + codex(다른 계열) + Standards + mutation.
+트레일러 `Tier: top`. read-only라 money-mutation 공격면은 없으나 수치 정확성(재사용 어댑팅·MDD·
+participation)이 공격 대상.
+
+**구현 완료 S4a** (2026-07-25, 게이트 전):
+- 신규 `backtest/performance-report.ts`(순수, self-check demo): `maxDrawdown`·`fillConfidence`·
+  `buildPerformance` + coverage-typed `BacktestReturn`. runner 배선: 봉별 equity(cash+포지션×종가,
+  minor) + 체결별 participation 수집 → `BacktestReport.performance`.
+- **설계 결정 1 — 격리 불변식 충돌 해소(사용자 결정: 닫힌형)**: `actual-paper-isolation.property.test`가
+  paper→actual-portfolio import 금지(원장 격리). pivot 11의 "calculation/ 재사용"과 충돌.
+  불변식 docstring은 "순수 계산 재사용은 허용하되 cross-tree import 아님". 백테스트는 **중간 flow 0**
+  → TWR=final/seed−1, XIRR=(final/seed)^(1/years)−1 (2-flow 정확 닫힌형, 솔버 불요)라 러너 내부에서
+  직접 계산(import 0, 경계 보존). F7 솔버 재사용은 아니나 퇴화 케이스라 수학적 동일(drift 아님).
+  다중 flow 백테스트 생기면 calculation/ 중립 이동 후 재사용(A안 이월).
+- **설계 결정 2 — coverage-typed 정직성**: TWR/XIRR는 unavailable+reason(zero_window·invalid_
+  valuation·invalid_timestamp) — 단일봉/영폭 창은 "가짜 0%" 대신 unavailable. MDD는 항상 계산가능(0..1).
+- 신뢰도=participation(체결량/봉거래량) — 결정7 캔들-모드 프록시(호가잔량 부재), 시뮬 10% 캡이 천장.
+- demo가 잡은 것: 2024 윤년 창이 XIRR 20.94%(≠21%) — 계산기 정답, 비윤년 365일 창으로 정정(demo 유효).
+- 테스트 `tests/t8-performance-report.test.ts` 8 신규(MDD·신뢰도·coverage·E2E·결정론). 게이트:
+  check 647 · build green · 격리 불변식 통과. blind/codex/Standards/mutation 은 이 커밋 뒤.
+
+### S4a 게이트 종합 판정 (tier top, 2026-07-25)
+
+4축 완주. check 665 green · build green · 격리 불변식 통과.
+
+- **Standards ✅** (sonnet): 하드 1 — equity mark 가 `minorUnitsOf` 인라인(=`grossMinorOf` 중복,
+  "must match" 재발) → `grossMinorOf(qty, {amount:close,currency})` 로 교체. 판단(returns→
+  `closedFormReturns` 개명, data clump, mark-to-market feature envy)은 개명 반영·나머지 국소 유지.
+- **blind ✅** (sonnet, 구현 미열람 — 계약만): `tests/t8-perf-blind.test.ts` **11/11, 발견 0**.
+  재무 1원칙에서 독립 유도(equity·seed/final·TWR·MDD·participation·연율화 XIRR `(final/seed)^(365/3)`)가
+  구현과 전건 일치. coverage 정직성(unavailable vs 가짜 0)도 확인. 단언 무약화(표준 회귀로 보존).
+- **codex ✅** (다른 계열, companion app-server): 판정 **REJECT — HIGH 5·MED 2·LOW 1**.
+  전건 fileless 프로브 재현 후 수정:
+  | 심각도 | 지적 | 재현 | 조치 |
+  |---|---|---|---|
+  | HIGH | NaN seed/final → `covered ratio:null`(JSON) | 재현 | `closedFormReturns` 유한성 가드 → unavailable |
+  | HIGH | 초단창 XIRR 과대연율 → Infinity/−1 covered | 재현 | `Number.isFinite(rate)&&rate>-1` 아니면 `unrepresentable` |
+  | HIGH | final=0(총손실) → 둘 다 unavailable(과엄격) | 재현 | TWR/XIRR 가드 분리 — TWR covered −1, XIRR unavailable |
+  | HIGH | 다통화 seed → series 외 통화 조용히 누락 | 재현(USD 100 증발) | runner `seed_currency_mismatch` refuse |
+  | HIGH | 음수/NaN close → equity 음수·**MDD 10.1([0,1] 위반)**·covered NaN | 재현 | runner `invalid_bar_price`(유한·양수) — 근본 |
+  | MED | Feb30 → JS 정규화(Mar1) covered | 재현 | runner `isCalendarDate` round-trip → `invalid_bar_time` |
+  | MED | `fillConfidence([NaN,..])` → mean NaN | 재현 | 비유한 샘플 skip |
+  | LOW | 1e15 seed 부동소수 상쇄 | — | TWR `(final−seed)/seed` 재형식화 |
+  - codex "clean" 확인(내 pre-reasoning 반증): div-by-zero 불가(volume>0), 누적 10% 캡, 정산 후 밸류에이션
+    타이밍, reserved 미차감, instrument 키 일치, ACT/365 윤년 일관, 결정론 byte-identical.
+  - 근본 위치: close·seed통화·달력은 **러너 경계**에서, 유한·표현가능성은 순수함수에서(중복 없이).
+- **mutation ✅** 3건: ① close 검증 제거→`invalid_bar_price` 회귀 사망 ② XIRR 표현가능성 가드 제거→
+  `unrepresentable` 회귀 사망 ③ final=0 TWR 분리 되돌림→총손실 −100% 회귀 사망. 각 복원 후 통과.
+- 회귀 +18(codex 8 + 러너 refusal 3 + blind 11 파일 등). **S4a 게이트 통과.** 잔여: S4b(승률).

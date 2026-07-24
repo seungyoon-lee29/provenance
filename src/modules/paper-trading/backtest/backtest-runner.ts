@@ -2,9 +2,11 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
-import { currencyMinorUnitScale } from "../internal/contracts";
+import { currencyMinorUnitScale, fromMinorUnits, grossMinorOf } from "../internal/contracts";
 import type { KrxTaxClass } from "../internal/contracts";
 import { KRX_TAX_POLICY_VERSION, isSupportedTaxDate } from "../internal/krx-transaction-tax";
+import { buildPerformance } from "./performance-report";
+import type { BacktestPerformance } from "./performance-report";
 import type {
   PaperCashRow,
   PaperMarketObservation,
@@ -135,6 +137,9 @@ export type BacktestReport = Readonly<{
   cash: readonly PaperCashRow[];
   positions: readonly PaperPositionRow[];
   orders: readonly PaperOrderView[];
+  /** T8 S4 — read-only performance aggregation (TWR/XIRR reuse + MDD + fill
+   * confidence). Each return is coverage-typed: uncomputable ⇒ unavailable. */
+  performance: BacktestPerformance;
 }>;
 
 export type BacktestOutcome =
@@ -151,7 +156,9 @@ export type BacktestOutcome =
         | "unsupported_price_basis"
         | "invalid_strategy_result"
         | "tax_class_currency_mismatch"
-        | "unsupported_tax_year";
+        | "unsupported_tax_year"
+        | "invalid_bar_price"
+        | "seed_currency_mismatch";
     }>;
 
 /** True when `amount` is a positive, finite whole number of the currency's
@@ -176,6 +183,17 @@ function refusalStatus(outcome: Readonly<{ status: string; reason?: string }>): 
  * otherwise Date.parse reads it as local time (environment-dependent). */
 function hasTimezone(iso: string): boolean {
   return /T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})$/.test(iso);
+}
+
+/** Reject an instant whose calendar date does not round-trip: JS silently
+ * normalizes an impossible date (2024-02-30 → 2024-03-01), and a normalized
+ * wrong date is a fabrication, not an honest instant (codex gate). */
+function isCalendarDate(iso: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  if (match === null) return false;
+  const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  return utc.getUTCFullYear() === year && utc.getUTCMonth() === month - 1 && utc.getUTCDate() === day;
 }
 
 function observationOf(series: BacktestSeries, bar: BacktestBar): PaperMarketObservation {
@@ -210,16 +228,26 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   // Seed cash reaches the money ledger — validate it at this boundary, the
   // journal's account_opened trusts the amounts (codex gate BLOCKER).
   if (!config.seedCash.every(isRepresentableCash)) return { status: "refused", reason: "invalid_seed_cash" };
+  // A backtest is single-instrument, single-currency (the series currency). Seed
+  // cash in any other currency would be held but never valued — the equity mark
+  // only sees the series currency, so a mismatched seed silently vanishes from
+  // the return (codex gate). Refuse rather than under-report.
+  if (config.seedCash.some((money) => money.currency !== series.currency)) return { status: "refused", reason: "seed_currency_mismatch" };
   // KRX transaction tax is a KRW-market levy — a taxClass on a non-KRW series is
   // a data error, refused rather than charged in the wrong currency (codex gate).
   if (series.taxClass !== undefined && series.currency !== "KRW") return { status: "refused", reason: "tax_class_currency_mismatch" };
   for (let index = 0; index < series.bars.length; index += 1) {
     const bar = series.bars[index]!;
     if (!bar.complete) return { status: "refused", reason: "incomplete_bar" };
-    // Require a timezone-qualified instant: a bare local time (no Z/offset)
-    // parses against the runner's local zone, so identical series bytes would
-    // yield different fills — and, at a year boundary, different tax (codex gate).
-    if (!Number.isFinite(Date.parse(bar.periodStart)) || !hasTimezone(bar.periodStart)) {
+    // A non-finite or non-positive close cannot be a traded price: it would fold
+    // into a NaN/negative equity mark (MDD outside [0,1], covered-NaN returns) —
+    // refuse it at the boundary so the report never values a bad price (codex gate).
+    if (!Number.isFinite(bar.close) || bar.close <= 0) return { status: "refused", reason: "invalid_bar_price" };
+    // Require a timezone-qualified, real-calendar instant: a bare local time (no
+    // Z/offset) parses against the runner's local zone, and JS silently
+    // normalizes an impossible date (2024-02-30 → 03-01) — either would yield
+    // environment- or fabrication-dependent fills/tax (codex gate).
+    if (!Number.isFinite(Date.parse(bar.periodStart)) || !hasTimezone(bar.periodStart) || !isCalendarDate(bar.periodStart)) {
       return { status: "refused", reason: "invalid_bar_time" };
     }
     if (index > 0 && Date.parse(bar.periodStart) <= Date.parse(series.bars[index - 1]!.periodStart)) {
@@ -274,6 +302,10 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   let fillCount = 0;
   let expiryCount = 0;
   const refusals: BacktestRefusal[] = [];
+  // S4: per-bar equity (minor units) for the drawdown curve, and per-fill
+  // participation (filled qty / bar volume) for the confidence proxy.
+  const equity: number[] = [];
+  const participations: number[] = [];
 
   for (let cursor = 0; cursor < series.bars.length; cursor += 1) {
     const bar = series.bars[cursor]!;
@@ -286,9 +318,26 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     // 1) Settle: this bar's observation fills/expires orders accepted at
     //    earlier bars only (engine strict `>` — same-bar acceptance can't fill).
     for (const event of await simulator.ingest(workspace, account, currentObservation)) {
-      if (event.kind === "fill") fillCount += 1;
-      else expiryCount += 1;
+      if (event.kind === "fill") {
+        fillCount += 1;
+        // Participation vs this bar's volume (volume > 0 whenever a fill lands —
+        // the simulator refuses volume ≤ 0). Confidence proxy for candle mode.
+        if (bar.volume > 0) participations.push(event.quantity / bar.volume);
+      } else {
+        expiryCount += 1;
+      }
     }
+
+    // Mark equity at this bar's close AFTER settling — order submission only
+    // reserves (owned cash + position value is unchanged until a fill), so this
+    // is the portfolio's value at the close regardless of what the strategy
+    // then does. Single instrument/currency: value the series currency only.
+    const settled = service.journal.state(workspace, account);
+    const cashMinor = settled.cash.get(series.currency)?.balance ?? 0;
+    const positionQty = settled.positions.get(series.instrument)?.quantity ?? 0;
+    // Value the position with the SAME aggregate-rounding helper the fold uses,
+    // so a sub-tick close rounds identically at every site (Standards gate).
+    equity.push(cashMinor + grossMinorOf(positionQty, { amount: bar.close, currency: series.currency }));
 
     // 2) Decide at this bar's close — the view exposes bars [0, cursor] only.
     //    presentState hands out the journal's live money objects (order.fills
@@ -354,6 +403,18 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   }
 
   const presented = presentState(service.journal.state(workspace, account), account);
+  // Equity has one point per bar (series is non-empty), so [0] is the seed and
+  // the last is the terminal value. A single-bar series gives a zero-width
+  // window → TWR/XIRR come back `unavailable` (honest, not a fabricated 0%).
+  const performance = buildPerformance({
+    currency: series.currency,
+    from: series.bars[0]!.periodStart,
+    to: series.bars[series.bars.length - 1]!.periodStart,
+    seedValue: fromMinorUnits(equity[0] ?? 0, series.currency).amount,
+    finalValue: fromMinorUnits(equity[equity.length - 1] ?? 0, series.currency).amount,
+    equity,
+    participations,
+  });
   return {
     status: "complete",
     mode: "approximate",
@@ -368,5 +429,6 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     cash: presented.cash,
     positions: presented.positions,
     orders: presented.orders,
+    performance,
   };
 }
