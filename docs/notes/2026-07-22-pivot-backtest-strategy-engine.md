@@ -244,6 +244,9 @@ Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에
   · credential-vault(234)는 남긴다 — CLI 브로커 키 암호화 저장에 필요 (§3-16)
   · 게스트 시세 터미널(/) 존치 여부를 이 시점에 결정 — 기본 배포는 npm publish,
     웹 데모는 배포 운영 비용(호스트+PG+Redis)을 감수할 때만
+    - **존치 시 필수 (옛 T5 유실분 복원, 2026-07-24 재발견)**: guest-terminal-shell 의 하드코딩
+      LoginGate 패널(Paper Trading/AI Assistant, :248-249)과 정적 Paper Blotter(:253-263) 제거 —
+      지금도 프로덕션 게스트 페이지에 "로그인 필요"로 렌더 중. 삭제 시엔 자동 소멸
   · **선행 필수 (실측된 지뢰들)**:
     - `ErasureParticipant` 인터페이스(identity 소속)를 shared/ 로 이전 — keep 대상인
       financial-information/data/personal-cache.ts 가 타입 의존 중. 안 옮기면 identity 삭제 시 컴파일 파손
