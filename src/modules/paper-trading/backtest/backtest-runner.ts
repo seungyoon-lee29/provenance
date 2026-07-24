@@ -161,15 +161,16 @@ export type BacktestOutcome =
         | "seed_currency_mismatch";
     }>;
 
-/** True when `amount` is a positive, finite whole number of the currency's
- * minor units — the only seed the integer ledger can hold without silent
- * rounding (codex gate: -1 / NaN / Infinity / sub-unit seeds folded into
- * broken balances). */
+/** True when `amount` is a positive whole number of the currency's minor units
+ * within the SAFE-integer range — the only seed the integer ledger can hold
+ * without silent rounding (codex gates: -1 / NaN / Infinity / sub-unit seeds
+ * folded into broken balances; a 1e19 seed passes isInteger but not
+ * isSafeInteger, and past 2^53 the fold's arithmetic silently drifts — the
+ * ledger's documented ceiling, enforced here at the boundary). */
 function isRepresentableCash(money: PaperMoney): boolean {
   return (
-    Number.isFinite(money.amount)
-    && money.amount > 0
-    && Number.isInteger(money.amount * currencyMinorUnitScale(money.currency))
+    money.amount > 0
+    && Number.isSafeInteger(money.amount * currencyMinorUnitScale(money.currency))
   );
 }
 
@@ -404,6 +405,12 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
 
   const finalState = service.journal.state(workspace, account);
   const presented = presentState(finalState, account);
+  // T9: total sell tax actually charged — summed from the ledger's own stored
+  // fill costs (validated at append), never recomputed from a rate table here.
+  let taxPaidMinor = 0;
+  for (const order of presented.orders) {
+    for (const fill of order.fills) taxPaidMinor += fill.costs?.sellTransactionTaxMinor ?? 0;
+  }
   // Equity has one point per bar (series is non-empty), so [0] is the seed and
   // the last is the terminal value. A single-bar series gives a zero-width
   // window → TWR/XIRR come back `unavailable` (honest, not a fabricated 0%).
@@ -418,6 +425,10 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     // S4b: the fold's per-sell realized P&L (net of tax, average-cost relief) —
     // single-currency by the seed/tax boundary refusals, so no filter needed.
     realizedSellsMinor: finalState.realizedSales.map((sale) => sale.minorUnits),
+    // Individually-validated taxes can still SUM past 2^53, where the float
+    // accumulator drifts — a drifted total must never publish as covered
+    // (codex T9 HIGH). A poisoned NaN makes the disclosure `invalid_total`.
+    taxPaidValue: Number.isSafeInteger(taxPaidMinor) ? fromMinorUnits(taxPaidMinor, series.currency).amount : Number.NaN,
   });
   return {
     status: "complete",

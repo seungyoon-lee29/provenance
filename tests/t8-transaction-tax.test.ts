@@ -66,6 +66,27 @@ describe("T8 S3 transaction tax", () => {
     expect(taxed.orders.find((o) => o.payload.side === "buy")!.fills[0]!.costs).toBeUndefined();
   });
 
+  it("T9: taxed run's gross TWR equals the untaxed run's net TWR; drag is exactly tax/seed", async () => {
+    const taxed = await run("equity");
+    const untaxed = await run(undefined);
+    if (taxed.status !== "complete" || untaxed.status !== "complete") throw new Error("refused");
+    const sellFill = taxed.orders.find((o) => o.payload.side === "sell")!.fills[0]!;
+    const expectedTax = Math.floor((sellFill.quantity * sellFill.price.amount * 20) / 10_000);
+    if (taxed.performance.tax.status !== "covered") throw new Error("tax block unavailable");
+    expect(taxed.performance.tax.taxPaid).toBe(expectedTax);
+    // The fills are identical across the two runs (no post-sale trades), so the
+    // add-back counterfactual is not an approximation here — it must equal the
+    // genuinely untaxed run to the last bit.
+    expect(taxed.performance.tax.grossTimeWeightedReturn).toEqual(untaxed.performance.timeWeightedReturn);
+    expect(taxed.performance.tax.taxDrag).toEqual({ status: "covered", ratio: expectedTax / 1_000_000 });
+    expect(untaxed.performance.tax).toEqual({
+      status: "covered",
+      taxPaid: 0,
+      grossTimeWeightedReturn: untaxed.performance.timeWeightedReturn,
+      taxDrag: { status: "covered", ratio: 0 },
+    });
+  });
+
   it("journal refuses a forged fill whose tax exceeds proceeds or is negative, or a tax on a buy", async () => {
     const store = new MemoryPaperJournalStore();
     const journal = await new PaperJournal(() => T(5), undefined, store).init();

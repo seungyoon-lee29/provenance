@@ -60,6 +60,7 @@ describe("T8 S4 performance report — pure functions", () => {
       equity: [1_000_000, 800_000, 1_210_000],
       participations: [0.1],
       realizedSellsMinor: [],
+      taxPaidValue: 0,
     });
     expect(perf.timeWeightedReturn).toMatchObject({ status: "covered", ratio: expect.closeTo(0.21, 10) });
     expect(perf.moneyWeightedReturn).toMatchObject({ status: "covered", ratio: expect.closeTo(0.21, 10) });
@@ -76,6 +77,7 @@ describe("T8 S4 performance report — pure functions", () => {
       equity: [1_000_000],
       participations: [],
       realizedSellsMinor: [],
+      taxPaidValue: 0,
     });
     expect(perf.timeWeightedReturn.status).toBe("unavailable");
     expect(perf.moneyWeightedReturn.status).toBe("unavailable");
@@ -113,21 +115,21 @@ describe("T8 S4 performance report — codex adversarial gate regressions", () =
   const year = { from: "2023-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z" };
 
   it("a NaN valuation is unavailable, never a covered null", () => {
-    const p = buildPerformance({ currency: "KRW", ...year, seedValue: Number.NaN, finalValue: 100, equity: [100], participations: [], realizedSellsMinor: [] });
+    const p = buildPerformance({ currency: "KRW", ...year, seedValue: Number.NaN, finalValue: 100, equity: [100], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
     expect(p.timeWeightedReturn.status).toBe("unavailable");
     expect(p.moneyWeightedReturn.status).toBe("unavailable");
   });
 
   it("an over-extrapolated sub-day window is XIRR-unrepresentable, not Infinity/−1", () => {
     const tiny = { from: "2024-01-01T00:00:00.000Z", to: "2024-01-01T00:01:00.000Z" };
-    const gain = buildPerformance({ currency: "KRW", ...tiny, seedValue: 100, finalValue: 101, equity: [100, 101], participations: [], realizedSellsMinor: [] });
-    const loss = buildPerformance({ currency: "KRW", ...tiny, seedValue: 100, finalValue: 99, equity: [100, 99], participations: [], realizedSellsMinor: [] });
+    const gain = buildPerformance({ currency: "KRW", ...tiny, seedValue: 100, finalValue: 101, equity: [100, 101], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
+    const loss = buildPerformance({ currency: "KRW", ...tiny, seedValue: 100, finalValue: 99, equity: [100, 99], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
     expect(gain.moneyWeightedReturn).toEqual({ status: "unavailable", reason: "unrepresentable" });
     expect(loss.moneyWeightedReturn).toEqual({ status: "unavailable", reason: "unrepresentable" });
   });
 
   it("a total loss is a covered −100% TWR but leaves XIRR without a root", () => {
-    const p = buildPerformance({ currency: "KRW", ...year, seedValue: 100, finalValue: 0, equity: [100, 0], participations: [], realizedSellsMinor: [] });
+    const p = buildPerformance({ currency: "KRW", ...year, seedValue: 100, finalValue: 0, equity: [100, 0], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
     expect(p.timeWeightedReturn).toEqual({ status: "covered", ratio: -1 });
     expect(p.moneyWeightedReturn.status).toBe("unavailable");
   });
@@ -259,5 +261,89 @@ describe("T8 S4b win rate — end to end", () => {
     if (win.status !== "complete" || loss.status !== "complete") throw new Error("refused");
     expect(win.performance.winRate).toEqual({ status: "covered", sells: 1, wins: 1, ratio: 1 });
     expect(loss.performance.winRate).toEqual({ status: "covered", sells: 1, wins: 0, ratio: 0 });
+  });
+});
+
+describe("T9 tax disclosure — pure boundaries", () => {
+  const year = { from: "2023-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z" };
+  const base = { currency: "KRW", ...year, equity: [1_000_000, 1_019_940], participations: [], realizedSellsMinor: [] };
+
+  it("adds the tax back for gross TWR; drag is exactly taxPaid/seed", () => {
+    const p = buildPerformance({ ...base, seedValue: 1_000_000, finalValue: 1_019_940, taxPaidValue: 240 });
+    expect(p.tax).toMatchObject({
+      status: "covered",
+      taxPaid: 240,
+      grossTimeWeightedReturn: { status: "covered", ratio: expect.closeTo(0.02018, 12) },
+      taxDrag: { status: "covered", ratio: 240 / 1_000_000 },
+    });
+  });
+
+  it("a negative or non-finite tax total refuses the WHOLE block — and never serializes NaN as null (codex gate)", () => {
+    for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const p = buildPerformance({ ...base, seedValue: 1_000_000, finalValue: 1_019_940, taxPaidValue: bad });
+      expect(p.tax).toEqual({ status: "unavailable", reason: "invalid_total" });
+      expect(JSON.stringify(p.tax)).not.toContain("null"); // declared-type honesty in JSON
+    }
+  });
+
+  it("a zero-width window leaves gross/drag unavailable but still reports the tax actually paid", () => {
+    const p = buildPerformance({
+      currency: "KRW", from: year.from, to: year.from, seedValue: 1_000_000, finalValue: 1_000_000,
+      equity: [1_000_000], participations: [], realizedSellsMinor: [], taxPaidValue: 240,
+    });
+    if (p.tax.status !== "covered") throw new Error("tax block unavailable");
+    expect(p.tax.taxPaid).toBe(240); // a fact of the ledger, window-independent
+    expect(p.tax.grossTimeWeightedReturn.status).toBe("unavailable");
+    expect(p.tax.taxDrag.status).toBe("unavailable");
+  });
+
+  it("refuses a seed whose minor units exceed the safe-integer ledger ceiling (codex gate: 1e19 passes isInteger)", async () => {
+    const outcome = await runBacktest({ runId: "huge", seedCash: [{ amount: 1e19, currency: "KRW" }], series: series(10_000, 10_000), strategy: () => [] });
+    expect(outcome).toEqual({ status: "refused", reason: "invalid_seed_cash" });
+  });
+
+  it("a tax SUM past 2^53 refuses the block instead of publishing a float-drifted covered total (codex gate)", async () => {
+    // Safe seed; alternating 10k/20k closes. Fills land on the NEXT bar, so a
+    // buy accepted at a 20k close fills at 10k (cheap) and a sell accepted at a
+    // 10k close fills at 20k (dear) — 18 compounding cycles push the cumulative
+    // sell tax past 2^53, where this scenario's exact sum (…959, odd) is not
+    // float-representable: a Number accumulator would report …960 as covered.
+    const bars = Array.from({ length: 38 }, (_, i) => ({
+      periodStart: new Date(Date.UTC(2026, 0, 5) + i * 86_400_000).toISOString(),
+      close: i % 2 === 0 ? 10_000 : 20_000,
+      volume: 1e15,
+      complete: true,
+    }));
+    const churn: BacktestConfig["strategy"] = (view) => {
+      const lowClose = view.cursor % 2 === 0;
+      const position = view.positions[0]?.quantity ?? 0;
+      if (position > 0) {
+        return lowClose ? [{ kind: "submit", order: { side: "sell", orderType: "market", quantity: position, timeInForce: "GTC" } }] : [];
+      }
+      const cash = view.cash[0]?.available ?? 0;
+      const quantity = Math.floor(cash / 20_100);
+      return !lowClose && quantity > 0 ? [{ kind: "submit", order: { side: "buy", orderType: "market", quantity, timeInForce: "GTC" } }] : [];
+    };
+    const outcome = await runBacktest({
+      runId: "churn",
+      seedCash: [{ amount: 9_000_000_000_000_000, currency: "KRW" }],
+      series: { instrument: "instr:BT", venue: "KRX", currency: "KRW", taxClass: "equity", bars },
+      strategy: churn,
+    });
+    if (outcome.status !== "complete") throw new Error(outcome.status);
+    // Scenario sanity: the exact (BigInt) sum of the stored per-fill taxes is
+    // unsafe AND differs from the float sum — the drift this guard exists for.
+    let floatSum = 0;
+    let exactSum = 0n;
+    for (const order of outcome.orders) {
+      for (const fill of order.fills) {
+        const tax = fill.costs?.sellTransactionTaxMinor ?? 0;
+        floatSum += tax;
+        exactSum += BigInt(tax);
+      }
+    }
+    expect(Number.isSafeInteger(floatSum)).toBe(false);
+    expect(BigInt(floatSum)).not.toBe(exactSum);
+    expect(outcome.performance.tax).toEqual({ status: "unavailable", reason: "invalid_total" });
   });
 });

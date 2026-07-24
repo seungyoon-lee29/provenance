@@ -16,9 +16,12 @@
  * ledger isolation boundary (actual-paper-isolation.property.test). Win rate
  * (S4b) reads the fold's per-sell realized P&L (journal `realizedSales`) — the
  * fold computes it where the average-cost relief already is, so no mirror of
- * position sequencing exists here to drift. If a backtest ever carries
- * intermediate external flows, relocate the F7 calculators to neutral ground and
- * reuse them — the closed forms below assume the no-flow shape.
+ * position sequencing exists here to drift. The tax disclosure (T9) shows the
+ * gross-vs-net line: every headline figure is net of the sell transaction tax,
+ * and grossTimeWeightedReturn/taxDrag make that cost visible instead of
+ * silently folded in. If a backtest ever carries intermediate external flows,
+ * relocate the F7 calculators to neutral ground and reuse them — the closed
+ * forms below assume the no-flow shape.
  */
 
 /** Days per year for the XIRR day-count — matches the F7 solver's convention so
@@ -72,6 +75,36 @@ export function winRate(realizedSellsMinor: readonly number[]): WinRate {
   return { status: "covered", sells: realizedSellsMinor.length, wins, ratio: wins / realizedSellsMinor.length };
 }
 
+/**
+ * T9 — what the transaction tax cost this run, the "gross vs net" line. Every
+ * headline figure in the report is NET (the ledger charges tax on sell
+ * proceeds); this block shows the same run WITHOUT the tax so the drag is
+ * visible instead of silently folded in. `grossTimeWeightedReturn` adds the
+ * tax paid back to the TERMINAL value — a first-order approximation that
+ * assumes the saved tax would not have been reinvested (the true counterfactual
+ * is path-dependent; this is the standard fee/tax-drag convention and is
+ * disclosed as such). An untaxed run (costModel "none") has taxPaid 0 and a
+ * covered zero drag — a fact, not a fabrication.
+ */
+export type TaxDisclosure =
+  | Readonly<{
+      status: "covered";
+      /** Total sell transaction tax charged over the run, MAJOR units. */
+      taxPaid: number;
+      /** TWR with taxPaid added back to the terminal value (untaxed
+       * counterfactual, no-reinvestment first-order). Compare with the net
+       * timeWeightedReturn. May itself be unavailable (e.g. zero window)
+       * while taxPaid — a window-independent ledger fact — stays reported. */
+      grossTimeWeightedReturn: BacktestReturn;
+      /** gross − net TWR, in return points (≥ 0). Covered only when both are. */
+      taxDrag: BacktestReturn;
+    }>
+  /** The TOTAL itself is untrustworthy (non-finite, negative, or a float-
+   * drifted sum past 2^53). The whole block goes unavailable so no
+   * serializable field ever carries a non-finite number — NaN would silently
+   * become JSON null and contradict the declared type (codex T9 MED/HIGH). */
+  | Readonly<{ status: "unavailable"; reason: "invalid_total" }>;
+
 export type BacktestPerformance = Readonly<{
   currency: string;
   /** Portfolio value at the first and last bar, in MAJOR units (display). */
@@ -86,6 +119,8 @@ export type BacktestPerformance = Readonly<{
   fillConfidence: FillConfidence;
   /** Win rate over sell fills (net of tax, average-cost). See {@link WinRate}. */
   winRate: WinRate;
+  /** Gross-vs-net disclosure (T9). See {@link TaxDisclosure}. */
+  tax: TaxDisclosure;
 }>;
 
 /**
@@ -165,6 +200,26 @@ function closedFormReturns(fromMs: number, toMs: number, seedValue: number, fina
   return { timeWeightedReturn, moneyWeightedReturn };
 }
 
+/**
+ * T9 gross-vs-net line. The gross TWR reuses the SAME closed-form guards with
+ * the tax added back to the terminal value. The drag is gross − net, which for
+ * this shared-window closed form is algebraically exactly taxPaid/seed —
+ * computed directly to avoid float cancellation between two near-equal ratios
+ * (same class as the S4a TWR reformulation).
+ */
+function taxDisclosure(fromMs: number, toMs: number, seedValue: number, finalValue: number, net: BacktestReturn, taxPaid: number): TaxDisclosure {
+  // The total is a sum of ledger-validated integer charges — negative or
+  // non-finite means this is not the ledger's number (or the runner poisoned a
+  // float-drifted sum); the WHOLE block refuses, keeping every serialized
+  // field an honest finite number.
+  if (!Number.isFinite(taxPaid) || taxPaid < 0) return { status: "unavailable", reason: "invalid_total" };
+  const gross = closedFormReturns(fromMs, toMs, seedValue, finalValue + taxPaid).timeWeightedReturn;
+  const taxDrag: BacktestReturn = gross.status === "covered" && net.status === "covered"
+    ? { status: "covered", ratio: taxPaid / seedValue }
+    : gross.status === "unavailable" ? gross : net;
+  return { status: "covered", taxPaid, grossTimeWeightedReturn: gross, taxDrag };
+}
+
 export function buildPerformance(input: Readonly<{
   currency: string;
   /** First and last bar instants (ISO, tz-qualified, real-calendar) — the return
@@ -181,13 +236,12 @@ export function buildPerformance(input: Readonly<{
   participations: readonly number[];
   /** Per-sell realized P&L in integer minor units (the fold's `realizedSales`). */
   realizedSellsMinor: readonly number[];
+  /** Total sell transaction tax charged over the run, MAJOR units (T9). */
+  taxPaidValue: number;
 }>): BacktestPerformance {
-  const { timeWeightedReturn, moneyWeightedReturn } = closedFormReturns(
-    Date.parse(input.from),
-    Date.parse(input.to),
-    input.seedValue,
-    input.finalValue,
-  );
+  const fromMs = Date.parse(input.from);
+  const toMs = Date.parse(input.to);
+  const { timeWeightedReturn, moneyWeightedReturn } = closedFormReturns(fromMs, toMs, input.seedValue, input.finalValue);
   return {
     currency: input.currency,
     seedValue: input.seedValue,
@@ -197,6 +251,7 @@ export function buildPerformance(input: Readonly<{
     maxDrawdown: maxDrawdown(input.equity),
     fillConfidence: fillConfidence(input.participations),
     winRate: winRate(input.realizedSellsMinor),
+    tax: taxDisclosure(fromMs, toMs, input.seedValue, input.finalValue, timeWeightedReturn, input.taxPaidValue),
   };
 }
 
@@ -223,6 +278,7 @@ function demo(): void {
     equity: [1_000_000, 800_000, 1_210_000],
     participations: [0.1],
     realizedSellsMinor: [],
+    taxPaidValue: 0,
   });
   assert(perf.timeWeightedReturn.status === "covered"
     && Math.abs(perf.timeWeightedReturn.ratio - 0.21) < 1e-9, "twr 21%");
@@ -233,17 +289,18 @@ function demo(): void {
   const flat = buildPerformance({
     currency: "KRW", from: "2024-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z",
     seedValue: 1_000_000, finalValue: 1_000_000, equity: [1_000_000], participations: [], realizedSellsMinor: [],
+    taxPaidValue: 0,
   });
   assert(flat.timeWeightedReturn.status === "unavailable" && flat.timeWeightedReturn.reason === "zero_window", "zero window → unavailable");
   assert(flat.moneyWeightedReturn.status === "unavailable", "zero window → xirr unavailable");
   // codex gate: non-finite / over-extrapolated inputs are unavailable, not a
   // fabricated null/Infinity/−1; a total loss is a covered −100% TWR.
   const year = { from: "2024-01-01T00:00:00.000Z", to: "2025-01-01T00:00:00.000Z" };
-  const nanSeed = buildPerformance({ currency: "KRW", ...year, seedValue: NaN, finalValue: 100, equity: [100], participations: [], realizedSellsMinor: [] });
+  const nanSeed = buildPerformance({ currency: "KRW", ...year, seedValue: NaN, finalValue: 100, equity: [100], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
   assert(nanSeed.timeWeightedReturn.status === "unavailable" && nanSeed.moneyWeightedReturn.status === "unavailable", "NaN seed → unavailable");
-  const tiny = buildPerformance({ currency: "KRW", from: "2024-01-01T00:00:00.000Z", to: "2024-01-01T00:01:00.000Z", seedValue: 100, finalValue: 101, equity: [100, 101], participations: [], realizedSellsMinor: [] });
+  const tiny = buildPerformance({ currency: "KRW", from: "2024-01-01T00:00:00.000Z", to: "2024-01-01T00:01:00.000Z", seedValue: 100, finalValue: 101, equity: [100, 101], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
   assert(tiny.moneyWeightedReturn.status === "unavailable" && tiny.moneyWeightedReturn.reason === "unrepresentable", "tiny window → XIRR unrepresentable");
-  const wipeout = buildPerformance({ currency: "KRW", ...year, seedValue: 100, finalValue: 0, equity: [100, 0], participations: [], realizedSellsMinor: [] });
+  const wipeout = buildPerformance({ currency: "KRW", ...year, seedValue: 100, finalValue: 0, equity: [100, 0], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
   assert(wipeout.timeWeightedReturn.status === "covered" && wipeout.timeWeightedReturn.ratio === -1, "total loss → TWR −100% covered");
   assert(wipeout.moneyWeightedReturn.status === "unavailable", "total loss → XIRR unavailable");
   assert(fillConfidence([Number.NaN, 0.1]).meanParticipation === 0.1, "non-finite participation sample skipped");
@@ -253,6 +310,29 @@ function demo(): void {
   assert(winRate([]).status === "unavailable", "no sells → unavailable");
   const poisoned = winRate([Number.NaN]);
   assert(poisoned.status === "unavailable" && poisoned.reason === "invalid_sample", "non-finite sample → invalid_sample");
+  // T9 tax disclosure: untaxed run has a covered ZERO drag (a fact); a taxed run's
+  // gross adds the tax back to the terminal and drag = taxPaid/seed exactly.
+  assert(perf.tax.status === "covered" && perf.tax.taxPaid === 0
+    && perf.tax.taxDrag.status === "covered" && perf.tax.taxDrag.ratio === 0, "untaxed → zero drag");
+  const taxed = buildPerformance({
+    currency: "KRW", from: "2023-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z",
+    seedValue: 1_000_000, finalValue: 1_019_940, equity: [1_000_000, 1_019_940],
+    participations: [], realizedSellsMinor: [19_940], taxPaidValue: 240,
+  });
+  assert(taxed.tax.status === "covered" && taxed.tax.grossTimeWeightedReturn.status === "covered"
+    && Math.abs(taxed.tax.grossTimeWeightedReturn.ratio - 0.02018) < 1e-12, "gross TWR adds tax back");
+  assert(taxed.tax.status === "covered" && taxed.tax.taxDrag.status === "covered" && taxed.tax.taxDrag.ratio === 0.00024, "drag = tax/seed");
+  const badTax = buildPerformance({
+    currency: "KRW", from: "2023-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z",
+    seedValue: 1_000_000, finalValue: 1_019_940, equity: [], participations: [], realizedSellsMinor: [], taxPaidValue: -1,
+  });
+  assert(badTax.tax.status === "unavailable" && badTax.tax.reason === "invalid_total", "invalid total → whole block unavailable");
+  // codex T9 MED regression: no serialized field ever carries NaN → JSON null.
+  const nanTax = buildPerformance({
+    currency: "KRW", from: "2023-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z",
+    seedValue: 1_000_000, finalValue: 1_019_940, equity: [], participations: [], realizedSellsMinor: [], taxPaidValue: Number.NaN,
+  });
+  assert(!JSON.stringify(nanTax.tax).includes("null"), "NaN total never serializes as null");
 }
 
 if (process.argv[1]?.endsWith("performance-report.ts")) demo();

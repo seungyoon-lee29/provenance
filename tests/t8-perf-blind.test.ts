@@ -163,6 +163,7 @@ describe("T8 performance report — blind acceptance", () => {
         // S4b interface adaptation only (assertions untouched): the input
         // gained a required realized-sells field after this file was authored.
         realizedSellsMinor: [],
+        taxPaidValue: 0,
       } as never);
 
       expect(perf.timeWeightedReturn.status).toBe("unavailable");

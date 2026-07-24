@@ -281,6 +281,19 @@ Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에
       slippage 와 분리·fill 이벤트에 비용 저장·(venue,종류,체결일) 세율 테이블·ETF 면제 분기·
       money-conservation 유출 leg 계약. 구현은 top tier (tier-gate)
   T9. 성과 리포트 — F7 TWR/XIRR 재사용 + MDD·승률 + 체결 신뢰도 집계
+    ← 정정 (2026-07-25 T8 S4·T9 실행 시):
+      ① 틀린 전제 둘. (a) T9 를 별도 티켓으로 상정했으나 지표 집계는 T8 의 자연 슬라이스였다 —
+         TWR·XIRR·MDD·체결신뢰도(S4a)·승률(S4b)은 러너가 이미 쥔 상태의 read-only 집계라 T8 안에서
+         끝났다. (b) "F7 TWR/XIRR 재사용"은 actual-paper 원장 격리 불변식(cross-tree import 금지)과
+         충돌해 그대로는 불가였다.
+      ② 실제: (a) S4a/S4b 로 T8 에 흡수(각각 tier-top 4축 게이트). (b) 백테스트는 중간 flow 0 인
+         퇴화형이라 F7 일반 솔버가 닫힌형(TWR=final/seed−1, XIRR=(final/seed)^(1/years)−1)으로
+         붕괴 — 러너 내장 계산(import 0)으로 격리 보존, 수학적 동일(사용자 결정 2026-07-25).
+         승률은 fold 가 relief 계산 지점에서 실현손익을 직접 파생 적재(미러·드리프트 0).
+      ③ 왜 나았나: 경계를 옮기지 않고 차별점(coverage-typed 정직 지표)을 얻었고, 게이트에서
+         codex 가 공유 fold 의 교차통화 실현손익 조작(HIGH)까지 잡아 live paper 경로가 견고해졌다.
+      ④ 어긋난 것: T9 의 잔여 실체는 지표가 아니라 **비용 공시 표면**(거래세 설계문서가 이월한
+         gross vs net + tax drag 한 줄)으로 축소됐다 — 진행: progress/t9-performance-surface.md.
   T10. 전략 정의 층 + CLI + MCP  (선행 티켓 초안 있음: .scratch/financial-terminal/issues/40·41)
     · 에이전트 인터페이스 설계 메모 (2026-07-22, HyeokjaeLee/koreainvestment-cli 전체 정독 결과):
       [그대로 차용] ① SKILL.md 구조 — frontmatter description 에 한국어 트리거 문구 밀집 →
