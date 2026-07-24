@@ -1,6 +1,7 @@
 # Stage 2-c — 원장 강화 (T8 착수 전 필수)
 
-상태: **착수** (2026-07-24). Owner: main(Opus 4.8). Claimed: 2026-07-24.
+상태: **완료** (2026-07-24, 커밋 5387c5e — item 1~4 + tier top 게이트 4종). Owner: main(Opus 4.8). Claimed: 2026-07-24.
+(상태줄 정합 갱신 2026-07-24 후속 세션 — 커밋 5387c5e가 map.md 트랙 상태 한 줄 갱신을 누락해 함께 보정)
 
 **설계 결정 (item 1, contained)**: `foldAccountState` 내부 누적을 정수 minor-unit으로 전환
 (float drift·EPSILON 제거)하되, 공개 타입 `PaperCashState`/`costBasis` 는 경계에서 정확한

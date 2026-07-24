@@ -50,7 +50,7 @@ KIS 공식 저장소(`koreainvestment/open-trading-api`)에 이미 있는 것:
 | 1 | **토스는 안 쓴다** | 토스 고유 기능(AI 시그널·커스텀 스크리너·테마)은 **비공식 WTS API에만** 있음 → TOS 위반 소지. 공식 토스 API는 KIS와 기능이 거의 완전히 겹침 |
 | 2 | **토스 고유 기능은 KIS 원재료로 직접 만든다** | KIS 국내주식만 **156개 API** + `stocks_info/theme_code.py`·`sector_code.py` 마스터 보유. 재무비율 11종·실적추정·투자의견은 **토스에 없고 KIS에만 있음** |
 | 3 | **백테스트는 캔들(OHLCV) only** | 과거 호가·과거 틱 모두 원천 불가 (§4) |
-| 4 | **체결 근사는 Lean/Zipline 방식 이식** | 거래량 참여율 캡 + 슬리피지. 인용 가능한 근거 있음 (§4). **새로 발명하지 말 것** |
+| 4 | **체결 근사는 Lean/Zipline 방식 이식** | 거래량 참여율 캡 + 슬리피지. 인용 가능한 근거 있음 (§4). ~~새로 발명하지 말 것~~ → **실제 구현은 선형 재파라미터화로 이탈, §4 정정 참조** |
 | 5 | **한국 시장 규칙은 직접 구현** | 호가단위 라운딩·상하한가·거래세(0.15%+농특세)·VI — Lean이 안 해주는 부분 = 실제 기여 |
 | 6 | **엔진은 하나, 관측치 정밀도만 다름** | `MarketObservation`에 호가가 있으면 정밀 모드, 캔들뿐이면 근사 모드. 리포트에 어느 모드였는지 명시 |
 | 7 | **신뢰도 판정을 코드에 넣는다** | 주문량 / 호가잔량 비율로 "이 시뮬레이션을 믿어도 되는가"를 도구가 판정·경고 |
@@ -95,11 +95,19 @@ KIS 공식 저장소(`koreainvestment/open-trading-api`)에 이미 있는 것:
 ### 호가 없는 백테스트의 업계 표준 (소스 확인됨)
 | 프레임워크 | 모델 | 파라미터 |
 |---|---|---|
-| Zipline | `VolumeShareSlippage` | `volume_limit=0.25` (초과분 다음 봉 이월) |
+| Zipline | `VolumeShareSlippage` | `volume_limit=0.025` (초과분 다음 봉 이월 — 원문 0.25는 오기, §4 정정 ⑤) |
 | QuantConnect **Lean** | `VolumeShareSlippageModel` | `volumeLimit=0.025`, `priceImpact=0.1` |
 | Backtrader | `slip_perc` / `slip_fixed` | 비례 / 고정 |
 
 → **Lean 상수를 그대로 쓰면 "공식 백테스터와 동일 모델"이 된다.** 임의 파라미터 발명 금지.
+
+**← 정정 (2026-07-24, 구현 실측 대조 시 — `simulator.ts:36` `SIMULATION_V1` 실독).**
+① **틀린 전제**: 위 두 줄("Lean 상수 그대로 = 동일 모델", "임의 파라미터 발명 금지").
+② **실제 구현**: 참여율 상한 **10%**(Zipline/Lean 2.5% 아님), 슬리피지 **선형** `min(25, 5+20×p)` bps(둘 다 quadratic `price×0.1×p²` 아님), **5bps 바닥**·**25bps 캡**(둘 다 0 바닥·무캡). 형태도 상수도 자체 재파라미터화다.
+③ **왜 이 쪽이 나은가**: Zipline/Lean의 2.5%·quadratic은 소액 참여에서 슬리피지가 ~0.6bps로 **리테일 체결을 과소평가**한다. 우리 5–7bps 선형이 한국 리테일 현실에 더 보수적이고, 정수(BigInt) exact + adverse tick 라운딩이라 Zipline float보다 산술이 엄밀하다.
+④ **어긋난 것 (서술 리스크)**: 이 문서·포폴 서술이 "공식과 동일 모델"이라고 주장하면 **거짓**이다(Zipline/Lean 아는 면접관에게 걸린다). 서술을 **"참여율 기반 슬리피지(Lean/Zipline 계열)를 한국 리테일 현실에 맞춰 선형·bps 상하한으로 재파라미터화"**로 고칠 것 — 이유 있는 이탈이 거짓 동일보다 강한 스토리다.
+⑤ **부수 오류 정정**: 위 표 Zipline `volume_limit`은 **0.25가 아니라 0.025**(라이브러리 기본값 — zipline.ml4trading.io 소스 확인, Lean과 동일 값). `재조사 금지` 태그였으나 "동일 모델" 근거값이라 재확인해 표에서 정정함.
+⑥ **미구현 갭 (T8 필수)**: `commissions are zero` — 결정5의 **거래세(0.15%+농특세)가 아직 fill path에 없다.** T8에서 슬리피지 함수 안이 아니라 **별도 cost/fee 모델**로 편입할 것(Zipline/Lean도 slippage와 commission을 분리, 거래세는 매도측만 붙는 비대칭). 참고로 `maxSlippageBps: 25`는 10% 상한 하에선 도달 불가(최대 7bps)라 사실상 미발동 파라미터다.
 
 ### 미확인 (필요 시 직접 확인할 것)
 - **KIS WebSocket 41종목/세션 한도** — 공식 문서에서 확인 실패. 블로그 2곳만 일관되게 언급. **2차 출처**
@@ -119,7 +127,7 @@ Stryker: 466 mutants, 313 killed, **67.17%** (범위는 `runtime-policy.ts` + `n
 - **`calculation/personal-return.ts:31` `computePersonalReturn`** — 진짜 XIRR(이분법). **데카르트 부호법칙으로 근이 2개인 경우 "유일한 답"이라 거짓말하기를 거부**. 적대적 리뷰에서 나온 20%/30% 2근 케이스가 주석에 기록됨
 - **`paper-trading/internal/{journal,service,simulator,lifecycle,blotter}.ts`** — 진짜 체결 엔진.
   **거래량 참여율 상한(10%) + 슬리피지 bps** 모델. 고정가 아님. DAY 주문 만료·취소·액면분할·배당 처리 있음.
-  → **§3-4에서 이식하려던 Lean 방식이 이미 여기 있다. 백테스트로 확장만 하면 된다**
+  → **§3-4에서 이식하려던 Lean 방식의 *선형 재파라미터화 버전*이 이미 여기 있다(§4 정정). 백테스트로 확장만 하면 된다**
 - ~~**`paper-trading/broker/outbox.ts`** — commit-before-send + CAS 상태 전이(`pending_dispatch → dispatched → acknowledged/closed`), 종단 상태 재개방 불가, 멱등 커밋~~
   **← 정정 (Stage 1 실행 시)**: broker/ 전체가 §8 폐기 모델(F9 외부 브로커 전송)의 TEST-ONLY 구현체로 판명되어 삭제됨.
   CAS outbox 패턴 자체는 유효하니 라이브 주문(v2)을 열 때 `pre-stage1` 태그의 이 파일을 참조해 재구현할 것
@@ -231,7 +239,9 @@ Stage 2 — ✅ 실행 완료 (2026-07-23~24, 커밋 79a3abb..4ad59d0) + ✅ 독
   ④ 규율 이탈 (경미): Stage 2 파괴적 삭제 전 태그 없음(pre-stage1 패턴 단절) · map 갱신이 커밋별이 아닌
     T그룹별 배치 · 이 §6 완료 마커 갱신 누락(지금 수정됨)
 
-Stage 2-c — 원장 강화 (2026-07-24 사용자 결정. T8 착수 전 필수)   ← 다음 세션은 여기부터
+Stage 2-c — ✅ 실행 완료 (2026-07-24, 커밋 5387c5e. item 1~4 전부 + tier top 게이트 4종 —
+  blind 6/6·codex 확정 5건 수정·Standards·mutation 2건. §8 동시성은 버그 확정→수정.
+  상세: .scratch/financial-terminal/progress/stage2c-ledger-hardening.md)
   착수 문서(tier 선언 포함): .scratch/financial-terminal/progress/stage2c-ledger-hardening.md
   · PaperMoney minor-unit 정수 전환 (float fold 제거 — §6 검증기록 ② 참조)
   · money-conservation property 를 PG 러너로도 (composition 배선은 여전히 T8)
@@ -261,8 +271,15 @@ Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에
   · Stage 3 직후 문서 재정합: map.md Destination·spec.md 를 남은 시스템 기준으로 재작성,
     T8~T12 를 정식 티켓(42~)으로 작성, README 재작성(§9-4)
 
-이후 — 엔진
+이후 — 엔진   ← 다음 세션은 여기부터 (2026-07-24 Stage 2-c 완료로 이동. Stage 3 는 CLI 골격 뒤)
   T8. 백테스트 엔진 — InternalPaperSimulator 를 과거 캔들로 확장 + 시간축 커서(look-ahead 차단)
+    · 착수 시 선행 (§6 검증기록 ①): PgPaperJournalStore composition 배선 — 죽은 배선을 피하려면
+      첫 실소비자(CLI 골격)와 함께 조립하는 것이 자연스럽다 → T8 슬라이스에 CLI 골격 포함,
+      이것이 곧 Stage 3 의 선행 조건(CLI 골격)도 채운다
+    · 거래세 cost 모델 설계 스케치 있음 (2026-07-24, §4 정정 ⑥ 후속):
+      .scratch/financial-terminal/design/t8-transaction-cost-model-v1.md —
+      slippage 와 분리·fill 이벤트에 비용 저장·(venue,종류,체결일) 세율 테이블·ETF 면제 분기·
+      money-conservation 유출 leg 계약. 구현은 top tier (tier-gate)
   T9. 성과 리포트 — F7 TWR/XIRR 재사용 + MDD·승률 + 체결 신뢰도 집계
   T10. 전략 정의 층 + CLI + MCP  (선행 티켓 초안 있음: .scratch/financial-terminal/issues/40·41)
     · 에이전트 인터페이스 설계 메모 (2026-07-22, HyeokjaeLee/koreainvestment-cli 전체 정독 결과):
