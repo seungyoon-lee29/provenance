@@ -1,6 +1,6 @@
 # T8 — 백테스트 엔진 (InternalPaperSimulator × 과거 캔들 + 시간축 커서)
 
-상태: **claimed** (2026-07-24). Owner: main(Fable 5). Claimed at: 2026-07-24. Last heartbeat: 2026-07-24.
+상태: **claimed** (2026-07-24). Owner: main(Fable 5). Claimed at: 2026-07-24. Last heartbeat: 2026-07-24 (S1 코어 green).
 
 정본 문맥: pivot 메모 §6 "이후 — 엔진" T8 + §3 결정 3(캔들 only)·6(엔진 하나, 정밀도 모드)·
 7(신뢰도 판정)·8(백테스트 먼저 — 결정론·CI 가능). 스케치: [design/t8-transaction-cost-model-v1.md](../design/t8-transaction-cost-model-v1.md).
@@ -60,3 +60,18 @@
 ## 진행
 
 - (착수 — 이 문서가 tier 선언 커밋)
+- **S1 코어 구현** (2026-07-24): `backtest/backtest-runner.ts` — 러너는 journal 직접 append 가
+  아니라 **실제 제품 seam(prepare→change)** 을 몬다. 근거: `order_submitted` 는 journal 검증에서
+  `command_only` — 잔고/예약 가드가 service decide 콜백에 있어, 직접 몰면 돈 로직 중복(F8 사후
+  리뷰가 잡은 드리프트 계열)이 된다. simulator·journal·service 무변경 (service 는 `presentState`
+  export 한 줄만). 신규 테스트 7 green: 결정론(바이트 동일)·접수봉 무체결+익봉 체결 literal
+  10,006(5bps+참여 slippage·adverse ceil)·DAY 익일 만료(일봉의 정직한 의미 — 종가 접수 DAY 는
+  익봉이 다음 날이라 체결 전 만료. 일봉 전략은 GTC 를 쓸 것)·look-ahead 구조 거부(RangeError)·
+  overspend refusal fact·cancel 경로·fail-closed 입력 4종.
+  - **설계 배움 (freshness 프레임)**: 백테스트 관측치 라벨을 "stale"(벽시계 직관)로 했다가
+    reservation bounding(`#reservationUnitPrice`: realtime|delayed only)에 거부됨 —
+    시뮬레이션 클록 틀에서 bar 는 zero-age 라 **realtime 이 정직한 라벨**. 출처는
+    `backtest:` evidence prefix + `mode:"approximate"` 가 명시.
+  - import 관례 실측: `@/` 는 타입 전용(런타임 소거), 값 import 는 상대경로 (vitest 에 alias 없음).
+  - 게이트: check 586(579+7) green · build green. blind/codex/Standards/mutation 은 S1~S2 묶음
+    resolve 전 (커밋 트레일러 pending).

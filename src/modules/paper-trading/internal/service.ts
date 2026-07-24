@@ -360,7 +360,7 @@ function validPayload(payload: PaperOrderPayload): boolean {
   return true;
 }
 
-function presentState(state: PaperAccountState, account: InternalPaperAccountReference): Readonly<{
+export function presentState(state: PaperAccountState, account: InternalPaperAccountReference): Readonly<{
   cash: readonly PaperCashRow[];
   positions: readonly PaperPositionRow[];
   orders: readonly PaperOrderView[];
