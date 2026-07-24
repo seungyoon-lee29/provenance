@@ -97,6 +97,12 @@ export type PaperAccountState = Readonly<{
   cash: ReadonlyMap<string, PaperCashState>;
   positions: ReadonlyMap<string, PaperPositionState>;
   orders: ReadonlyMap<string, PaperOrderState>;
+  /** Per-sell realized P&L (T8 S4b): net proceeds (after the stored transaction
+   * tax) minus the average-cost relief. A DERIVED fact of the fold — computed
+   * where the relief already is, appended in fill application order, no storage
+   * change (state only ever folds from entries). Win rate reads the sign; per
+   * SELL FILL (the natural unit of average-cost relief), not per round trip. */
+  realizedSales: readonly PaperMinorMoney[];
 }>;
 
 type MutationControl = Readonly<{ idempotencyKey: string; expectedRevision: string }>;
@@ -351,6 +357,14 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
         if (!Number.isInteger(tax) || tax < 0) return "invalid_fill";
         if (tax > grossMinorOf(fill.quantity, fill.price)) return "invalid_fill";
       }
+      // A fill in a different currency than the instrument's existing basis
+      // would mix units in the fold — relief and realized P&L subtract across
+      // currencies (USD cents off KRW proceeds), fabricating money. An
+      // instrument's currency never legitimately changes mid-position; fail
+      // closed for BOTH sides, here at the one boundary every position-moving
+      // entry crosses (codex S4b HIGH).
+      const held = state.positions.get(String(order.payload.instrument));
+      if (held !== undefined && held.costBasis.currency !== fill.price.currency) return "invalid_fill";
       const reservingNow = order.cancellation !== "confirmed";
       if (order.payload.side === "buy") {
         const cash = state.cash.get(fill.price.currency);
@@ -363,8 +377,8 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
         if (minorUnitsOf(fill.quantity * fill.price.amount, fill.price.currency) > availableMinor) return "insufficient_cash";
         return undefined;
       }
-      const position = state.positions.get(String(order.payload.instrument));
-      if (position === undefined) return "insufficient_position";
+      if (held === undefined) return "insufficient_position";
+      const position = held;
       const ownReservation = reservingNow && order.reservation.kind === "quantity"
         ? order.payload.quantity - order.filledQuantity
         : 0;
@@ -718,6 +732,7 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
   const cashBalance = new Map<string, number>();
   const positions = new Map<string, { quantity: number; costBasis: PaperMinorMoney }>();
   const orders = new Map<string, PaperOrderState>();
+  const realizedSales: PaperMinorMoney[] = [];
 
   for (const entry of entries) {
     switch (entry.kind) {
@@ -790,6 +805,9 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           const reliefMinor = position.quantity > 0
             ? Math.round((position.costBasis.minorUnits * entry.fill.quantity) / position.quantity)
             : 0;
+          // S4b: realized P&L of this sell — net proceeds minus the relief, at
+          // the one site that knows both. Derived, so no schema/migration.
+          realizedSales.push({ minorUnits: grossMinor - taxMinor - reliefMinor, currency });
           positions.set(instrumentKey, {
             quantity: position.quantity - entry.fill.quantity,
             costBasis: { minorUnits: position.costBasis.minorUnits - reliefMinor, currency: position.costBasis.currency },
@@ -876,5 +894,5 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
       costBasis: position.costBasis,
     });
   }
-  return { cash, positions: positionState, orders };
+  return { cash, positions: positionState, orders, realizedSales };
 }

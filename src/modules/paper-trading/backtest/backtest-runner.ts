@@ -402,7 +402,8 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     }
   }
 
-  const presented = presentState(service.journal.state(workspace, account), account);
+  const finalState = service.journal.state(workspace, account);
+  const presented = presentState(finalState, account);
   // Equity has one point per bar (series is non-empty), so [0] is the seed and
   // the last is the terminal value. A single-bar series gives a zero-width
   // window → TWR/XIRR come back `unavailable` (honest, not a fabricated 0%).
@@ -414,6 +415,9 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     finalValue: fromMinorUnits(equity[equity.length - 1] ?? 0, series.currency).amount,
     equity,
     participations,
+    // S4b: the fold's per-sell realized P&L (net of tax, average-cost relief) —
+    // single-currency by the seed/tax boundary refusals, so no filter needed.
+    realizedSellsMinor: finalState.realizedSales.map((sale) => sale.minorUnits),
   });
   return {
     status: "complete",

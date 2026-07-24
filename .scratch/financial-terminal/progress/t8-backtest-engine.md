@@ -311,3 +311,48 @@ participation)이 공격 대상.
 - **mutation ✅** 3건: ① close 검증 제거→`invalid_bar_price` 회귀 사망 ② XIRR 표현가능성 가드 제거→
   `unrepresentable` 회귀 사망 ③ final=0 TWR 분리 되돌림→총손실 −100% 회귀 사망. 각 복원 후 통과.
 - 회귀 +18(codex 8 + 러너 refusal 3 + blind 11 파일 등). **S4a 게이트 통과.** 잔여: S4b(승률).
+
+## S4b — 승률 (착수 2026-07-25, tier 선언)
+
+**Blast radius / tier**: `paper-trading/internal/journal.ts` **fold(money 코어)** + `backtest/`
+리포트·러너. fold의 state 형태가 파생 필드 하나 늘어난다(append-only, 저장 스키마 무변경 — state는
+엔트리에서 fold로만 유도). money 코어 접촉이므로 **tier top**, S4a와 동일 4축(blind·codex·Standards·
+mutation) resolve 전 완주.
+
+**설계 편차(선언 대비, 근거)**: S4a 선언은 "relief를 공유 헬퍼로 추출 → 리포트 재사용"이었다. 실측 결과
+러너 쪽 재사용에는 (a) fold 포지션 시퀀싱의 **미러 재구현**(드리프트 클래스 — one-engine 원칙 위반) +
+(b) `SimulationEvent`에 세금 필드 확장이 추가로 필요했다. 더 작은 근본 위치는 **fold가 reliefMinor를
+계산하는 바로 그 지점에서 매도별 실현손익을 state에 파생 적재**하는 것: 계산이 한 곳뿐이라 헬퍼 추출
+자체가 불요하고, 미러·이벤트 확장·드리프트 여지가 전부 사라지며, live paper(T9 연계 리포트)도 같은
+값을 공짜로 얻는다.
+
+**범위**:
+- fold: sell 분기에서 `realizedMinor = gross − tax − relief`(정수 minor)를 `state.realizedSales`에
+  체결 적용 순서로 append. 평균원가·세후 — 원장이 이미 아는 사실의 파생일 뿐 money mutation 무변경.
+- 리포트: `winRate` coverage-typed — 매도 0건은 `no_sells` unavailable(매수-보유 전략에 승률은 없다,
+  가짜 0% 금지). 승 = 실현손익 > 0 (본전 = 승 아님). 정의는 **매도 체결 단위**(평균원가 relief의 자연
+  단위), 왕복(round-trip) 단위 아님 — 리포트 타입 doc에 고지.
+- 러너: 종료 시 fold state의 `realizedSales`를 리포트에 전달(단일통화는 기존 경계 refusal이 보장).
+
+### S4b 게이트 종합 판정 (tier top, 2026-07-25)
+
+4축 완주. check 685 green · build green.
+
+- **Standards ✅** (sonnet): 하드 0, 판단 4. 수용 2 — ① `PaperRealizedSale`이 기존 `PaperMinorMoney`와
+  구조 동일(Primitive Obsession/중복) → 기존 타입 재사용으로 교체 ② fillConfidence(skip) vs
+  winRate(전체 무효화)의 비유한 샘플 정책 차이 → 화해 주석(신뢰도는 `fills` 카운트로 드롭이 보이는
+  진단치, 승률은 드롭이 숨는 헤드라인 비율). 기각 2 — 테스트 파일 간 `buyThenSell`/journal 헬퍼 중복은
+  Rule of Three 미달 + 테스트 파일 자기완결 관례 유지.
+- **blind ✅** (sonnet, 구현 미열람 — 계약·공표 정책만): `tests/t8-s4b-blind.test.ts` **15/15, 발견 0**.
+  1원칙 독립 유도(누적참여 슬리피지 체인·평균원가 relief 반올림·**세금-플립**: gross>relief지만
+  gross−tax<relief → 순손실·부분매도 2분할)가 엔진과 전건 일치. 첫 실행에서 기대값 무수정 통과.
+- **codex ✅** (다른 계열, companion app-server): 판정 **REJECT — HIGH 1**(MED/LOW 0). 프로브 재현 후 수정:
+  | 심각도 | 지적 | 재현 | 조치 |
+  |---|---|---|---|
+  | HIGH | 교차통화 fill이 실현손익 조작: USD 매수(basis 10,000센트) → KRW 150,000 매도 → `realizedSales +140,000 KRW`(센트를 원에서 감산) → covered 100% 승. **live paper 공유 fold의 구멍**(백테스트는 경계 refusal로 미노출), 구멍 자체는 S4b 이전부터 존재(S4b가 헤드라인 수치로 노출) | 재현(probe-s4b.mts) | `validateSystemBody` fill 경계에서 포지션 basis 통화 ≠ fill 통화 → `invalid_fill` **양방향** 거부(근본 위치: 포지션을 움직이는 유일한 진입점). 회귀 테스트 추가 |
+  - codex "clean" 확인: 반올림 드리프트·세금 netting·본전 처리·oversell relief 0·전량청산·기업행동·
+    state 소비자·JSON 직렬화 전 공격 클래스 무결. 단 codex 샌드박스 EPERM으로 테스트 미실행(타입체크만)
+    — 회귀·전체 스위트는 이쪽에서 실행해 보전.
+- **mutation ✅** 3건: ① 교차통화 가드 제거 → 회귀 사망(1) ② 세금 netting 제거 → fold 정밀·blind
+  세금-플립 사망(2) ③ 승 판정 `>`→`>=` → 본전 회귀 사망(4). 각 복원 후 33 전건 통과.
+- 회귀 +21(blind 15 파일 + S4b 슬라이스 6). **S4b 게이트 통과.** T8 S4 완결(승률 포함 5지표).
