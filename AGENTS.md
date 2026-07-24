@@ -3,6 +3,9 @@
 아래 상세 문서를 읽지 않았어도 이 하한은 항상 적용된다.
 
 - frontier 티켓은 claim(`Status`/`Owner`/heartbeat) 후 작업하고, 커밋 체크포인트마다 heartbeat를 갱신한다.
+  - **예외 (Stage형 저장소 재편 작업, 2026-07-24 명문화)**: 번호 티켓 대신 `.scratch/<feature>/progress/<stage>.md`로 갈음할 수 있다.
+    단 그 문서는 **착수 전 첫 절에 Blast radius/검증 tier 선언**(collaboration.md의 tier 표 기준)을 반드시 포함한다 —
+    T2-b에서 이 선언이 생략된 채 money 경로가 진행된 것이 이 규칙의 계기다. tier-gate(commit-msg 훅)가 커밋 레벨에서 이중으로 잡는다.
 - dirty worktree는 다른 세션의 작업으로 간주해 보존한다. 한 파일의 owner는 언제나 한 명.
 - 커밋은 파일 allowlist로 stage한다. pre-commit 훅(whitespace·secret 스캔·typecheck·test)을 `--no-verify`로 우회하지 않는다.
 - `.env.local`·`.secrets`·credential 원문은 읽기·출력·stage 금지.
