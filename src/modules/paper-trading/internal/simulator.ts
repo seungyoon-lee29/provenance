@@ -2,8 +2,9 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
 import { currencyMinorUnitScale, minorUnitsOf } from "./contracts";
-import type { PaperFill, PaperMarketObservation, PaperMoney } from "./contracts";
+import type { PaperFill, PaperFillCosts, PaperMarketObservation, PaperMoney } from "./contracts";
 import type { PaperAccountState, PaperJournal, PaperOrderState } from "./journal";
+import { KRX_TAX_POLICY_VERSION, sellTransactionTaxMinor } from "./krx-transaction-tax";
 
 /**
  * F8 simulation-v1 Simulated Fill engine (spec §9, AT-07).
@@ -171,15 +172,28 @@ export class InternalPaperSimulator {
       const identity = brandReference<string, "PaperFillIdentity">(
         `fill:${String(order.order)}:${observation.evidenceReference}`,
       );
+      // S3 cost: Korean transaction tax on the SALE proceeds (sell only, and
+      // only when the source declared a taxClass). Computed on the same
+      // aggregate-rounded gross the fold uses, so the stored value matches.
+      const currencyMinor = observation.price.currency;
+      const costs: PaperFillCosts | undefined = (() => {
+        if (side !== "sell" || observation.taxClass === undefined) return undefined;
+        const grossMinor = minorUnitsOf(allocation * price, currencyMinor);
+        const taxMinor = sellTransactionTaxMinor(grossMinor, observation.taxClass, observation.eventTime);
+        return taxMinor > 0
+          ? { sellTransactionTaxMinor: taxMinor, taxClass: observation.taxClass, taxPolicyVersion: KRX_TAX_POLICY_VERSION }
+          : undefined;
+      })();
       const fill: PaperFill = {
         identity,
         order: order.order,
         quantity: allocation,
-        price: { amount: price, currency: observation.price.currency },
+        price: { amount: price, currency: currencyMinor },
         eventTime: observation.eventTime,
         receivedAt: observation.receivedAt,
         evidenceReference: observation.evidenceReference,
         policyVersion: this.deps.policy.policyVersion,
+        ...(costs !== undefined ? { costs } : {}),
       };
       const applied = await journal.appendSystem(workspace, account, String(identity), { kind: "fill_applied", fill });
       if (applied.status !== "applied") continue;

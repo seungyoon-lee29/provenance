@@ -47,6 +47,8 @@ const seriesSchema = z.object({
   currency: z.string().min(1),
   // Disclosed so the runner can refuse total_return (adjusted-as-raw execution).
   priceBasis: z.enum(["raw", "split_adjusted", "total_return"]).optional(),
+  // Korean transaction-tax class (S3); omitted ⇒ untaxed simulation.
+  taxClass: z.enum(["equity", "etf_etn"]).optional(),
   bars: z.array(
     z.object({
       periodStart: z.string().min(1),

@@ -3,6 +3,8 @@ import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
 import { currencyMinorUnitScale } from "../internal/contracts";
+import { KRX_TAX_POLICY_VERSION } from "../internal/krx-transaction-tax";
+import type { KrxTaxClass } from "../internal/krx-transaction-tax";
 import type {
   PaperCashRow,
   PaperMarketObservation,
@@ -69,6 +71,9 @@ export type BacktestSeries = Readonly<{
    * rejection. The chosen basis is disclosed in the report (data honesty).
    */
   priceBasis?: "raw" | "split_adjusted" | "total_return";
+  /** Korean transaction-tax class for this instrument (T8 S3). Undefined ⇒ an
+   * untaxed simulation (disclosed as costModel "none"). Tax hits sells only. */
+  taxClass?: KrxTaxClass;
   bars: readonly BacktestBar[];
 }>;
 
@@ -118,6 +123,9 @@ export type BacktestReport = Readonly<{
   mode: "approximate";
   /** Disclosed input price basis (data honesty — adjusted closes are not raw). */
   priceBasis: "raw" | "split_adjusted";
+  /** Disclosed transaction-cost model: the tax policy version, or "none" when
+   * the series declared no taxClass (untaxed simulation). */
+  costModel: string;
   policyVersion: string;
   runId: string;
   barCount: number;
@@ -179,6 +187,7 @@ function observationOf(series: BacktestSeries, bar: BacktestBar): PaperMarketObs
     // stays explicit via the backtest evidence prefix and report mode.
     freshness: "realtime",
     evidenceReference: `backtest:${series.instrument}:${bar.periodStart}`,
+    ...(series.taxClass !== undefined ? { taxClass: series.taxClass } : {}),
   };
 }
 
@@ -328,6 +337,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     status: "complete",
     mode: "approximate",
     priceBasis,
+    costModel: series.taxClass !== undefined ? KRX_TAX_POLICY_VERSION : "none",
     policyVersion: SIMULATION_V1.policyVersion,
     runId: config.runId,
     barCount: series.bars.length,

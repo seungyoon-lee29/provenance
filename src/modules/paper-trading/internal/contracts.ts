@@ -1,5 +1,7 @@
 import type { Brand, InternalPaperAccountReference, PaperOrderReference } from "@/shared/contracts/brands";
 
+import type { KrxTaxClass } from "./krx-transaction-tax";
+
 /**
  * F8 Internal Paper Trading contracts (spec §9, UF-07, AT-07; ADR A04).
  *
@@ -71,6 +73,16 @@ export type SubmissionState = "draft" | "pending_submission" | "acknowledged" | 
 export type ExecutionState = "not_started" | "open" | "partially_filled" | "filled" | "expired";
 export type CancellationState = "none" | "requested" | "confirmed" | "rejected";
 
+/** Realized costs charged against a fill (T8 S3). Present only on taxed sells;
+ * absent means zero cost. Buys carry no costs (Korean transaction tax is
+ * sell-only). Stored append-only so a rate-table change never rewrites history. */
+export type PaperFillCosts = Readonly<{
+  /** Sell transaction tax in integer minor units, floored. */
+  sellTransactionTaxMinor: number;
+  taxClass: KrxTaxClass;
+  taxPolicyVersion: string;
+}>;
+
 /** A simulated fill applied to an order (spec §9 simulation-v1). */
 export type PaperFill = Readonly<{
   identity: PaperFillIdentity;
@@ -83,6 +95,7 @@ export type PaperFill = Readonly<{
   receivedAt: string;
   evidenceReference: string;
   policyVersion: string;
+  costs?: PaperFillCosts;
 }>;
 
 export type PaperOrderView = Readonly<{
@@ -175,6 +188,9 @@ export type PaperMarketObservation = Readonly<{
   dataClock: string;
   freshness: "realtime" | "delayed" | "stale" | "hard_expired";
   evidenceReference: string;
+  /** Korean transaction-tax class the source declares for this instrument
+   * (T8 S3). Undefined ⇒ untaxed simulation. Tax applies to sells only. */
+  taxClass?: KrxTaxClass;
 }>;
 
 export interface PaperObservationPort {

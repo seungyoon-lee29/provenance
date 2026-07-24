@@ -6,6 +6,7 @@ import { brandReference } from "../../src/shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../src/shared/contracts/brands";
 import type { PaperFill, PaperOrderPayload } from "../../src/modules/paper-trading/internal/contracts";
 import { minorUnitsOf, toMinorUnits } from "../../src/modules/paper-trading/internal/contracts";
+import { KRX_TAX_POLICY_VERSION, sellTransactionTaxMinor } from "../../src/modules/paper-trading/internal/krx-transaction-tax";
 import { MemoryPaperJournalStore, PaperJournal } from "../../src/modules/paper-trading/internal/journal";
 import type { PaperJournalEntry, PaperJournalStore } from "../../src/modules/paper-trading/internal/journal";
 import { PgPaperJournalStore } from "../../src/modules/paper-trading/internal/journal-store.pg";
@@ -17,7 +18,7 @@ import { PgPaperJournalStore } from "../../src/modules/paper-trading/internal/jo
  * stated against its fold, over arbitrary interleavings of submits, fills,
  * cancels, expiries and dividends driven through the real append paths:
  *
- *   1. cash identity      — balance == seed − Σ buy gross + Σ sell gross + Σ dividends
+ *   1. cash identity      — balance == seed − Σ buy gross + Σ (sell gross − sell tax) + Σ dividends
  *   2. position identity  — quantity == Σ buy fills − Σ sell fills
  *   3. derived reservation — reserved == Σ remaining × unitPrice over reserving orders
  *   4. fail-closed        — balance, reserved and quantity never go negative
@@ -130,15 +131,23 @@ async function drive(ops: readonly Op[], store: PaperJournalStore): Promise<Driv
       if (target === undefined) continue;
       const price = target.payload.limitPrice!.amount;
       const dedupeKey = `fill:${String(order)}:${sequence}`;
+      const eventTime = now();
+      // S3: sells carry the real transaction tax so the fold's tax-outflow leg
+      // is exercised across every interleaving. The oracle reads the STORED tax
+      // (below), so this proves the fold deducts exactly what was recorded —
+      // once — without ever breaking the balance identity or going negative.
+      const grossMinor = minorUnitsOf(op.quantity * price, "USD");
+      const taxMinor = target.payload.side === "sell" ? sellTransactionTaxMinor(grossMinor, "equity", eventTime) : 0;
       const fill: PaperFill = {
         identity: brandReference<string, "PaperFillIdentity">(dedupeKey),
         order,
         quantity: op.quantity,
         price: { amount: price, currency: "USD" },
-        eventTime: now(),
-        receivedAt: now(),
+        eventTime,
+        receivedAt: eventTime,
         evidenceReference: `evidence:${sequence}`,
         policyVersion: "simulation-v1",
+        ...(taxMinor > 0 ? { costs: { sellTransactionTaxMinor: taxMinor, taxClass: "equity" as const, taxPolicyVersion: KRX_TAX_POLICY_VERSION } } : {}),
       };
       const body = { kind: "fill_applied" as const, fill };
       if ((await journal.appendSystem(WS, acct, dedupeKey, body)).status === "applied") systemEvents.push({ dedupeKey, body });
@@ -196,7 +205,10 @@ function oracle(entries: readonly PaperJournalEntry[]) {
           cash -= gross;
           quantity += entry.fill.quantity;
         } else {
-          cash += gross;
+          // Sell proceeds net the stored transaction tax (S3 outflow leg) —
+          // read the recorded value, do not recompute, so this stays a pure
+          // conservation check on the fold.
+          cash += gross - (entry.fill.costs?.sellTransactionTaxMinor ?? 0);
           quantity -= entry.fill.quantity;
         }
         order.remaining -= entry.fill.quantity;

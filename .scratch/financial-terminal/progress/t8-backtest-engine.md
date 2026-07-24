@@ -148,6 +148,36 @@
   거부·total_return 거부·SEC-05 무노출·volume 스키마. blind 사후수리 1건(계약 `pool:unknown` 오기
   → `Pool` 캐스트, 단언 무변경). 게이트: check 612 · build green · lint 경고 1(기존 stryker).
 
+## S3 — 거래세 cost 모델 (착수 2026-07-25, tier top 선언)
+
+**Blast radius / tier**: `paper-trading/{simulator,journal,contracts}` + fold = **최상위**(money 산술).
+스케치 [design/t8-transaction-cost-model-v1.md](../design/t8-transaction-cost-model-v1.md) D1~D5 이행.
+**요구 게이트**(resolve 전): blind + codex(다른 계열) + Standards + mutation. 트레일러 `Tier: top`.
+
+**스케치 대비 설계 정련 2건**:
+1. **등급 단순화** `kospi|kosdaq|etf_etn` → **`equity|etf_etn`**. 실측: KOSPI(거래세+농특세)와
+   KOSDAQ(거래세)는 **매년 합산 매도세율이 동일**(23→20→18→15→20bp) — 컴포넌트만 다르고 합계는 같다.
+   스케치 표 마지막 열이 이미 이를 보여줌. 리포트는 합산만 쓰므로(D3 주석) 두 등급으로 족하다.
+2. **D5 변형 — 저널은 구조 불변식만, 정확 세율은 시뮬+property**. 스케치는 "저널 재계산 일치"였으나
+   generic 저널에 KRX 세금 의미를 import 하면 모듈 경계가 샌다. 저널은 **cost ≥0·정수·≤gross·매도전용**
+   (money conservation 봉쇄 = 세금이 돈을 창조·과다파괴 못 함)만 강제, 정확 bp 는 시뮬레이터 + 독립
+   오라클 property. 기존 패턴(저널=구조 가드, property=산술 정확) 정합.
+
+**세율 테이블**(KST 체결연도, floor): ≤2022=23bp·2023=20·2024=18·2025=15·2026~=20 / etf_etn=0.
+세금은 관측치가 `taxClass` 선언 시 매도에만(데이터 소스 책임). 미선언=무세(기존 USD F8 불변).
+DB: 무마이그레이션(costs 는 entry JSONB 내부). 리포트에 `costModel` 고지(정직성).
+
+**구현 완료** (2026-07-25, 게이트 전):
+- 신규 `krx-transaction-tax.ts`(순수, self-check demo) — `sellTransactionTaxMinor(gross,class,dateIso)`.
+- `PaperFill.costs?`(sellTransactionTaxMinor·taxClass·taxPolicyVersion) + `PaperMarketObservation.taxClass?`.
+- simulator: 매도 fill 에 세금 계산·저장(gross 는 fold 와 동일 aggregate round). journal fold: 매도
+  credit `+= gross − tax`. journal 검증: costs 있으면 매도전용·정수·≥0·≤gross(위조 봉쇄, 정확 bp 는 아님).
+- runner: `BacktestSeries.taxClass` → 관측치, 리포트 `costModel`. CLI 스키마 taxClass optional.
+- **money-conservation property 확장**: oracle 이 stored tax 를 매도 outflow leg 로 차감 — 모든
+  interleaving(취소·부분·재시작·replay)에 세금 보존 커버. property 는 fold==stored 를, 정확 bp 는 시뮬/모듈 테스트.
+- probe 실측: 2026 20bp(99,940 매도→tax 199), ETF 면제, 미선언 무영향. 기존 F8/property green(무세 불변).
+- 게이트: check 617 · build green. blind/codex/Standards/mutation 은 이 커밋 뒤.
+
 ## 게이트 종합 판정 (S1~S2, tier top)
 
 4개 축 전부 실행: **Standards ✅**(하드 위반 0) · **blind ✅**(13/13, 발견 0 — 독립 유도 일치) ·

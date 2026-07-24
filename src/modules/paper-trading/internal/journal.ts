@@ -340,6 +340,17 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
           return "order_not_fillable";
         }
       }
+      // S3 cost invariants — structural money guard only (the exact tax rate is
+      // the simulator's; an independent oracle verifies it). The journal stays
+      // domain-generic: it refuses a fill whose stored cost could FABRICATE or
+      // over-destroy cash — a negative/non-integer tax, a tax exceeding the
+      // sale proceeds, or a tax on a buy (Korean tax is sell-only).
+      if (fill.costs !== undefined) {
+        const tax = fill.costs.sellTransactionTaxMinor;
+        if (order.payload.side !== "sell") return "invalid_fill";
+        if (!Number.isInteger(tax) || tax < 0) return "invalid_fill";
+        if (tax > minorUnitsOf(fill.quantity * fill.price.amount, fill.price.currency)) return "invalid_fill";
+      }
       const reservingNow = order.cancellation !== "confirmed";
       if (order.payload.side === "buy") {
         const cash = state.cash.get(fill.price.currency);
@@ -752,7 +763,12 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
             costBasis: { minorUnits: position.costBasis.minorUnits + grossMinor, currency: position.costBasis.currency },
           });
         } else {
-          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + grossMinor);
+          // Sale credits proceeds minus the stored transaction tax (S3). The tax
+          // is a real outflow (to the state), so cash is NOT conserved across a
+          // taxed sale — the money-conservation property accounts for it as a
+          // separate leg. Absent costs ⇒ zero (untaxed / buy-side / exempt).
+          const taxMinor = entry.fill.costs?.sellTransactionTaxMinor ?? 0;
+          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + grossMinor - taxMinor);
           // Average-cost basis relief (simulation-v1), rounded to the minor unit.
           // The final share of a position relieves `minorUnits · 1 / 1` = the whole
           // remaining basis, so a full liquidation returns cost basis to exactly 0.
