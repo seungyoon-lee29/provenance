@@ -231,6 +231,14 @@ Stage 2 — ✅ 실행 완료 (2026-07-23~24, 커밋 79a3abb..4ad59d0) + ✅ 독
   ④ 규율 이탈 (경미): Stage 2 파괴적 삭제 전 태그 없음(pre-stage1 패턴 단절) · map 갱신이 커밋별이 아닌
     T그룹별 배치 · 이 §6 완료 마커 갱신 누락(지금 수정됨)
 
+Stage 2-c — 원장 강화 (2026-07-24 사용자 결정. T8 착수 전 필수)   ← 다음 세션은 여기부터
+  착수 문서(tier 선언 포함): .scratch/financial-terminal/progress/stage2c-ledger-hardening.md
+  · PaperMoney minor-unit 정수 전환 (float fold 제거 — §6 검증기록 ② 참조)
+  · money-conservation property 를 PG 러너로도 (composition 배선은 여전히 T8)
+  · 0006 마이그레이션: JSONB↔컬럼 CHECK + receipt/system_key FK 방어층
+  · 동시 동일-키 재시도 실 PG 판정
+  · **tier-gate 체계의 첫 실전** — blind + codex 반박 + Standards 를 착수 전 선언하고 진행
+
 Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에 실행)
   · identity(1,446) · provider-connections(606) · auth/signin 라우트 · terminal-view(2,747)
   · credential-vault(234)는 남긴다 — CLI 브로커 키 암호화 저장에 필요 (§3-16)
