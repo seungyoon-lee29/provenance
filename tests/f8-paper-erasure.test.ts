@@ -5,8 +5,6 @@ import type { WorkspaceViewerContext, ViewerContext } from "@/shared/contracts/v
 import { PaperTradingService } from "../src/modules/paper-trading/internal/service";
 import { InternalPaperSimulator, SIMULATION_V1 } from "../src/modules/paper-trading/internal/simulator";
 import { PaperTradingErasure } from "../src/modules/paper-trading/internal/paper-erasure";
-import { ActualJournal } from "../src/modules/actual-portfolio/baseline/journal";
-import { ActualPortfolioService } from "../src/modules/actual-portfolio/baseline/portfolio-load";
 import type {
   PaperInstrumentReference,
   PaperMarketObservation,
@@ -151,60 +149,8 @@ describe("SEC-09 administrative erasure", () => {
   });
 });
 
-describe("behavioral Actual↔Paper mutual invariance (AT-07, ADR A04)", () => {
-  it("Paper submit/fill/cancel leaves every Actual public field byte-identical, and vice versa", async () => {
-    const { service, simulator } = harness();
-    const actualJournal = new ActualJournal(() => NOW);
-    const actual = new ActualPortfolioService({
-      journal: actualJournal,
-      port: {
-        quote: () => ({ status: "unavailable" as const }),
-        fxRate: () => ({ status: "unavailable" as const }),
-      } as never,
-      identity: { currentAuthorizationEpoch: () => "epoch:1" },
-      policyVersion: "actual-v1",
-      now: () => NOW,
-      updateId: () => "actual-update",
-    });
-    const actualAccount = brandReference<string, "ActualAccountReference">("actual-account:iso");
-    const record = actual.change(
-      {
-        kind: "record_opening_position",
-        account: actualAccount as never,
-        position: {
-          instrument: brandReference<string, "ActualInstrumentReference">("instr:AAPL") as never,
-          signedQuantity: 7,
-          currency: "USD",
-          asOf: "2026-07-01",
-          source: brandReference<string, "ActualSourceReference">("source:manual") as never,
-        },
-      },
-      { idempotencyKey: "iso-open", expectedRevision: "0" },
-      viewer(),
-    );
-    expect(record.status).toBe("applied");
-    const actualBefore = JSON.stringify(await actual.open({ sections: ["positions"], requestRevision: "iso" }, viewer()).initial);
-
-    // Paper activity of every kind.
-    const { order, account } = await submit(service, limitBuy(10, 110), "iso-paper");
-    await simulator.ingest(WORKSPACE, account, observation());
-    await service.change({ kind: "cancel", account, order }, { idempotencyKey: "iso-cxl", expectedRevision: "3" }, viewer());
-
-    const actualAfter = JSON.stringify(await actual.open({ sections: ["positions"], requestRevision: "iso" }, viewer()).initial);
-    expect(actualAfter).toBe(actualBefore);
-
-    // And the other direction: Actual changes leave the Paper shell identical.
-    const paperBefore = JSON.stringify(await service.open({ requestRevision: "iso-2" }, viewer()).initial);
-    actual.change(
-      {
-        kind: "record_activity",
-        account: actualAccount as never,
-        activity: { activityKind: "cash_deposit", signedCashAmount: { amount: 500, currency: "USD" }, occurredAt: NOW, source: brandReference<string, "ActualSourceReference">("source:manual") as never },
-      },
-      { idempotencyKey: "iso-deposit", expectedRevision: "1" },
-      viewer(),
-    );
-    const paperAfter = JSON.stringify(await service.open({ requestRevision: "iso-2" }, viewer()).initial);
-    expect(paperAfter).toBe(paperBefore);
-  });
-});
+// The behavioral Actual↔Paper mutual-invariance test (AT-07, ADR A04) was
+// removed with Stage 2 T4: actual-portfolio no longer has a stateful ledger
+// (baseline/journal deleted) to be invariant against — only pure calculation
+// functions remain. The structural isolation (no shared imports) is still
+// pinned by f6-actual-paper-isolation and actual-paper-isolation.property.

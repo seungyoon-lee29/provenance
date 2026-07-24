@@ -18,13 +18,12 @@ import {
   computeScopeAwareReturn,
 } from "../src/modules/actual-portfolio/calculation/transfers";
 import { evaluateRebalancing } from "../src/modules/actual-portfolio/calculation/rebalancing";
-import { AccountingJournal } from "../src/modules/actual-portfolio/journal/accounting-journal";
 import { brandReference } from "../src/shared/contracts/brands";
 import type {
   ActualAccountReference,
   ActualInstrumentReference,
   ActualSourceReference,
-} from "../src/modules/actual-portfolio/baseline/contracts";
+} from "../src/modules/actual-portfolio/calculation/actual-refs";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -723,127 +722,7 @@ describe("evaluateRebalancing", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 8. Accounting Journal
-// ---------------------------------------------------------------------------
-
-describe("AccountingJournal", () => {
-  const now = () => "2026-07-01T00:00:00Z";
-  const ws = "workspace:test";
-  const accountRef = acct("actual-account:test");
-
-  const dividendEvent = {
-    kind: "dividend_entitlement" as const,
-    account: accountRef,
-    instrument: instr("instr:A"),
-    exDate: "2026-06-15",
-    amountPerShare: { amount: 1.5, currency: "USD" },
-    source: src("source:x"),
-  };
-
-  it("append ⇒ status applied with sequence and eventReference", () => {
-    const journal = new AccountingJournal(now);
-    const result = journal.append(ws, dividendEvent, { idempotencyKey: "idem-1" });
-
-    expect(result.status).toBe("applied");
-    if (result.status === "applied") {
-      expect(typeof result.sequence).toBe("number");
-      expect(typeof result.eventReference).toBe("string");
-    }
-  });
-
-  it("same idempotency key + same payload ⇒ status applied and exactly-once (same ref)", () => {
-    const journal = new AccountingJournal(now);
-    const r1 = journal.append(ws, dividendEvent, { idempotencyKey: "idem-2" });
-    const r2 = journal.append(ws, dividendEvent, { idempotencyKey: "idem-2" });
-
-    expect(r1.status).toBe("applied");
-    expect(r2.status).toBe("applied");
-    if (r1.status === "applied" && r2.status === "applied") {
-      expect(r2.eventReference).toBe(r1.eventReference);
-      expect(r2.sequence).toBe(r1.sequence);
-    }
-  });
-
-  it("same idempotency key + different payload ⇒ status conflict", () => {
-    const journal = new AccountingJournal(now);
-    journal.append(ws, dividendEvent, { idempotencyKey: "idem-3" });
-
-    const altEvent = {
-      ...dividendEvent,
-      amountPerShare: { amount: 2.0, currency: "USD" }, // different payload
-    };
-    const result = journal.append(ws, altEvent, { idempotencyKey: "idem-3" });
-
-    expect(result.status).toBe("conflict");
-  });
-
-  it("supersede unknown target ⇒ refused unknown_event", () => {
-    const journal = new AccountingJournal(now);
-    const fakeRef = brandReference<string, "AccountingEventReference">("evt:nonexistent");
-
-    const result = journal.supersede(ws, fakeRef, dividendEvent, {
-      idempotencyKey: "sup-1",
-    });
-
-    expect(result.status).toBe("refused");
-    if (result.status === "refused") {
-      expect(result.reason).toBe("unknown_event");
-    }
-  });
-
-  it("supersede already-corrected target ⇒ refused already_corrected", () => {
-    const journal = new AccountingJournal(now);
-    const r1 = journal.append(ws, dividendEvent, { idempotencyKey: "orig-1" });
-    if (r1.status !== "applied") throw new Error("setup failed");
-
-    const eventRef = brandReference<string, "AccountingEventReference">(r1.eventReference);
-
-    // First supersede
-    journal.supersede(ws, eventRef, dividendEvent, { idempotencyKey: "sup-2a" });
-    // Second supersede of same target
-    const r2 = journal.supersede(ws, eventRef, dividendEvent, { idempotencyKey: "sup-2b" });
-
-    expect(r2.status).toBe("refused");
-    if (r2.status === "refused") {
-      expect(r2.reason).toBe("already_corrected");
-    }
-  });
-
-  it("eraseSubject then append ⇒ suppressed", () => {
-    const journal = new AccountingJournal(now);
-    // Append something to advance sequence past fence=0
-    const r0 = journal.append(ws, dividendEvent, { idempotencyKey: "pre-erase" });
-    if (r0.status !== "applied") throw new Error("setup failed");
-
-    journal.eraseSubject(ws, r0.sequence);
-
-    const result = journal.append(ws, dividendEvent, { idempotencyKey: "post-erase" });
-    expect(result.status).toBe("suppressed");
-  });
-
-  it("effectiveEvents resolves superseded entries — original survives in entries()", () => {
-    const journal = new AccountingJournal(now);
-    const r1 = journal.append(ws, dividendEvent, { idempotencyKey: "eff-1" });
-    if (r1.status !== "applied") throw new Error("setup failed");
-
-    const eventRef = brandReference<string, "AccountingEventReference">(r1.eventReference);
-    const altEvent = {
-      ...dividendEvent,
-      amountPerShare: { amount: 3.0, currency: "USD" },
-    };
-    journal.supersede(ws, eventRef, altEvent, { idempotencyKey: "eff-sup-1" });
-
-    const allEntries = journal.entries(ws, accountRef);
-    const effective = journal.effectiveEvents(ws, accountRef);
-
-    // Original still in entries
-    expect(allEntries.length).toBeGreaterThanOrEqual(2);
-    // Effective resolves to the replacement
-    const effAmounts = effective.map(
-      (e: any) => e?.amountPerShare?.amount ?? e?.event?.amountPerShare?.amount
-    );
-    expect(effAmounts).toContain(3.0);
-    expect(effAmounts).not.toContain(1.5);
-  });
-});
+// Section 8 "Accounting Journal" was removed with Stage 2 T4: the journal/ layer
+// is deleted. The surviving calculation functions (performance, personal-return,
+// reporting-pnl, corporate-actions, transfers, rebalancing) keep their acceptance
+// coverage in sections 1–7 above.

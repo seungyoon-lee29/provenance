@@ -1,4 +1,4 @@
-import type { ActualInstrumentReference } from "../baseline/contracts";
+import type { ActualInstrumentReference } from "./actual-refs";
 
 export type CorporateAction =
   | Readonly<{ actionReference: string; kind: "split"; instrument: ActualInstrumentReference; effectiveAt: string; ratio: number }>

@@ -59,8 +59,6 @@ export default defineConfig({
       GITHUB_IDENTITY_ENABLED: "false",
       GITHUB_IDENTITY_CLIENT_ID: "",
       GITHUB_IDENTITY_CLIENT_SECRET: "",
-      DELIVERY_KEYRING_PROVIDER: "disabled",
-      EMAIL_DELIVERY_PROVIDER: "disabled",
     },
   },
 });

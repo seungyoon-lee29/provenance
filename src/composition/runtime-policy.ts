@@ -40,15 +40,6 @@ const baseRuntimeSchema = z.object({
   GITHUB_IDENTITY_CLIENT_ID: z.string().optional(),
   GITHUB_IDENTITY_CLIENT_SECRET: z.string().optional(),
   GITHUB_IDENTITY_CALLBACK_PATH: z.string().default("/auth/callback/github"),
-  DELIVERY_KEYRING_PROVIDER: z.enum(["disabled", "local", "secret_manager"]).default("disabled"),
-  DELIVERY_LOCAL_KEYRING_FILE: z.string().default(".secrets/delivery-keyring.json"),
-  DELIVERY_KEYRING_REF: z.string().optional(),
-  EMAIL_DELIVERY_PROVIDER: z.enum(["disabled", "mailpit", "resend"]).default("disabled"),
-  EMAIL_FROM_ADDRESS: z.string().optional(),
-  EMAIL_FROM_NAME: z.string().optional(),
-  EMAIL_REPLY_TO_ADDRESS: z.string().optional(),
-  MAILPIT_SMTP_HOST: z.string().optional(),
-  MAILPIT_SMTP_PORT: z.string().optional(),
 });
 
 export type AppEnvironment = z.infer<typeof environmentSchema>;
@@ -70,9 +61,6 @@ export type RuntimeConfig = Readonly<{
   credentialLocalKeyringFile: string;
   syntheticProviderEnabled: boolean;
   identityProviders: readonly ("google" | "github")[];
-  deliveryKeyringProvider: "disabled" | "local" | "secret_manager";
-  deliveryLocalKeyringFile: string;
-  emailDeliveryProvider: "disabled" | "mailpit" | "resend";
 }>;
 
 function isConfigured(value: string | undefined): boolean {
@@ -178,37 +166,6 @@ function assertIdentityPolicy(parsed: z.infer<typeof baseRuntimeSchema>): void {
   }
 }
 
-function assertDeliveryPolicy(parsed: z.infer<typeof baseRuntimeSchema>): void {
-  if ((parsed.APP_ENVIRONMENT === "staging" || parsed.APP_ENVIRONMENT === "production") && parsed.DELIVERY_KEYRING_PROVIDER === "local") {
-    throw new Error("local delivery keyring is limited to development and test");
-  }
-  if (parsed.APP_ENVIRONMENT === "production" && !["disabled", "secret_manager"].includes(parsed.DELIVERY_KEYRING_PROVIDER)) {
-    throw new Error("production delivery keyring must be disabled or secret_manager");
-  }
-  const hasDeliveryReference = isConfigured(parsed.DELIVERY_KEYRING_REF);
-  if ((parsed.DELIVERY_KEYRING_PROVIDER === "secret_manager") !== hasDeliveryReference) {
-    throw new Error("delivery secret_manager and keyring reference must be configured together");
-  }
-  const hasFromConfiguration = isConfigured(parsed.EMAIL_FROM_ADDRESS) || isConfigured(parsed.EMAIL_FROM_NAME) || isConfigured(parsed.EMAIL_REPLY_TO_ADDRESS);
-  if (parsed.EMAIL_DELIVERY_PROVIDER === "disabled" && hasFromConfiguration) {
-    throw new Error("disabled email delivery rejects partial sender configuration");
-  }
-  if (parsed.EMAIL_DELIVERY_PROVIDER !== "disabled" && parsed.DELIVERY_KEYRING_PROVIDER === "disabled") {
-    throw new Error("email delivery requires an enabled delivery keyring");
-  }
-  if (parsed.EMAIL_DELIVERY_PROVIDER === "mailpit") {
-    const port = Number.parseInt(parsed.MAILPIT_SMTP_PORT ?? "", 10);
-    if ((parsed.APP_ENVIRONMENT !== "development" && parsed.APP_ENVIRONMENT !== "test") || !isConfigured(parsed.MAILPIT_SMTP_HOST) || !Number.isInteger(port) || port < 1 || port > 65_535) {
-      throw new Error("Mailpit requires complete development or test configuration");
-    }
-  }
-  if (parsed.EMAIL_DELIVERY_PROVIDER === "resend") {
-    if (!isConfigured(parsed.EMAIL_FROM_ADDRESS) || !isConfigured(parsed.EMAIL_FROM_NAME) || !z.string().email().safeParse(parsed.EMAIL_FROM_ADDRESS).success) {
-      throw new Error("Resend requires a valid sender address and name");
-    }
-  }
-}
-
 export function loadRuntimeConfig(environment: Readonly<Record<string, string | undefined>>): RuntimeConfig {
   const parsed = baseRuntimeSchema.parse(environment);
   if (isConfigured(parsed.PUBLIC_MARKET_TREASURY_ENABLED)) {
@@ -221,7 +178,6 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
   assertKisBase(parsed);
   assertVaultPolicy(parsed);
   assertIdentityPolicy(parsed);
-  assertDeliveryPolicy(parsed);
   if (parsed.APP_ENVIRONMENT === "production" && parsed.ENABLE_SYNTHETIC_PROVIDER) {
     throw new Error("production composition rejects synthetic providers");
   }
@@ -247,8 +203,5 @@ export function loadRuntimeConfig(environment: Readonly<Record<string, string | 
       ...(parsed.GOOGLE_IDENTITY_ENABLED ? ["google" as const] : []),
       ...(parsed.GITHUB_IDENTITY_ENABLED ? ["github" as const] : []),
     ],
-    deliveryKeyringProvider: parsed.DELIVERY_KEYRING_PROVIDER,
-    deliveryLocalKeyringFile: parsed.DELIVERY_LOCAL_KEYRING_FILE,
-    emailDeliveryProvider: parsed.EMAIL_DELIVERY_PROVIDER,
   };
 }

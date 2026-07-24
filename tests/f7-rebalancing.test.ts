@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { evaluateRebalancing } from "../src/modules/actual-portfolio/calculation/rebalancing";
-import type { PositionsSection } from "../src/modules/actual-portfolio/baseline/valuation";
+import type { PositionsSection } from "../src/modules/actual-portfolio/calculation/actual-refs";
 
 /**
  * F7 B5 — Rebalancing Proposal / Exposure Guardrail (spec §8 / AT-06).

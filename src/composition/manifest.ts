@@ -8,7 +8,6 @@ export type CompositionManifest = Readonly<{
   liveSubmitRoutes: readonly string[];
   syntheticProviders: readonly string[];
   identityProviders: readonly ("google" | "github")[];
-  emailDeliveryProviders: readonly ("mailpit" | "resend")[];
 }>;
 
 export function buildCompositionManifest(config: RuntimeConfig): CompositionManifest {
@@ -20,7 +19,6 @@ export function buildCompositionManifest(config: RuntimeConfig): CompositionMani
     liveSubmitRoutes: [],
     syntheticProviders: config.syntheticProviderEnabled ? ["scripted-test-provider"] : [],
     identityProviders: config.identityProviders,
-    emailDeliveryProviders: config.emailDeliveryProvider === "disabled" ? [] : [config.emailDeliveryProvider],
   };
 }
 

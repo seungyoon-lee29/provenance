@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import { brandReference } from "../src/shared/contracts/brands";
-import { AccountingJournal } from "../src/modules/actual-portfolio/journal/accounting-journal";
-import type { AccountingEvent } from "../src/modules/actual-portfolio/journal/contracts";
-import type { Erasable } from "../src/platform/persistence/fenced-store";
 import {
   computeScopeAwareReturn,
   classifyTransfer,
@@ -13,15 +10,14 @@ import {
   splitQuantityFactor,
 } from "../src/modules/actual-portfolio/calculation/corporate-actions";
 import type { CorporateAction } from "../src/modules/actual-portfolio/calculation/corporate-actions";
-import type { ActualAccountReference } from "../src/modules/actual-portfolio/baseline/contracts";
+import type { ActualAccountReference } from "../src/modules/actual-portfolio/calculation/actual-refs";
 
 /**
- * F7 B4 — accounting journal + transfer/scope + corporate action oracles
- * (spec §8 / AT-06). Expected values are hand-worked literals.
+ * F7 B4 — transfer/scope + corporate action oracles (spec §8 / AT-06). The
+ * AccountingJournal cases moved out with Stage 2 T4 (the journal/ layer was
+ * deleted); these hand-worked literals keep the surviving pure calculations
+ * covered — the success branches f7-acceptance's rejection-path cases don't reach.
  */
-
-const NOW = "2026-07-17T06:00:00.000Z";
-const WS = "workspace:w-f7";
 
 function account(name: string): ActualAccountReference {
   return brandReference<string, "ActualAccountReference">(`actual-account:${name}`) as ActualAccountReference;
@@ -34,117 +30,6 @@ function instrument(symbol: string) {
 function source(name: string) {
   return brandReference<string, "ActualSourceReference">(`source:${name}`);
 }
-
-function dividend(accountName: string, amount: number): AccountingEvent {
-  return {
-    kind: "dividend_entitlement",
-    account: account(accountName),
-    instrument: instrument("SSNLF"),
-    exDate: "2026-06-30",
-    amountPerShare: { amount, currency: "KRW" },
-    source: source("dart:div-2026H1"),
-  };
-}
-
-describe("AccountingJournal — exactly-once, all-old/all-new (AT-06)", () => {
-  it("replaying the same append returns the ORIGINAL receipt and applies once", () => {
-    const journal = new AccountingJournal(() => NOW);
-    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    const replay = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    expect(first.status).toBe("applied");
-    expect(replay).toEqual(first);
-    expect(journal.effectiveEvents(WS, account("a1"))).toHaveLength(1);
-  });
-
-  it("the same key with a different payload is a side-effect-free conflict", () => {
-    const journal = new AccountingJournal(() => NOW);
-    journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    const outcome = journal.append(WS, dividend("a1", 999), { idempotencyKey: "div-1" });
-    expect(outcome).toEqual({ status: "conflict" });
-    const effective = journal.effectiveEvents(WS, account("a1"));
-    expect(effective).toHaveLength(1);
-    expect(effective[0]?.kind === "dividend_entitlement" && effective[0].amountPerShare.amount).toBe(361);
-  });
-
-  it("supersede appends a correction: effective view shows the replacement, the original row survives", () => {
-    const journal = new AccountingJournal(() => NOW);
-    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    if (first.status !== "applied") throw new Error("setup failed");
-    const corrected = journal.supersede(WS, first.eventReference, dividend("a1", 400), { idempotencyKey: "fix-1" });
-    expect(corrected.status).toBe("applied");
-    const effective = journal.effectiveEvents(WS, account("a1"));
-    expect(effective).toHaveLength(1);
-    expect(effective[0]?.kind === "dividend_entitlement" && effective[0].amountPerShare.amount).toBe(400);
-    expect(journal.entries(WS, account("a1"))).toHaveLength(2);
-    // Correction chains stay linear.
-    expect(journal.supersede(WS, first.eventReference, dividend("a1", 500), { idempotencyKey: "fix-2" }))
-      .toEqual({ status: "refused", reason: "already_corrected" });
-  });
-
-  it("replaying a CORRECTION returns its original receipt, not already_corrected", () => {
-    // Regression: the correction replay path must look up the same
-    // account-scoped receipt key the commit wrote.
-    const journal = new AccountingJournal(() => NOW);
-    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    if (first.status !== "applied") throw new Error("setup failed");
-    const corrected = journal.supersede(WS, first.eventReference, dividend("a1", 400), { idempotencyKey: "fix-1" });
-    const replay = journal.supersede(WS, first.eventReference, dividend("a1", 400), { idempotencyKey: "fix-1" });
-    expect(replay).toEqual(corrected);
-    expect(journal.effectiveEvents(WS, account("a1"))).toHaveLength(1);
-  });
-
-  it("a replacement naming a DIFFERENT account cannot be injected via supersede", () => {
-    const journal = new AccountingJournal(() => NOW);
-    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    if (first.status !== "applied") throw new Error("setup failed");
-    expect(journal.supersede(WS, first.eventReference, dividend("a2", 400), { idempotencyKey: "fix-x" }))
-      .toEqual({ status: "refused", reason: "unknown_event" });
-    expect(journal.effectiveEvents(WS, account("a2"))).toHaveLength(0);
-  });
-
-  it("reverse drops the event from the effective view; unknown targets are refused", () => {
-    const journal = new AccountingJournal(() => NOW);
-    const first = journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    if (first.status !== "applied") throw new Error("setup failed");
-    expect(journal.reverse(WS, first.eventReference, "duplicate entitlement", { idempotencyKey: "rev-1" }).status).toBe("applied");
-    expect(journal.effectiveEvents(WS, account("a1"))).toHaveLength(0);
-    const unknown = brandReference<string, "AccountingEventReference">("accounting:none");
-    expect(journal.reverse(WS, unknown, "x", { idempotencyKey: "rev-2" }))
-      .toEqual({ status: "refused", reason: "unknown_event" });
-  });
-
-  it("superseding a CORRECTION is refused — chain parity must not resurrect the original (panel finding)", () => {
-    // A → sup B → sup C used to report BOTH A(10) and C(30): dividend income
-    // double-counted. Superseding now targets base events only.
-    const journal = new AccountingJournal(() => NOW);
-    const first = journal.append(WS, dividend("a1", 10), { idempotencyKey: "div-1" });
-    if (first.status !== "applied") throw new Error("setup failed");
-    const correction = journal.supersede(WS, first.eventReference, dividend("a1", 20), { idempotencyKey: "fix-1" });
-    if (correction.status !== "applied") throw new Error("setup failed");
-    expect(journal.supersede(WS, correction.eventReference, dividend("a1", 30), { idempotencyKey: "fix-2" }))
-      .toEqual({ status: "refused", reason: "already_corrected" });
-    const effective = journal.effectiveEvents(WS, account("a1"));
-    expect(effective).toHaveLength(1);
-    expect(effective[0]?.kind === "dividend_entitlement" && effective[0].amountPerShare.amount).toBe(20);
-    // A reversal may still target a correction and restores the original alone.
-    const rollback = journal.reverse(WS, correction.eventReference, "wrong correction", { idempotencyKey: "rev-1" });
-    expect(rollback.status).toBe("applied");
-    const restored = journal.effectiveEvents(WS, account("a1"));
-    expect(restored).toHaveLength(1);
-    expect(restored[0]?.kind === "dividend_entitlement" && restored[0].amountPerShare.amount).toBe(10);
-  });
-
-  it("erasure is fence-first: events shredded, late appends suppressed (SEC-09)", () => {
-    const journal = new AccountingJournal(() => NOW);
-    journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-1" });
-    const erasable: Erasable = journal;
-    const shredded = erasable.eraseSubject(WS, 1);
-    expect(shredded).toBeGreaterThan(0);
-    expect(journal.effectiveEvents(WS, account("a1"))).toHaveLength(0);
-    expect(journal.append(WS, dividend("a1", 361), { idempotencyKey: "div-2" }))
-      .toEqual({ status: "suppressed" });
-  });
-});
 
 describe("Portfolio Transfer — scope 내부는 외부 flow가 아니다 (spec §8)", () => {
   const scope = new Set([String(account("a1")), String(account("a2"))]);

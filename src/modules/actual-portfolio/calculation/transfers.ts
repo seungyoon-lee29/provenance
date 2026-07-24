@@ -1,5 +1,4 @@
-import type { ActualAccountReference } from "../baseline/contracts";
-import type { PortfolioTransfer } from "../journal/contracts";
+import type { ActualAccountReference, PortfolioTransfer } from "./actual-refs";
 import type { ExternalFlow, PerformanceInput, PerformanceWindow, PortfolioReturnResult } from "./contracts";
 import { computePortfolioReturn } from "./performance";
 

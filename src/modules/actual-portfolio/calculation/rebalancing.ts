@@ -1,4 +1,4 @@
-import type { PositionsSection } from "../baseline/valuation";
+import type { PositionsSection } from "./actual-refs";
 import type { ReportingMoney } from "./contracts";
 
 export type TargetAllocation = Readonly<{

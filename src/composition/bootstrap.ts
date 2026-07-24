@@ -1,6 +1,5 @@
 import { assertSafeComposition, buildCompositionManifest } from "./manifest";
 import { loadLocalCredentialKeyring } from "../platform/credential-vault";
-import { loadLocalDeliveryKeyring } from "./local-delivery-keyring";
 import { loadRuntimeConfig } from "./runtime-policy";
 
 export function bootstrapComposition(environment: Readonly<Record<string, string | undefined>> = process.env) {
@@ -10,8 +9,5 @@ export function bootstrapComposition(environment: Readonly<Record<string, string
   const credentialKeyring = config.credentialVaultProvider === "local"
     ? loadLocalCredentialKeyring(config.credentialLocalKeyringFile)
     : undefined;
-  const deliveryKeyring = config.deliveryKeyringProvider === "local" && config.emailDeliveryProvider !== "disabled"
-    ? loadLocalDeliveryKeyring(config.deliveryLocalKeyringFile, config.emailDeliveryProvider)
-    : undefined;
-  return { config, manifest, credentialKeyring, deliveryKeyring } as const;
+  return { config, manifest, credentialKeyring } as const;
 }

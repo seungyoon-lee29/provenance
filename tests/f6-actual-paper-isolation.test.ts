@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { brandReference } from "../src/shared/contracts/brands";
-import type { ActualAccountReference, ActualSourceReference } from "../src/modules/actual-portfolio/baseline/contracts";
+import type { ActualAccountReference, ActualSourceReference } from "../src/modules/actual-portfolio/calculation/actual-refs";
 import type { AccountReference, SourceReference } from "@/shared/contracts/brands";
 
 /**

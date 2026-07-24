@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { assertSafeComposition, bootstrapComposition, buildCompositionManifest, loadRuntimeConfig } from "../src/composition";
+import { assertSafeComposition, buildCompositionManifest, loadRuntimeConfig } from "../src/composition";
 
 function environment(overrides: Readonly<Record<string, string | undefined>> = {}): Readonly<Record<string, string | undefined>> {
   return {
@@ -20,7 +20,7 @@ describe("runtime policy", () => {
     assertSafeComposition(config, manifest);
     expect(manifest).toEqual({
       paidAdapters: [], paidRoutes: [], paidSchedules: [], liveSubmitCapabilities: [], liveSubmitRoutes: [], syntheticProviders: [],
-      identityProviders: [], emailDeliveryProviders: [],
+      identityProviders: [],
     });
   });
 
@@ -140,49 +140,6 @@ describe("runtime policy", () => {
       GOOGLE_IDENTITY_CALLBACK_PATH: "/auth/callback/google",
     }));
     expect(config.identityProviders).toEqual(["google"]);
-  });
-
-  it("fails closed on partial or environment-incompatible delivery configuration", () => {
-    expect(() => loadRuntimeConfig(environment({ EMAIL_FROM_ADDRESS: "sender@example.com" }))).toThrow("partial sender");
-    expect(() => loadRuntimeConfig(environment({ EMAIL_DELIVERY_PROVIDER: "mailpit" }))).toThrow("enabled delivery keyring");
-    expect(() => loadRuntimeConfig(environment({
-      DELIVERY_KEYRING_PROVIDER: "local",
-      EMAIL_DELIVERY_PROVIDER: "mailpit",
-      MAILPIT_SMTP_HOST: "mailpit",
-      MAILPIT_SMTP_PORT: "1025",
-    }))).not.toThrow();
-    expect(() => loadRuntimeConfig(environment({
-      APP_ENVIRONMENT: "production",
-      APP_PUBLIC_ORIGIN: "https://terminal.example.com",
-      DELIVERY_KEYRING_PROVIDER: "local",
-      EMAIL_DELIVERY_PROVIDER: "mailpit",
-      MAILPIT_SMTP_HOST: "mailpit",
-      MAILPIT_SMTP_PORT: "1025",
-    }))).toThrow();
-    expect(() => loadRuntimeConfig(environment({
-      DELIVERY_KEYRING_PROVIDER: "local",
-      EMAIL_DELIVERY_PROVIDER: "resend",
-      EMAIL_FROM_ADDRESS: "not-an-email",
-      EMAIL_FROM_NAME: "Terminal",
-    }))).toThrow("Resend requires");
-  });
-
-  it("does not register Resend when its local delivery keyring is unavailable", () => {
-    expect(() => bootstrapComposition(environment({
-      DELIVERY_KEYRING_PROVIDER: "local",
-      DELIVERY_LOCAL_KEYRING_FILE: ".secrets/missing-delivery-keyring.json",
-      EMAIL_DELIVERY_PROVIDER: "resend",
-      EMAIL_FROM_ADDRESS: "sender@example.com",
-      EMAIL_FROM_NAME: "Terminal",
-    }))).toThrow();
-  });
-
-  it("does not read a local delivery keyring when external email is disabled", () => {
-    expect(() => bootstrapComposition(environment({
-      DELIVERY_KEYRING_PROVIDER: "local",
-      DELIVERY_LOCAL_KEYRING_FILE: ".secrets/missing-delivery-keyring.json",
-      EMAIL_DELIVERY_PROVIDER: "disabled",
-    }))).not.toThrow();
   });
 
   it("requires managed vault references to match their provider", () => {
