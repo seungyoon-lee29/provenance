@@ -119,6 +119,7 @@
 | High | 여러 계층 교차·상태/동시성 | 위 + **blind test-authorship**: 코드를 짠 에이전트는 그 acceptance 테스트를 쓰지 않는다. 별도 에이전트가 구현을 안 본 채 Interface Contract/spec만 받고 반증 테스트를 짠다 |
 | 최상위 | `auth`·credential·order·migration·money 산술 경로를 건드리는 diff는 판단 없이 자동 승격 | contain으로 blast radius를 낮춘 뒤 위 방법으로 충분하다. 낮출 수 없으면 **사람 게이트(`ready-for-human`)**를 우선하고(다른-계열 모델은 예산·최고위험일 때 보조), 사람·다른-계열 어느 것도 없으면 통과시키지 말고 티켓을 block 한다 |
 
+- **Tier 게이트(기계 강제, 2026-07-24)**: 최상위 승격은 선언이 아니라 커밋 훅이 강제한다. `.husky/commit-msg` → `scripts/gates/tier-gate.sh`가 guarded 경로(`paper-trading/`·`db/migrations/`·`platform/persistence/`·`platform/credential-vault/`·`actual-portfolio/calculation/`·`modules/identity/`)를 건드리는 커밋에 `Tier: top (adversarial=…, blind=…, standards=…)` 트레일러를 요구한다. `pending`/`waived:사유`도 통과한다 — 게이트의 목적은 진위 검증이 아니라 **의무를 조용히 지나치지 못하게 하는 것**이다(진위는 리뷰·메인 판단 몫). 도입 계기: T2-b(돈 원장 영속화)가 blind·Standards 축 없이 resolve된 것을 2026-07-24 독립 검증이 발견 — "일회성 검수를 상시 oracle로"라는 이 문서의 원칙이 프로토콜 자신에게 적용되지 않았던 사례. 스치는 커밋의 의도적 우회는 `SKIP_TIER_GATE=1`.
 - **반증 산출물 강제**: 리뷰어는 "괜찮아 보임" 대신 반례(실패 테스트/repro)를 제출하거나 "X·Y·Z 각도로 시도했으나 못 만듦"을 명시한다.
 - **spec 대조**: 티켓 contract가 아니라 source-of-truth `.scratch/<feature>/spec.md`/PRD에 직접 대조해 "옳은 걸 만들었나"를 확인한다. 불변식 목록·flag 기본값·ADR은 매 diff가 아니라 확정 시 1회 사람이 검증한다.
 - **믿기 전 측정**: property/테스트가 실제로 결함을 잡는지 mutation testing으로 사전 점검하고, 게이트를 빠져나간 결함은 "어느 tier가 왜 놓쳤나"를 기록해 tier 배정을 보정한다.

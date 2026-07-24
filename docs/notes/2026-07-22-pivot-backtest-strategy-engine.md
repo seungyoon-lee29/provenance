@@ -226,6 +226,8 @@ Stage 2 — ✅ 실행 완료 (2026-07-23~24, 커밋 79a3abb..4ad59d0) + ✅ 독
   ③ **프로토콜 간극** — 자체 규정상 money 경로 최상위 tier 요구사항 중 codex 반박 패널(1차, 10건 수정)은
     이행됐으나 **blind test-authorship 0건 · Standards 축 리뷰 미시행**(2026-07-24 검증에서 사후 집행 —
     LOW 1건, Executor 별칭, 즉시 수정됨). 다음 money 경로 작업은 착수 전 tier 선언부터 할 것
+    → **기계 강제 도입 (2026-07-24, 사용자 결정)**: `.husky/commit-msg` + `scripts/gates/tier-gate.sh` —
+      guarded 경로 커밋에 `Tier: top (...)` 트레일러 필수. 상세는 collaboration.md "Tier 게이트" 절
   ④ 규율 이탈 (경미): Stage 2 파괴적 삭제 전 태그 없음(pre-stage1 패턴 단절) · map 갱신이 커밋별이 아닌
     T그룹별 배치 · 이 §6 완료 마커 갱신 누락(지금 수정됨)
 

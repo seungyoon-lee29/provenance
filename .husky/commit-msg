@@ -1,0 +1,2 @@
+# money/auth/migration 경로 tier 승격 기계 강제 — 선언 없는 최상위 tier 커밋 차단 (2026-07-24)
+sh scripts/gates/tier-gate.sh "$1" || exit 1
