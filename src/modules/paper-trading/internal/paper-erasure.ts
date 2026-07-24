@@ -1,4 +1,5 @@
 import type { Erasable } from "../../../platform/persistence/fenced-store";
+import type { Executor } from "../../../platform/persistence/pg";
 
 import type { PaperJournal } from "./journal";
 
@@ -42,7 +43,7 @@ export class PaperTradingErasure {
    * would restore the live account while the money ledger stayed deleted
    * (codex T2-b finding).
    */
-  async erase(context: ErasureContext, tx?: unknown): Promise<void> {
+  async erase(context: ErasureContext, tx?: Executor): Promise<void> {
     const workspace = context.workspaceReference;
     const prior = this.#receipts.get(workspace);
     if (prior !== undefined && prior.fence >= context.fence) return;

@@ -185,7 +185,7 @@ Stage 1 — ✅ 실행 완료 (2026-07-22, 4-에이전트 조사로 확장. 태�
     1. 교차-provider 격리 테스트 (runtime-policy) — provider 가 KIS 뿐이라 성립 불가. 두 번째 브로커 도입 시 재수립
     2. money-conservation property — 대상(BrokerPaperBook)이 F9 와 함께 삭제. **T2-b 에서 영속 원장 위에 재수립 (필수)**
 
-Stage 2 — 영속성 + 모듈 정리   ← 다음 세션은 여기부터
+Stage 2 — ✅ 실행 완료 (2026-07-23~24, 커밋 79a3abb..4ad59d0) + ✅ 독립 검증 완료 (2026-07-24, 아래 검증 기록)
   T1. FencedKeyedStore → platform/ 으로 이동 (인터페이스 유지, 이동만)
   T2-a. compose.yaml 에 postgres named volume 추가 (인프라 영속성)  ← T2-b보다 먼저
   T2-b. Postgres 구현체 + paper 원장/outbox 테이블 마이그레이션      ← 최우선, 타협 불가
@@ -202,6 +202,32 @@ Stage 2 — 영속성 + 모듈 정리   ← 다음 세션은 여기부터
       타입을 calculation 쪽으로 이전해 살릴지, 3개를 함께 삭제할지 이때 결정
     · provider-connections/read-transport 도 함께 삭제 (유일 소비자 = broker-sync/sync-worker)
     · tests/f10-*.test.ts 도 함께 삭제
+
+  ── Stage 2 검증 기록 (2026-07-24, 4-트랙 독립 검증: 실행대조·프로토콜·codex 적대 2차·Standards 축) ──
+  판정: **코드·게이트 기준 완료** (체크리스트 1:1 대조, check/build green, 테스트 569/47skip 실측 일치).
+  단 아래를 인지하고 후속 처리할 것:
+  ① **PG 원장 배선 유예 (가장 중요)** — PgPaperJournalStore 는 존재·계약테스트 통과지만 composition 에
+    조립되지 않음(프로덕션 소비자 0건 근거로 codex 가 배선을 범위 밖 판정). **T8 착수 시 배선이 선행 조건.**
+    "영속화 완료"를 배포 기준으로 액면 그대로 읽지 말 것
+  ② **codex 적대 2차 발견 triage** (메인 판정, 코드 실독 후):
+    - BLOCKER 0. crash-window 원자성·SELECT-then-INSERT race 는 codex 가 반증(클린)
+    - [T8 선행-필수] money-conservation property 가 memory store 전용 — PG round-trip 미커버.
+      배선(①)과 함께 property 를 PG 러너로도 돌릴 것
+    - [T8 전 결정] PaperMoney.amount 가 JS number (시뮬레이터 내부는 BigInt tick 정수지만 원장 fold·
+      JSONB 왕복은 float) — KRW(scale 1)는 정수라 안전, USD(cents) 누적 fold 에서 드리프트 가능.
+      minor-unit 정수 표현으로 전환할지 T8 설계 때 결정 (independent oracle 도 같은 float 라 property 가 못 잡음)
+    - [보강 과제, MEDIUM] DB 방어층: entry JSONB 의 account/revision 과 관계형 컬럼의 일치를 CHECK/생성컬럼으로
+      강제 안 함 + receipt/system_key → entry FK 없음. 현 코드 경로로는 불일치 생성 불가(원자 tx·컬럼을 entry 에서
+      파생)하나 외부 쓰기·restore 경로에 무방비. 0006 마이그레이션 감
+    - [재현 필요] 동시 동일-키 재시도 시 loser 가 원 outcome 대신 conflict 를 받는다는 주장 — store 레벨은
+      receipt-first ON CONFLICT 로 duplicate 처리가 보이나 journal 캐시 레이어 race 는 미판정.
+      실 PG 동시성 테스트로 판정할 것
+    - [LOW, 문서화만] at_epoch Number() 캐스트는 2^53 초과 시 붕괴 — epoch 가 clock 유래(~1.7e12)라 비현실적
+  ③ **프로토콜 간극** — 자체 규정상 money 경로 최상위 tier 요구사항 중 codex 반박 패널(1차, 10건 수정)은
+    이행됐으나 **blind test-authorship 0건 · Standards 축 리뷰 미시행**(2026-07-24 검증에서 사후 집행 —
+    LOW 1건, Executor 별칭, 즉시 수정됨). 다음 money 경로 작업은 착수 전 tier 선언부터 할 것
+  ④ 규율 이탈 (경미): Stage 2 파괴적 삭제 전 태그 없음(pre-stage1 패턴 단절) · map 갱신이 커밋별이 아닌
+    T그룹별 배치 · 이 §6 완료 마커 갱신 누락(지금 수정됨)
 
 Stage 3 — A 컷: 웹·인증 제거 (Stage 2 완료 + CLI 골격이 선 뒤에 실행)
   · identity(1,446) · provider-connections(606) · auth/signin 라우트 · terminal-view(2,747)

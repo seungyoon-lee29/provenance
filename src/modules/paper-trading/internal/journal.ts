@@ -2,6 +2,7 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { InternalPaperAccountReference, PaperOrderReference } from "../../../shared/contracts/brands";
 
 import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
+import type { Executor } from "../../../platform/persistence/pg";
 import { currencyMinorUnitScale } from "./contracts";
 import type {
   PaperCommandOutcome,
@@ -150,7 +151,7 @@ export interface PaperJournalStore {
    * transaction. `tx` joins an enclosing erase transaction (identity SEC-09
    * coordinator) so the identity fence and the paper shred commit or roll back
    * together; stores without transactions ignore it. */
-  eraseWorkspace(workspace: string, fence: number, tx?: unknown): Promise<PaperEraseOutcome>;
+  eraseWorkspace(workspace: string, fence: number, tx?: Executor): Promise<PaperEraseOutcome>;
   /** Full hydration snapshot for journal boot. ponytail: loads everything; page per-workspace when scale demands. */
   load(): Promise<PaperJournalSnapshot>;
 }
@@ -613,7 +614,7 @@ export class PaperJournal {
   /** SEC-09: shred entries, receipts, revisions, ownership and dedupe keys behind the fence — durable first.
    * A stale (not-above-watermark) fence is a no-op in store AND cache. `tx` joins the identity erase
    * transaction so the deletion fence and this shred commit or roll back together. */
-  eraseWorkspace(workspace: string, fence: number, tx?: unknown): Promise<number> {
+  eraseWorkspace(workspace: string, fence: number, tx?: Executor): Promise<number> {
     return this.#serialize(async () => {
       await this.#ensureFresh();
       const erased = await this.#store.eraseWorkspace(workspace, fence, tx);
