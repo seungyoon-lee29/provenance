@@ -1,0 +1,9 @@
+{
+  "note": "SYNTHETIC TEST DATA — fractional bar volume, must be rejected at the schema boundary",
+  "instrument": "instr:BT",
+  "venue": "KRX",
+  "currency": "KRW",
+  "bars": [
+    { "periodStart": "2026-01-05T06:30:00.000Z", "close": 10000, "volume": 100000.5, "complete": true }
+  ]
+}

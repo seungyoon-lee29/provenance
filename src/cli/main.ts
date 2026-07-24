@@ -4,18 +4,26 @@ import { paperAccountCommand, paperOpenCommand, runBacktestCommand } from "./com
 import type { CliOutcome } from "./commands";
 
 /**
- * T8 S2 — CLI entry. Run via `npm run cli -- <command> ...` (tsx); packaged
- * bin/npm-publish shape is the Stage 3 release re-definition. This file owns
- * the streams: stdout carries EXACTLY the command output (single-line
- * envelope with --json, pretty result without), everything else — usage,
- * human-facing errors — goes to stderr. Exit codes: 0 success · 1
- * general/usage/refused · 2 API/infra · 3 auth (reserved).
+ * T8 S2 — CLI entry. Run via `node --import tsx src/cli/main.ts <command> ...`,
+ * or `npm run cli -- <command> ...`; the packaged bin is the Stage 3 release
+ * re-definition. This file owns the streams: stdout carries EXACTLY the command
+ * output (single-line envelope with --json, pretty result without), everything
+ * else — usage, human-facing errors — goes to stderr. Exit codes: 0 success ·
+ * 1 general/usage/refused · 2 API/infra · 3 auth (RESERVED for T11 credentials,
+ * currently unreachable).
+ *
+ * --json stdout purity caveat: THIS file emits only the envelope, but two
+ * things outside it can still write to stdout — `npm run` prints a script
+ * banner (use `npm run --silent`, or invoke node/tsx directly), and an
+ * imported strategy module's top-level `console.log` prints before the run.
+ * For a clean `--json | jq` pipe, invoke node/tsx directly and keep strategy
+ * modules side-effect-free (enforced by convention until the packaged bin).
  */
 
 const USAGE = `provenance — 한국 시장 백테스트 + 모의투자 엔진 (T8 S2 골격)
 
-  backtest run --series <file.json> --strategy <file.ts> --seed <amount> [--json]
-  paper open --seed <amount> --currency <KRW|USD> [--json]
+  backtest run --series <file.json> --strategy <file.ts> --cash <amount> [--json]
+  paper open --cash <amount> --currency <KRW|USD> [--json]
   paper account [--json]
 `;
 
@@ -30,7 +38,7 @@ async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome;
       json: { type: "boolean", default: false },
       series: { type: "string" },
       strategy: { type: "string" },
-      seed: { type: "string" },
+      cash: { type: "string" },
       currency: { type: "string" },
     },
     allowPositionals: true,
@@ -40,16 +48,16 @@ async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome;
   const [group, sub] = positionals;
 
   if (group === "backtest" && sub === "run") {
-    if (values.series === undefined || values.strategy === undefined || values.seed === undefined) {
-      return { outcome: usageFailure("backtest run requires --series, --strategy and --seed"), json };
+    if (values.series === undefined || values.strategy === undefined || values.cash === undefined) {
+      return { outcome: usageFailure("backtest run requires --series, --strategy and --cash"), json };
     }
-    return { outcome: await runBacktestCommand({ series: values.series, strategy: values.strategy, seed: Number(values.seed) }), json };
+    return { outcome: await runBacktestCommand({ series: values.series, strategy: values.strategy, seed: Number(values.cash) }), json };
   }
   if (group === "paper" && sub === "open") {
-    if (values.seed === undefined || values.currency === undefined) {
-      return { outcome: usageFailure("paper open requires --seed and --currency"), json };
+    if (values.cash === undefined || values.currency === undefined) {
+      return { outcome: usageFailure("paper open requires --cash and --currency"), json };
     }
-    return { outcome: await paperOpenCommand({ seed: Number(values.seed), currency: values.currency }), json };
+    return { outcome: await paperOpenCommand({ seed: Number(values.cash), currency: values.currency }), json };
   }
   if (group === "paper" && sub === "account") {
     return { outcome: await paperAccountCommand(), json };

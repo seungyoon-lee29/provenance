@@ -50,9 +50,11 @@
 
 ## S1 수용 오라클
 
-- 같은 캔들 배열 + 같은 전략 → **바이트 동일 결과** (결정론: wall clock·랜덤 0).
-- 전략은 커서 시점까지의 bar 만 받는다 — 미래 bar 접근이 컴파일/런타임에서 불가능한 형태
-  (배열 슬라이스 전달이 아니라 구조적으로).
+- 같은 캔들 배열 + 같은 **순수** 전략 → **바이트 동일 결과** (엔진 결정론: wall clock·랜덤 0.
+  ← codex 정직화: 상태 있는 전략은 config 의 일부라 결정론 주장은 순수 전략 전제).
+- 전략은 커서 시점까지의 bar 만 `view.bar()` 로 받는다 — 미래 인덱스는 RangeError.
+  (← codex 정직화: **인터페이스 차단**이지 절대 보장 아님. 같은 스코프 클로저의 series 캡처는
+  user-code 백테스터의 본질적 한계. CLI 는 전략이 별도 모듈이라 series 참조 부재 = 실 표면 containment.)
 - 체결은 접수 bar 에서 일어나지 않는다(bar N 접수 → bar N+1 이후 체결) — 기존 simulator
   불변식 테스트로 확인.
 - `complete: false` bar(미완 봉)는 체결 평가에서 제외 — 미완 봉 체결은 look-ahead 의 변종.
@@ -94,3 +96,61 @@
     (`paper-cli.pg.test.ts`: genesis-once·재-open 원본 보존·fresh 조립 재읽기) — compose 환경에서 실행.
   - **S2 잔여**: pg 레인 실행은 compose 기동 환경 필요(로컬 스모크는 인증 실패 — 컴포즈 미기동
     상태였음). packaged bin/npm-publish 형태는 Stage 3 릴리스 재정의 때.
+
+## 게이트 (tier top — S1~S2 묶음, 2026-07-24 진행 중)
+
+- **Standards 축 1패스 완료** (code-review 스킬, 메인 tier 에이전트). 하드 위반 0. triage:
+  | 지적 | 판정 | 조치 |
+  |---|---|---|
+  | 티켓 "ChartBar 재사용·새 타입 금지" vs `BacktestBar` 발명 | **정정 기록** | ← 정정: 모듈 경계상 paper-trading 이 자기 관측 타입을 소유하는 저장소 패턴(PaperMarketObservation 선례)을 따랐고, 구조적 부분집합이라 ChartBar 값이 그대로 대입 가능 — "재사용"의 실체는 구조 호환. 발명이 아니라 경계 준수가 우선했다 |
+  | `--seed` 가 RNG seed 로 오독 가능 (에이전트 CLI 에서 실질 리스크) | **수정 확정** | `--cash` 로 개명 (blind 완료 후 — blind 계약이 seed 서명 기준) |
+  | catch-all 이 모든 예외를 "database unavailable"/api 로 라벨 — 서비스 버그가 인프라로 위장 | **수정 확정** | `code` 속성 있는 infra 오류만 api/2, 나머지는 crash/1 (원인 분리 관례 정합) |
+  | runner 의 refusal push 3중 중복 | **수정 확정** | 소형 헬퍼 추출 |
+  | policy 블록+updateId 중복 (assembly vs runner) | **기각 (기록)** | 결정론 체제가 다르다 — runner 는 커서 클록·결정론 id, assembly 는 벽시계·운영 id. 공용화는 백테스트 결정론을 운영 조립에 결합시킴. 셋째 사본 등장 시 재고 |
+  | viewer 구성 중복 (runner/cli 첫 src 사본 2개) | **기각 (기록)** | SEC-01(Viewer 는 Identity 만 생성)의 의도적 예외 2곳 — 공용 synthetic-viewer 헬퍼는 web 경로 오용 표면을 만든다. 국소·명시 유지가 안전 |
+  | CLI 가 service.journal 을 직접 조작 (Feature Envy) | **T11 이월** | read-only 서비스 표면은 실시간 세션 read 요구와 함께 설계 (우회 사유는 코드에 문서화됨) |
+- **blind test-authorship 완료** (sonnet, 구현 미열람 — Interface Contract+SPEC 만 제공):
+  `tests/t8-blind.test.ts` **13/13 pass, 발견 0**. 독립 유도 literal 이 구현과 일치 — buy 10,006·
+  sell 체결가·볼륨 캡 25→10/10/5 분할·돈 보존 항등식(seed−final=Σbuy−Σsell, reserved 0)·
+  look-ahead RangeError·DAY 익일 만료·CLI envelope/exit 3축. 무결성 노트: 금지 파일 열람 0,
+  pivot 설계 문서로 simulation-v1 상수 교차확인(허용 — корroborate only), 일회용 프로브 스크립트로
+  단언이 실값을 변별하는지 확인(vacuous pass 방지). 테스트는 표준 회귀로 보존.
+  - 사후 수리 (기록): 메인이 blind 에게 준 계약이 `deps.pool` 을 `unknown` 으로 오기 → blind 스텁이
+    `Pool` 캐스트 없이 작성돼 tsc 실패. **타입 캐스트만 수리**(런타임 동일·단언 무변경), 13/13 재확인.
+- **codex 적대 반박 완료** (다른 계열, 백그라운드 태스크). 1차는 OpenAI 콘텐츠필터 오탐("공격"
+  프레이밍)으로 턴 차단 → 검증-리뷰 언어로 재프레이밍 재기동. 판정 **REJECT: 2 BLOCKER + 5 HIGH**.
+  메인이 **실코드 프로브로 전건 재현 판정** 후 triage (fileless probe, `$CLAUDE_JOB_DIR/tmp`):
+
+  **확정 수정 (실측 재현됨 → 코드 수정)**:
+  | 심각도 | 지적 | 재현 | 조치 |
+  |---|---|---|---|
+  | BLOCKER | 전략이 `view.orders[].fills[].quantity` 변조 → 원장 오염(cash −600·pos 100) | 프로브 재현 | runner 가 `structuredClone(presentState)` 로 view 격리 — 전략은 clone 만 만짐, 원장 불가침. `bar()` 도 clone 반환 |
+  | BLOCKER→검증부재 | seed cash 미검증(−1·NaN·Infinity·sub-unit 이 balance −1·null·0 으로 fold) | 프로브 재현 | `isRepresentableCash`(양수·유한·정수 minor) 경계 검증 → `invalid_seed_cash` refuse |
+  | HIGH | async/비배열 전략 결과 → `actions.length` undefined → 무주문 "성공" 리포트 | 프로브 재현 | `!Array.isArray(actions)` → `invalid_strategy_result` refuse |
+  | HIGH(SEC-05) | DB 오류 메시지가 접속 URI 비밀번호 그대로 노출(`swordfish`) | 프로브 재현 | catch 를 고정 문자열 `"database unavailable"` 로 — raw error 미보간 |
+  | HIGH | CLI 시리즈 스키마가 음수/소수 volume 허용(시뮬레이터 무성 skip) | — | `z.number().int().nonnegative()` |
+  | HIGH | priceBasis 폐기 → adjusted close 를 raw 로 체결(무고지) | — | 시리즈 optional priceBasis, `total_return` refuse(§8 정합), 리포트에 basis 고지 |
+  | Standards | refusal push 3중 중복 | — | `refusalStatus` 헬퍼 + 루프내 `pushRefusal` |
+  | Standards | `--seed` 가 RNG seed 오독 | — | 플래그 `--cash` 개명(내부 param 은 `seed` 유지 — 테스트 안정) |
+
+  **claim 정직화 (과대 주장 → 정직 서술, 코드 아닌 문서/주석)**:
+  - **결정론**: "same config → byte identical" 은 **순수 전략 전제**에서만 성립(상태 있는 전략은 config 의 일부). 엔진은 결정론(클록·id·정렬). → 서술 범위 축소, 순수성 요구 문서화.
+  - **look-ahead 구조 보장**: `view.bar()` 로는 차단되나, 같은 스코프 클로저가 `series.bars[cursor+1]` 를 캡처하면 우회 가능 — 이는 user-code 백테스터의 본질(Zipline/Backtrader/Lean 동일). **CLI 경로는 전략이 별도 모듈이라 series 참조 자체가 없어 우회 불가**(실제 제품 표면의 containment). periodStart=period-start 근사는 순서 보존(절대시각은 시작점 라벨) — 문서화.
+  - **JSON stdout 순수성**: main.ts 는 envelope 만 쓰지만 `npm run` 배너·전략 모듈 top-level IO 가 오염 가능 → main.ts 주석에 `--silent`/직접 node 호출·전략 무부작용 규약 명시.
+  - **exit code 3**: T11 credential 용 예약(현재 도달 불가) — 주석 정정.
+
+  **기각/이월 (직접 근거 불충분 또는 범위 밖, 사유 기록)**:
+  - **cli:local 삭제 경로 부재(HIGH)**: 정당한 지적이나 **범위 판정 = 이월**. cli:local 은 단일소유 로컬 행(멀티테넌트 PII 아님), 사용자가 DB 자체를 통제. web erasure 코디네이터 미배선은 SEC-09(멀티테넌트) 대상 밖. `paper erase` 명령+participant 는 T11(계정 lifecycle 소유 시점). 네임스페이스 분리는 collision 방지지 erasure 완결 주장 아님 — 서술 정직화.
+  - 전략 dynamic import 신뢰 경계: 로컬 CLI 도구로서 수용(사용자 자기 코드). 문서화로 갈음.
+- **mutation 실증 2건**: ① structuredClone 제거 → 격리 회귀 테스트 사망(복원 통과) ② seed 검증 제거 →
+  seed 회귀 테스트 사망(복원 통과). 각 수정이 실제로 결함을 잡음을 실증.
+- **회귀 테스트 6건 신규**(t8-backtest-runner +4, t8-cli-commands +2): view 격리·seed 검증·async
+  거부·total_return 거부·SEC-05 무노출·volume 스키마. blind 사후수리 1건(계약 `pool:unknown` 오기
+  → `Pool` 캐스트, 단언 무변경). 게이트: check 612 · build green · lint 경고 1(기존 stryker).
+
+## 게이트 종합 판정 (S1~S2, tier top)
+
+4개 축 전부 실행: **Standards ✅**(하드 위반 0) · **blind ✅**(13/13, 발견 0 — 독립 유도 일치) ·
+**codex ✅**(REJECT → 실측 재현 4 수정 + Standards 3 + claim 3 정직화 + 이월 2) · **mutation ✅**(2건).
+S1~S2 슬라이스 **게이트 통과**. 잔여: S3(거래세)·S4(리포트) — 각자 착수 시 재-게이트.
+- mutation 실증: blind·codex 완료 후 (소스를 부수므로 라이브 트리 검증과 충돌)

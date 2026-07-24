@@ -45,11 +45,16 @@ const seriesSchema = z.object({
   instrument: z.string().min(1),
   venue: z.string().min(1),
   currency: z.string().min(1),
+  // Disclosed so the runner can refuse total_return (adjusted-as-raw execution).
+  priceBasis: z.enum(["raw", "split_adjusted", "total_return"]).optional(),
   bars: z.array(
     z.object({
       periodStart: z.string().min(1),
       close: z.number().positive(),
-      volume: z.number(),
+      // Bar volume: a whole, non-negative share count (0 = no-trade bar).
+      // Negative/fractional volume otherwise reaches the simulator and is
+      // silently skipped (codex gate) — reject it at the boundary instead.
+      volume: z.number().int().nonnegative(),
       complete: z.boolean(),
     }),
   ),
@@ -74,7 +79,7 @@ export async function runBacktestCommand(
 ): Promise<CliOutcome> {
   const command = "backtest run";
   if (!Number.isFinite(args.seed) || args.seed <= 0) {
-    return fail(command, "usage", "--seed must be a positive amount in the series currency");
+    return fail(command, "usage", "starting cash must be a positive amount in the series currency");
   }
 
   let series: BacktestSeries;
@@ -105,7 +110,7 @@ export async function runBacktestCommand(
     series,
     strategy,
   });
-  if (outcome.status === "refused") return fail(command, "refused", `series refused: ${outcome.reason}`);
+  if (outcome.status === "refused") return fail(command, "refused", `backtest refused: ${outcome.reason}`);
   return ok(command, outcome);
 }
 
@@ -116,7 +121,7 @@ export async function paperOpenCommand(
 ): Promise<CliOutcome> {
   const command = "paper open";
   if (!Number.isFinite(args.seed) || args.seed <= 0) {
-    return fail(command, "usage", "--seed must be a positive amount");
+    return fail(command, "usage", "starting cash must be a positive amount");
   }
   if (args.currency !== "KRW" && args.currency !== "USD") {
     return fail(command, "usage", "--currency must be KRW or USD");
@@ -132,8 +137,10 @@ export async function paperOpenCommand(
     // Genesis is once-only: a second open with a different seed keeps the
     // ORIGINAL ledger untouched — reported honestly via `created`.
     return ok(command, { workspace: CLI_WORKSPACE, account: String(account), created: !existed, cash: shell.cash, positions: shell.positions });
-  } catch (error) {
-    return fail(command, "api", `database unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    // SEC-05: never copy a raw driver error into output — a Postgres connection
+    // failure message can carry the DATABASE_URL, password and all. Fixed string.
+    return fail(command, "api", "database unavailable");
   }
 }
 
@@ -151,7 +158,9 @@ export async function paperAccountCommand(deps?: Readonly<{ pool?: Pool }>): Pro
     }
     const presented = presentState(service.journal.state(CLI_WORKSPACE, account), account);
     return ok(command, { workspace: CLI_WORKSPACE, exists: true, account: String(account), ...presented });
-  } catch (error) {
-    return fail(command, "api", `database unavailable: ${error instanceof Error ? error.message : String(error)}`);
+  } catch {
+    // SEC-05: never copy a raw driver error into output — a Postgres connection
+    // failure message can carry the DATABASE_URL, password and all. Fixed string.
+    return fail(command, "api", "database unavailable");
   }
 }

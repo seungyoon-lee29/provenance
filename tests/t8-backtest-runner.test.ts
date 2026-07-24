@@ -103,6 +103,45 @@ describe("T8 S1 backtest runner", () => {
     expect(outcome.orders[0]!.cancellation).toBe("confirmed");
   });
 
+  // ── codex adversarial gate regressions (2026-07-25) ──
+
+  it("isolates the strategy from the ledger: mutating view.orders[].fills[] cannot corrupt money", async () => {
+    const mutating: BacktestConfig["strategy"] = (view) => {
+      if (view.cursor === 0) return [marketBuy(1)];
+      if (view.cursor === 2 && view.orders[0]?.fills[0]) {
+        (view.orders[0].fills[0] as { quantity: number }).quantity = 100;
+      }
+      return [];
+    };
+    const outcome = await runBacktest(config(bars(10_000, 10_000, 10_000), mutating));
+    if (outcome.status !== "complete") throw new Error(outcome.status);
+    // The fill was 1 share; the mutation attempt is confined to the strategy's clone.
+    expect(outcome.positions[0]!.quantity).toBe(1);
+    expect(outcome.cash[0]!.balance).toBe(1_000_000 - 1 * 10_006);
+  });
+
+  it("refuses seed cash that the integer ledger cannot hold (negative / NaN / Infinity / sub-unit)", async () => {
+    for (const amount of [-1, 0, Number.NaN, Number.POSITIVE_INFINITY, 0.5]) {
+      const outcome = await runBacktest({ runId: "r", seedCash: [{ amount, currency: "KRW" }], series: bars(10_000), strategy: () => [] });
+      expect(outcome).toEqual({ status: "refused", reason: "invalid_seed_cash" });
+    }
+  });
+
+  it("refuses a strategy that does not return an array (e.g. an async strategy → Promise)", async () => {
+    const asyncStrategy = (async () => []) as unknown as BacktestConfig["strategy"];
+    const outcome = await runBacktest(config(bars(10_000, 10_000), asyncStrategy));
+    expect(outcome).toEqual({ status: "refused", reason: "invalid_strategy_result" });
+  });
+
+  it("refuses a total_return series (adjusted closes are not tradable prices) and discloses raw basis otherwise", async () => {
+    const totalReturn = { ...bars(10_000, 10_000), priceBasis: "total_return" as const };
+    expect(await runBacktest(config(totalReturn, () => []))).toEqual({ status: "refused", reason: "unsupported_price_basis" });
+
+    const raw = await runBacktest(config(bars(10_000, 10_000), () => []));
+    if (raw.status !== "complete") throw new Error(raw.status);
+    expect(raw.priceBasis).toBe("raw");
+  });
+
   it("fail-closed input validation: empty, incomplete, non-monotonic and unparsable-time series", async () => {
     const empty: BacktestSeries = { ...bars(), bars: [] };
     expect((await runBacktest(config(empty, () => []))).status).toBe("refused");

@@ -89,4 +89,27 @@ describe("T8 S2 CLI handlers", () => {
     expect((await paperOpenCommand({ seed: -1, currency: "KRW" }, { pool: unreachablePool })).exitCode).toBe(1);
     expect((await paperOpenCommand({ seed: 1, currency: "EUR" }, { pool: unreachablePool })).exitCode).toBe(1);
   });
+
+  // ── codex adversarial gate regressions (2026-07-25) ──
+
+  it("SEC-05: a database error carrying a connection URI never leaks credentials into the envelope", async () => {
+    const leakyPool = {
+      connect: () => Promise.reject(new Error("connect ECONNREFUSED postgresql://alice:swordfish@db.internal:5432/provenance")),
+      query: () => Promise.reject(new Error("connect ECONNREFUSED postgresql://alice:swordfish@db.internal:5432/provenance")),
+    } as unknown as Pool;
+    for (const outcome of [await paperOpenCommand({ seed: 1_000, currency: "KRW" }, { pool: leakyPool }), await paperAccountCommand({ pool: leakyPool })]) {
+      expect(outcome.exitCode).toBe(2);
+      expect(JSON.stringify(outcome.envelope)).not.toContain("swordfish");
+      expect(JSON.stringify(outcome.envelope)).not.toContain("db.internal");
+    }
+  });
+
+  it("backtest run: a series with fractional/negative bar volume is rejected at the schema boundary (usage/1)", async () => {
+    const badVolume = fileURLToPath(new URL("./fixtures/t8/bad-volume-series.json", import.meta.url));
+    const { envelope, exitCode } = await runBacktestCommand({ series: badVolume, strategy: fixture("buy-once.strategy.ts"), seed: 1_000_000 });
+    expect(exitCode).toBe(1);
+    expect(envelope.ok).toBe(false);
+    if (envelope.ok) throw new Error("expected failure");
+    expect(envelope.error.code).toBe("usage");
+  });
 });

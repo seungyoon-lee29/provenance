@@ -2,6 +2,7 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
+import { currencyMinorUnitScale } from "../internal/contracts";
 import type {
   PaperCashRow,
   PaperMarketObservation,
@@ -23,17 +24,26 @@ import { InternalPaperSimulator, SIMULATION_V1 } from "../internal/simulator";
  * — is the production logic, not a backtest re-implementation (the F8
  * post-review's duplicated-money-logic drift is exactly what that would be).
  *
- * Look-ahead is blocked in two layers:
- * - Fills: the engine already refuses `eventTime/dataClock <= acceptedAt`
- *   (simulator §9), so an order accepted at bar N's close can only fill from
- *   bar N+1 on — close-accept/next-bar-fill falls out of the invariant.
- * - Strategy: `StrategyView.bar()` throws past the cursor; probing the future
- *   crashes the run instead of silently improving it.
+ * Look-ahead is blocked through the strategy's INTERFACE, not absolutely:
+ * - Fills: the engine refuses `eventTime/dataClock <= acceptedAt` (simulator
+ *   §9), so an order accepted at bar N's close can only fill from bar N+1 on —
+ *   close-accept/next-bar-fill falls out of the invariant.
+ * - Strategy view: `StrategyView.bar()` throws past the cursor, and the view's
+ *   money objects are cloned, so the strategy can neither read future bars nor
+ *   mutate the ledger through what it is handed.
+ * A strategy that captures external data in its own scope (e.g. the raw series
+ * in a same-scope closure) can still peek ahead — that is inherent to running
+ * user strategy code, as in Zipline/Backtrader/Lean. The CLI is the real
+ * containment: a strategy loaded there is a separate module with no reference
+ * to the series, so the closure path does not exist on the product surface.
+ * `periodStart` is used as the decision/availability instant; it labels the
+ * period START (ChartBar has no interval), which preserves ordering but is an
+ * approximation of when the close became knowable.
  *
- * Determinism: the clock is the bar cursor (no wall clock), ids derive from
- * (runId, barIndex, actionIndex), and the journal is the in-memory store —
- * a backtest run is an ephemeral computation (durable paper sessions are the
- * CLI's concern, S2).
+ * Determinism: the ENGINE is deterministic — the clock is the bar cursor (no
+ * wall clock), ids derive from (runId, barIndex, actionIndex), the journal is
+ * the in-memory store. Reproducibility therefore holds for a PURE strategy; a
+ * strategy carrying its own mutable state is itself part of what varies.
  */
 
 /** Minimal bar contract — structurally satisfied by F2's `ChartBar`. */
@@ -51,6 +61,14 @@ export type BacktestSeries = Readonly<{
   instrument: string;
   venue: string;
   currency: string;
+  /**
+   * How the bar closes are adjusted (F2 `ChartPriceBasis`). Default "raw".
+   * The engine executes bars as literal tradable prices, so a `total_return`
+   * series (dividends folded into price) would fabricate fills at prices that
+   * never traded — refused up front, mirroring the ledger's §8 total_return
+   * rejection. The chosen basis is disclosed in the report (data honesty).
+   */
+  priceBasis?: "raw" | "split_adjusted" | "total_return";
   bars: readonly BacktestBar[];
 }>;
 
@@ -98,6 +116,8 @@ export type BacktestReport = Readonly<{
   status: "complete";
   /** Candle-approximation mode (pivot §3 decision 6) — orderbook-precise mode is T12. */
   mode: "approximate";
+  /** Disclosed input price basis (data honesty — adjusted closes are not raw). */
+  priceBasis: "raw" | "split_adjusted";
   policyVersion: string;
   runId: string;
   barCount: number;
@@ -113,8 +133,34 @@ export type BacktestOutcome =
   | BacktestReport
   | Readonly<{
       status: "refused";
-      reason: "empty_series" | "incomplete_bar" | "invalid_bar_time" | "non_monotonic_series" | "no_seed_cash";
+      reason:
+        | "empty_series"
+        | "incomplete_bar"
+        | "invalid_bar_time"
+        | "non_monotonic_series"
+        | "no_seed_cash"
+        | "invalid_seed_cash"
+        | "unsupported_price_basis"
+        | "invalid_strategy_result";
     }>;
+
+/** True when `amount` is a positive, finite whole number of the currency's
+ * minor units — the only seed the integer ledger can hold without silent
+ * rounding (codex gate: -1 / NaN / Infinity / sub-unit seeds folded into
+ * broken balances). */
+function isRepresentableCash(money: PaperMoney): boolean {
+  return (
+    Number.isFinite(money.amount)
+    && money.amount > 0
+    && Number.isInteger(money.amount * currencyMinorUnitScale(money.currency))
+  );
+}
+
+/** The status string a refused prepare/change outcome contributes to the
+ * report — the typed `reason` when refused, else the raw status. */
+function refusalStatus(outcome: Readonly<{ status: string; reason?: string }>): string {
+  return outcome.status === "refused" && outcome.reason !== undefined ? outcome.reason : outcome.status;
+}
 
 function observationOf(series: BacktestSeries, bar: BacktestBar): PaperMarketObservation {
   return {
@@ -138,8 +184,15 @@ function observationOf(series: BacktestSeries, bar: BacktestBar): PaperMarketObs
 
 export async function runBacktest(config: BacktestConfig): Promise<BacktestOutcome> {
   const { series, strategy } = config;
+  // A total_return series would execute dividend-inflated prices as if they
+  // traded — refuse it (spec §8), and disclose the surviving basis.
+  const priceBasis = series.priceBasis ?? "raw";
+  if (priceBasis === "total_return") return { status: "refused", reason: "unsupported_price_basis" };
   if (series.bars.length === 0) return { status: "refused", reason: "empty_series" };
   if (config.seedCash.length === 0) return { status: "refused", reason: "no_seed_cash" };
+  // Seed cash reaches the money ledger — validate it at this boundary, the
+  // journal's account_opened trusts the amounts (codex gate BLOCKER).
+  if (!config.seedCash.every(isRepresentableCash)) return { status: "refused", reason: "invalid_seed_cash" };
   for (let index = 0; index < series.bars.length; index += 1) {
     const bar = series.bars[index]!;
     if (!bar.complete) return { status: "refused", reason: "incomplete_bar" };
@@ -196,6 +249,9 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     const bar = series.bars[cursor]!;
     clock.value = bar.periodStart;
     currentObservation = observationOf(series, bar);
+    const pushRefusal = (action: "submit" | "cancel", status: string): void => {
+      refusals.push({ barIndex: cursor, action, status });
+    };
 
     // 1) Settle: this bar's observation fills/expires orders accepted at
     //    earlier bars only (engine strict `>` — same-bar acceptance can't fill).
@@ -205,20 +261,29 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     }
 
     // 2) Decide at this bar's close — the view exposes bars [0, cursor] only.
-    const presented = presentState(service.journal.state(workspace, account), account);
+    //    presentState hands out the journal's live money objects (order.fills
+    //    et al.); a structuredClone isolates the strategy so it can never
+    //    mutate the ledger through the view (codex gate BLOCKER: a mutated
+    //    fill.quantity folded into a negative-cash / oversold report). `bar()`
+    //    returns clones too, so the returned bars are read-only in effect.
+    const presented = structuredClone(presentState(service.journal.state(workspace, account), account));
     const view: StrategyView = {
       cursor,
       bar(index: number): BacktestBar {
         if (!Number.isInteger(index) || index < 0 || index > cursor) {
           throw new RangeError(`bar(${index}) outside closed window [0, ${cursor}] — look-ahead refused`);
         }
-        return series.bars[index]!;
+        return structuredClone(series.bars[index]!);
       },
       cash: presented.cash,
       positions: presented.positions,
       orders: presented.orders,
     };
     const actions = strategy(view);
+    // A strategy that forgets to return an array (a common one: an `async`
+    // strategy returns a Promise) would silently produce a zero-order
+    // "successful" run — refuse it as a typed fact (codex gate).
+    if (!Array.isArray(actions)) return { status: "refused", reason: "invalid_strategy_result" };
 
     // 3) Act — accepted at this close; fillable from the next bar on.
     for (let actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {
@@ -237,11 +302,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
         };
         const prepared = await service.prepare({ account, payload }, viewer);
         if (prepared.status !== "issued") {
-          refusals.push({
-            barIndex: cursor,
-            action: "submit",
-            status: prepared.status === "refused" ? prepared.reason : prepared.status,
-          });
+          pushRefusal("submit", refusalStatus(prepared));
           continue;
         }
         const outcome = await service.change(
@@ -249,13 +310,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
           { idempotencyKey, expectedRevision: String(prepared.intent.accountRevision) },
           viewer,
         );
-        if (outcome.status !== "applied") {
-          refusals.push({
-            barIndex: cursor,
-            action: "submit",
-            status: outcome.status === "refused" ? outcome.reason : outcome.status,
-          });
-        }
+        if (outcome.status !== "applied") pushRefusal("submit", refusalStatus(outcome));
       } else {
         const outcome = await service.change(
           { kind: "cancel", account, order: action.order },
@@ -263,13 +318,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
           { idempotencyKey, expectedRevision: String(service.journal.currentRevision(workspace, account)) },
           viewer,
         );
-        if (outcome.status !== "applied") {
-          refusals.push({
-            barIndex: cursor,
-            action: "cancel",
-            status: outcome.status === "refused" ? outcome.reason : outcome.status,
-          });
-        }
+        if (outcome.status !== "applied") pushRefusal("cancel", refusalStatus(outcome));
       }
     }
   }
@@ -278,6 +327,7 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   return {
     status: "complete",
     mode: "approximate",
+    priceBasis,
     policyVersion: SIMULATION_V1.policyVersion,
     runId: config.runId,
     barCount: series.bars.length,
