@@ -2,7 +2,9 @@
 
 상태: **완료** (2026-07-26). Owner: main(Opus 5). Claimed: 2026-07-26. Heartbeat: 2026-07-26 커밋 시점.
 게이트: typecheck 0 · lint 0 error(경고 1, 기존) · **767 통과 / 56 skip** · public/server seam 2종 · build 미실행(코드 경로 변경만, Next 라우트 무관).
-**미검증 1건**: `paper open` 의 `created` 판정은 PG 레인에만 커버가 있고 그 레인을 이번 세션에 못 돌렸다 — 이월 3 참조.
+**← 정정 (2026-07-26, 커밋 0c62264 직후)**: 커밋 시점에는 `paper open` 의 `created` 판정이 미검증이었다.
+그 뒤 PG 레인을 복구해 **실 postgres 에서 57/57 green** 으로 검증했다 — 아래 "PG 레인 복구" 참조.
+커밋 메시지의 "미검증 1건" 문구는 그 시점 기준으로 정확했고, 지금은 해소됐다.
 
 출처: 2026-07-26 `/improve-codebase-architecture` 아키텍처 리뷰의 후보 1 (Strong).
 설계는 `/grilling` 6문답으로 확정 — 아래 "확정된 설계" 절이 그 결과다.
@@ -116,9 +118,7 @@ codex 가용해지면 이 변경을 재타격 대상에 올릴 것.
 2. **`paper open` 의 read→open 은 원자적이지 않다.** 같은 DB 를 가리키는 CLI 두 개가 경합하면 진 쪽이
    `created:true, cash:[]` 를 exit 0 으로 보고한다(원장은 멀쩡, 출력만 거짓). 단일 소유자는 관습이지
    스토어가 강제하는 불변식이 아니다. 제대로 고치려면 `open()` 이 genesis 결과를 돌려줘야 한다.
-3. **`created` 판정에 실행되는 검증이 0개.** 유일한 커버리지 `paper-cli.pg.test.ts` 가 PG 게이트 뒤인데
-   **로컬 postgres 컨테이너(`fb-pg`)가 이름 변경 전 role(`fakebloomberg`)을 갖고 있어 이 저장소의
-   PG 레인은 현재 누구도 돌릴 수 없다** (피벗 메모 §7 이 예고한 볼륨 재생성 미실행). arch-1 과 무관한 기존 문제.
+3. ~~**`created` 판정에 실행되는 검증이 0개.**~~ **← 해소 (2026-07-26). 아래 "PG 레인 복구" 참조.**
 4. **`paper.account` 오퍼레이션의 `positions`/`orders` 를 durable 경로에서 읽는 테스트가 저장소에 없다.**
    `paper-cli.pg.test.ts` 는 `exists`/`cash` 만 본다. clone+freeze 가 방어한다고 선언한 바로 그 상태다.
 5. **기존 3자 TRUNCATE 레이스** — `paper-cli.pg.test.ts` · `paper-journal.pg.test.ts` ·
@@ -126,6 +126,30 @@ codex 가용해지면 이 변경을 재타격 대상에 올릴 것.
    `test:persistence-pg` 에 `--no-file-parallelism` 한 단어면 해소된다. arch-1 이 만든 게 아니다.
 6. **Stryker mutate 글롭에 이 파일들이 없다** — `runtime-policy.ts`·`network-policy.ts` 2개뿐이고
    CI·훅 어디에도 배선돼 있지 않다. 아키텍처 리뷰가 별도 후보로 잡았다.
+
+## PG 레인 복구 (2026-07-26, 커밋 0c62264 직후 — 저장소 코드 변경 없음)
+
+이 저장소의 `test:persistence-pg` 는 **이름 변경(2026-07-22) 이후 아무도 못 돌리는 상태였다.** 원인 두 겹:
+
+1. **떠돌이 컨테이너.** 5432 를 점유한 `fb-pg` 는 이 compose 파일이 만든 게 아니었다 — compose 프로젝트
+   라벨이 없고 볼륨도 named `postgres-data` 가 아닌 익명 볼륨이며, **2026-07-20 생성**(이름 변경 이전)이다.
+   role/db 가 `fakebloomberg` 라 현재 설정으로는 접속 자체가 불가였고, 포트를 붙들어 정상 스택도 못 떴다.
+   → 제거 후 `provenance-postgres-1` 기동, role/db `provenance` 확인.
+   피벗 메모 §7 이 "볼륨 재생성 1회 필요" 로 남긴 숙제가 이걸로 해소됐다.
+2. **colima VM 디스크 압박.** 30GiB 중 17G 사용(여유 12G)인데 `compose:up` 은 app·worker·app-ingress·
+   worker-ingress·migrate 5개 이미지(각 ~1.75GB)를 동시에 unpack 해 피크를 못 버티고
+   `no space left on device` 로 전멸했다.
+   → **이름 변경 잔재 `fakebloomberg-*` 이미지 10개 + 빌드 캐시 5.7GB 회수** (사용 17G → 9.2G, 여유 19G).
+   VM 확장(`colima start --disk`)은 불필요했다 — 30GiB 는 이 프로젝트에 충분하고, 부족해 보인 것은
+   죽은 이미지가 절반을 먹고 있었기 때문이다.
+
+**결과**: `docker compose --profile verify run --rm --build persistence-integration` → **7파일 57 통과**
+(`paper-cli.pg` 2 · `paper-journal.pg` 20 · `money-conservation.property` 10 · identity/personal-cache 계열 25).
+`paper-cli.pg.test.ts` 가 `paper open` 의 `created: true` → 다른 seed 로 `created: false` + 원 원장 보존을
+실 postgres 에서 검증한다 — 이월 3 이 지목한 구멍이 그것이다.
+
+**남은 것 (이월 5 와 동일)**: 같은 5개 테이블을 TRUNCATE 하는 pg 테스트 3파일이 여전히 병렬로 돈다.
+이번 실행은 green 이었으나 순서 운이다. `test:persistence-pg` 에 `--no-file-parallelism` 한 단어면 닫힌다.
 
 ## 도메인 용어 검토 (domain.md 요구)
 
