@@ -229,6 +229,19 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   // Seed cash reaches the money ledger — validate it at this boundary, the
   // journal's account_opened trusts the amounts (codex gate BLOCKER).
   if (!config.seedCash.every(isRepresentableCash)) return { status: "refused", reason: "invalid_seed_cash" };
+  // Per-item representability is not enough: the fold sums same-currency seeds
+  // into ONE balance, so a split whose per-currency TOTAL crosses the 2^53
+  // ledger ceiling drifts exactly as a single over-ceiling seed would — and that
+  // single seed IS refused above. Close the aggregate path too (adversarial
+  // re-gate 2026-07-25: the twin of the T9 tax-sum drift — individually-safe
+  // integers summing past 2^53). A drifted sum lands ≥ 2^53 ⇒ isSafeInteger false.
+  const seedTotalMinor = new Map<string, number>();
+  for (const money of config.seedCash) {
+    seedTotalMinor.set(money.currency, (seedTotalMinor.get(money.currency) ?? 0) + money.amount * currencyMinorUnitScale(money.currency));
+  }
+  for (const total of seedTotalMinor.values()) {
+    if (!Number.isSafeInteger(total)) return { status: "refused", reason: "invalid_seed_cash" };
+  }
   // A backtest is single-instrument, single-currency (the series currency). Seed
   // cash in any other currency would be held but never valued — the equity mark
   // only sees the series currency, so a mismatched seed silently vanishes from

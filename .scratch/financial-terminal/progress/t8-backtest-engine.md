@@ -360,3 +360,59 @@ mutation) resolve 전 완주.
 - **mutation ✅** 3건: ① 교차통화 가드 제거 → 회귀 사망(1) ② 세금 netting 제거 → fold 정밀·blind
   세금-플립 사망(2) ③ 승 판정 `>`→`>=` → 본전 회귀 사망(4). 각 복원 후 33 전건 통과.
 - 회귀 +21(blind 15 파일 + S4b 슬라이스 6). **S4b 게이트 통과.** T8 S4 완결(승률 포함 5지표).
+
+## 적대 재게이트 — codex 절단 우려 전수 재검 (2026-07-25)
+
+**계기**: 사용자 지적 — 최근 tier-top 게이트(S4a·S4b·T9)의 codex 적대 축이 토큰 소진으로
+중간 절단됐다면, 일부 발견 후 나머지 공격면을 쓸기 전에 끊겨 "clean 확인" 목록이 과장되고
+조용한 통과 도장이 찍혔을 수 있다. **차선 재실행**(원 계열 codex 토큰 소진 → 규칙대로 관점·
+프레이밍을 어긋낸 독립 Claude 3에이전트, 각자 property만 주고 취약점은 스스로 찾게 함. 차선임을
+명기). 세 게이트가 누적으로 만든 현재 3파일(performance-report·backtest-runner·journal)을 공격.
+
+**결과: 우려는 근거 있었다.** 6건 발견, 전건 메인이 직접 프로브로 재현. 헤드라인은 **C1** —
+codex T9가 잡아 고친 세금 합산 2^53 드리프트의 **구조적 쌍둥이**인데 **시드 합 경로만 가드가
+빠져** 있었다. 즉 절단된 리뷰가 형제 지점을 놓쳤다.
+
+| # | 발견 | 심각도 | 도달성 | 근본 |
+|---|---|---|---|---|
+| C1 | 같은 통화 시드 **여러 개의 합**이 2^53 우회 → `complete` 리포트에 조용한 −1원(seedValue/finalValue 전파) | MED | **runBacktest end-to-end** | 2^53 천장이 항목별만 집행(세금 합의 쌍둥이) |
+| A-1 | 평균원가 relief 곱 `basis·qty`가 2^53 초과 시 float 드리프트 → 전량청산 후 basis ±1 | LOW | 허용된 대형 단일시드(~$6T)에서 도달 | 천장이 곱에서 미집행 |
+| C2 | `dividend_applied`가 포지션 basis 통화 미검사 → 외화 현금 fabricate (fill은 양방향 fail-closed) | LOW→MED | **라이브 페이퍼 applyDividend** 경유 | 신뢰경계 비대칭(fill만 닫힘) |
+| B-A | `seedValue`/`finalValue` 무가드 echo → 비유한 시 `null`(선언은 number) | LOW | runBacktest 미도달(러너 유한 보장) | 정직성 불변식이 echo 필드에 누락 |
+| B-B | `maxDrawdown` 비유한·음수 미가드 → null/>1 (형제 fillConfidence는 가드) | LOW | runBacktest 미도달(invalid_bar_price 차단) | 동상동 |
+| A-2 | fold 자체 money 가드 0, 검증 100% validateSystemBody 위임 | note | 미도달(향후 비검증 append 위험) | 신뢰경계 문서화 부재 |
+
+**견고 확인**: fold 화폐보존 20만+ 건 위반 0, 교차통화 **fill** 가드 양방향 닫힘, 세금 합산
+이중계산 없음·2^53 NaN-poisoning 유효, taxDrag 대수 정확, 승률 분류 경계 정상. money 코어
+자체는 현실 규모에서 정확 — 구멍은 전부 극단 규모/미도달 경계.
+
+### 수정 (6건, 근본 위치)
+
+- **C1**: `runBacktest`가 통화별 시드 **합**을 `Number.isSafeInteger`로 검사(항목별 `isRepresentableCash`
+  유지 + 집계 가드 추가). float ≥2^53는 isSafeInteger 절대 통과 못 하고 참합 ≤2^53−1은 정확 → airtight.
+- **A-1**: fold의 relief를 BigInt round-half-up `(2·basis·fq + q)/(2·q)`로 — 비음수항이라 Math.round와
+  전건 일치, 전량청산 relief=basis 정확 → 잔여 0. S3 tax 곱의 BigInt 관례와 일관.
+- **C2**: `validateSystemBody`의 `dividend_applied`에 포지션 basis 통화 ≠ perShare 통화 → `invalid_adjustment`
+  (fill 가드와 동형, 무포지션은 fold no-op이라 통과가 옳음).
+- **B-A**: `seedValue`/`finalValue`를 `WindowValue`(covered/unavailable+reason) coverage-타입으로. CLI는
+  outcome 전체 직렬화만 하므로 소비자 무파손(소비자는 테스트뿐, 적응 완료).
+- **B-B**: `maxDrawdown`이 비유한 mark 스킵(fillConfidence와 동형) → 항상 유한. [0,1] 범위는 equity≥0
+  가정(러너가 invalid_bar_price·현금 비음수로 집행)을 주석에 명시.
+- **A-2**: fold 헤더에 신뢰경계 명시(검증은 validateSystemBody 소유, 중복 안 함). A-1이 도달 가능
+  드리프트를 이미 경화. BigInt의 fractional-quantity throw는 비검증 경로 한정 fail-loud 개선.
+
+### 4축 재게이트 판정 (tier top)
+
+- **차선 적대 ✅** (codex 대체 독립 Claude, 차선 명기): fix diff 6영역 전부 공격 — **깨지 못함, HIGH/MED/LOW 0**.
+  C1 30만 brute-force 0 leak·증명, A-1 200만+50만 시퀀스 basis 음수 0·전량청산 정확 0, C2 청산된
+  0-수량 포지션도 통화 유지해 여전히 차단, B-A 소비자 CLI 직렬화뿐, B-B 러너 equity≥0 반증 실패. 회귀 0.
+- **Standards ✅** (sonnet): 하드 0. 판단 2 수용 — ① `BoundaryValue`→`WindowValue` 개명(저장소에서
+  "boundary"는 검증경계 어휘라 충돌) ② `WindowValue.unavailable`에 `reason:"invalid_value"` 추가(자매
+  유니언 shape 통일). 중복 1건(시드 합 루프 vs fold account_opened 합)은 Rule of Three 미달로 보류.
+- **mutation ✅ 5/5**: C1 가드·A-1 BigInt·C2 가드·B-A 유한검사·B-B 스킵 각각 되돌림 → 해당 회귀 사망
+  확인 후 복원(Edit 왕복, `git checkout` 미사용). 복원 후 전체 check green.
+- **blind ✅**: 기존 blind 스위트(t8-perf·t8-s4b·t9-tax·t8 기본, 독립 유도) 수정 코드에서 전건 통과 —
+  계약 불변, 인터페이스 적응만(WindowValue shape).
+
+회귀 +5(C1·A-1·C2·B-A·B-B, 각 자연 위치 + 신규 `tests/t8-relief-2653.test.ts`). check **708 green** · tsc clean.
+**재게이트 통과.** 잔여: 없음(A-2 note는 향후 비검증 append 경로 도입 시 재론).

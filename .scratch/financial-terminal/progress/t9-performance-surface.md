@@ -57,3 +57,15 @@ S4a 선례(read-only여도 코드 경로 기준 top 유지). resolve 전 4축(bl
 - 사고 기록: mutation 스크립트의 잘못된 `git checkout`이 러너의 미커밋 T9 변경을 일시 유실 —
   전 변경이 파악된 상태라 즉시 재적용(tsc+45 green 재확인). 이후 mutation은 perl 왕복만 사용.
 - 회귀: blind 12 파일 + 슬라이스 5(경계 3·1e19·churn) + 세금 E2E 강화. **T9 게이트 통과.**
+
+## 후속 — 적대 재게이트에서 T9 관련 발견 (2026-07-25)
+
+codex 절단 우려 전수 재검(→ `t8-backtest-engine.md` "적대 재게이트" 절)에서 T9와 직접 얽힌 2부류:
+- **C1(시드 합 2^53 우회)**: T9가 잡아 고친 **세금 합산 드리프트의 구조적 쌍둥이**. 세금 합엔
+  가드가 걸렸으나 시드 합 경로가 항목별 검사만 있어 뚫렸다 — 절단된 리뷰가 형제 지점을 놓친 실증.
+  통화별 시드 합 `isSafeInteger` 검사로 폐쇄.
+- **B-A/B-B(비유한 직렬화 null)**: T9가 세운 "직렬화되는 어떤 필드도 비유한 수치 금지" 불변식이
+  tax·returns엔 적용됐으나 echo(seedValue/finalValue)·maxDrawdown엔 누락. `WindowValue` coverage-타입 +
+  maxDrawdown 비유한 스킵으로 불변식을 표면 전체로 확장.
+
+4축 재게이트(차선 적대·Standards·mutation 5/5·blind) 통과, check 708 green. 상세는 t8 문서.

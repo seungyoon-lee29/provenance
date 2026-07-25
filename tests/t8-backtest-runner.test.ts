@@ -127,6 +127,21 @@ describe("T8 S1 backtest runner", () => {
     }
   });
 
+  it("C1 (adversarial re-gate): refuses same-currency seeds whose SUM crosses the 2^53 ledger ceiling", async () => {
+    // Each item is individually representable (isRepresentableCash passes), but the
+    // fold sums same-currency seeds into ONE balance — a split past 2^53 drifts
+    // exactly as a single over-ceiling seed would (which IS refused). The twin of
+    // the T9 tax-sum drift the earlier gate caught only on the tax path.
+    const a = 9_000_000_000_000_000;
+    const b = 1_000_000_000_000_001; // a + b = 1e16 + 1 > 2^53
+    const two = bars(10_000, 10_000);
+    expect(await runBacktest({ runId: "r-split", seedCash: [{ amount: a, currency: "KRW" }, { amount: b, currency: "KRW" }], series: two, strategy: () => [] }))
+      .toEqual({ status: "refused", reason: "invalid_seed_cash" });
+    // A split whose per-currency SUM stays under the ceiling is still accepted.
+    const safe = await runBacktest({ runId: "r-safe", seedCash: [{ amount: 600_000, currency: "KRW" }, { amount: 400_000, currency: "KRW" }], series: two, strategy: () => [] });
+    expect(safe.status).toBe("complete");
+  });
+
   it("refuses a strategy that does not return an array (e.g. an async strategy → Promise)", async () => {
     const asyncStrategy = (async () => []) as unknown as BacktestConfig["strategy"];
     const outcome = await runBacktest(config(bars(10_000, 10_000), asyncStrategy));

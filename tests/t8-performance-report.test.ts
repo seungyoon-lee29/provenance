@@ -93,7 +93,11 @@ describe("T8 S4 performance report — end to end", () => {
     if (outcome.status !== "complete") throw new Error(outcome.status);
     const perf = outcome.performance;
 
-    expect(perf).toMatchObject({ currency: "KRW", seedValue: 1_000_000, finalValue: 1_019_940 });
+    expect(perf).toMatchObject({
+      currency: "KRW",
+      seedValue: { status: "covered", value: 1_000_000 },
+      finalValue: { status: "covered", value: 1_019_940 },
+    });
     expect(perf.timeWeightedReturn).toMatchObject({ status: "covered", ratio: expect.closeTo(0.01994, 6) });
     expect(perf.moneyWeightedReturn.status).toBe("covered"); // day-count-sensitive; sign/coverage is the invariant
     if (perf.moneyWeightedReturn.status === "covered") expect(perf.moneyWeightedReturn.ratio).toBeGreaterThan(0);
@@ -345,5 +349,34 @@ describe("T9 tax disclosure — pure boundaries", () => {
     expect(Number.isSafeInteger(floatSum)).toBe(false);
     expect(BigInt(floatSum)).not.toBe(exactSum);
     expect(outcome.performance.tax).toEqual({ status: "unavailable", reason: "invalid_total" });
+  });
+});
+
+describe("adversarial re-gate 2026-07-25 — serialization honesty (no field → null)", () => {
+  const year = { from: "2024-01-01T00:00:00.000Z", to: "2025-01-01T00:00:00.000Z" };
+  const base = { currency: "KRW", equity: [100], participations: [] as number[], realizedSellsMinor: [] as number[], taxPaidValue: 0 };
+
+  it("B-A: a non-finite seed/final echoes as coverage-typed unavailable, never a null", () => {
+    const nanSeed = buildPerformance({ ...base, ...year, seedValue: Number.NaN, finalValue: 100 });
+    const infFinal = buildPerformance({ ...base, ...year, seedValue: 100, finalValue: Number.POSITIVE_INFINITY });
+    expect(nanSeed.seedValue).toEqual({ status: "unavailable", reason: "invalid_value" });
+    expect(infFinal.finalValue).toEqual({ status: "unavailable", reason: "invalid_value" });
+    // The whole report serializes with no null masquerading as a declared number.
+    expect(JSON.stringify(nanSeed).includes("null")).toBe(false);
+    expect(JSON.stringify(infFinal).includes("null")).toBe(false);
+    // A finite run stays covered with the exact value.
+    const ok = buildPerformance({ ...base, ...year, seedValue: 1_000_000, finalValue: 1_100_000 });
+    expect(ok.seedValue).toEqual({ status: "covered", value: 1_000_000 });
+    expect(ok.finalValue).toEqual({ status: "covered", value: 1_100_000 });
+  });
+
+  it("B-B: maxDrawdown skips a non-finite mark and stays a finite in-range number", () => {
+    expect(Number.isFinite(maxDrawdown([100, Number.NEGATIVE_INFINITY]))).toBe(true);
+    expect(Number.isFinite(maxDrawdown([100, Number.NaN, 90]))).toBe(true);
+    // A finite curve is unaffected: 120 → 90 is a 25% drawdown.
+    expect(maxDrawdown([100, 120, 90, 110])).toBe(0.25);
+    // The report's maxDrawdown never serializes to null even with a poisoned mark.
+    const poisoned = buildPerformance({ ...base, ...year, seedValue: 100, finalValue: 100, equity: [100, Number.NaN, 90] });
+    expect(JSON.stringify(poisoned).includes("null")).toBe(false);
   });
 });

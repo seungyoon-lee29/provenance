@@ -314,8 +314,18 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       }
       return undefined;
     }
-    case "dividend_applied":
-      return Number.isFinite(body.perShare.amount) && body.perShare.amount > 0 ? undefined : "invalid_adjustment";
+    case "dividend_applied": {
+      if (!Number.isFinite(body.perShare.amount) || body.perShare.amount <= 0) return "invalid_adjustment";
+      // A dividend credits cash in perShare.currency; a currency differing from
+      // the held position's basis fabricates foreign cash in the account (the
+      // fold credits perShare.currency unconditionally). Fail closed like the
+      // fill boundary — an instrument's currency never legitimately changes
+      // (adversarial re-gate 2026-07-25: the fill guard closes this both ways,
+      // the dividend branch did not — S4b cross-currency parity).
+      const position = state.positions.get(String(body.instrument));
+      if (position !== undefined && position.costBasis.currency !== body.perShare.currency) return "invalid_adjustment";
+      return undefined;
+    }
     case "fill_applied": {
       const fill = body.fill;
       const order = state.orders.get(String(fill.order));
@@ -729,6 +739,12 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
   // is the one place money conservation is decided, so it is never float (Stage
   // 2-c). Incoming display prices become minor units at `toMinorUnits`; nothing
   // here divides by the scale.
+  // TRUST BOUNDARY: the fold does NOT re-validate its entries. Every
+  // money-affecting entry (fills, dividends, splits) is checked at
+  // `validateSystemBody` before append; that boundary — not this fold — is where
+  // fill/dividend trust is enforced. A path that appended a fill_applied without
+  // it (a migration or recovery tool) would let the fold fabricate cash. Kept
+  // as one boundary rather than duplicated here (adversarial re-gate 2026-07-25).
   const cashBalance = new Map<string, number>();
   const positions = new Map<string, { quantity: number; costBasis: PaperMinorMoney }>();
   const orders = new Map<string, PaperOrderState>();
@@ -799,11 +815,16 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           // separate leg. Absent costs ⇒ zero (untaxed / buy-side / exempt).
           const taxMinor = entry.fill.costs?.sellTransactionTaxMinor ?? 0;
           cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + grossMinor - taxMinor);
-          // Average-cost basis relief (simulation-v1), rounded to the minor unit.
-          // The final share of a position relieves `minorUnits · 1 / 1` = the whole
-          // remaining basis, so a full liquidation returns cost basis to exactly 0.
+          // Average-cost basis relief (simulation-v1), rounded to the minor unit
+          // in BigInt: basis·quantity can exceed 2^53 at large (but ledger-
+          // representable) scale, where a float product/round drifts and a full
+          // liquidation would leave a residual ±1 basis instead of exactly 0
+          // (adversarial re-gate 2026-07-25). Round-half-up on the non-negative
+          // terms — matches Math.round exactly (the same 2^53 discipline the S3
+          // tax product uses). A full liquidation relieves basis·Q/Q = the whole
+          // remaining basis exactly, so cost basis returns to precisely 0.
           const reliefMinor = position.quantity > 0
-            ? Math.round((position.costBasis.minorUnits * entry.fill.quantity) / position.quantity)
+            ? Number((2n * BigInt(position.costBasis.minorUnits) * BigInt(entry.fill.quantity) + BigInt(position.quantity)) / (2n * BigInt(position.quantity)))
             : 0;
           // S4b: realized P&L of this sell — net proceeds minus the relief, at
           // the one site that knows both. Derived, so no schema/migration.

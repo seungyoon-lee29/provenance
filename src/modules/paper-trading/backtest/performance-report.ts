@@ -39,6 +39,23 @@ export type BacktestReturn =
   | Readonly<{ status: "unavailable"; reason: "zero_window" | "invalid_valuation" | "invalid_timestamp" | "unrepresentable" }>;
 
 /**
+ * A window-boundary portfolio value (seed / final), MAJOR units, coverage-typed.
+ * Through the runner these are always a finite fold mark; a non-finite value
+ * reaches here only by mis-calling buildPerformance directly, and it must never
+ * serialize as a `null` masquerading as a declared number — the same honesty
+ * invariant the tax block upholds. The single failure mode (a non-finite value)
+ * is named `invalid_value` for shape parity with the return/tax unions. No
+ * legitimate `unavailable` arises from the runner (equity marks are finite ints).
+ */
+export type WindowValue =
+  | Readonly<{ status: "covered"; value: number }>
+  | Readonly<{ status: "unavailable"; reason: "invalid_value" }>;
+
+function windowValue(value: number): WindowValue {
+  return Number.isFinite(value) ? { status: "covered", value } : { status: "unavailable", reason: "invalid_value" };
+}
+
+/**
  * How much of the simulation leaned on the candle approximation. Decision 7
  * ("주문량 / 호가잔량") has no order-book depth to key on in candle mode, so the
  * honest proxy is participation = filled quantity / that bar's traded volume.
@@ -107,9 +124,10 @@ export type TaxDisclosure =
 
 export type BacktestPerformance = Readonly<{
   currency: string;
-  /** Portfolio value at the first and last bar, in MAJOR units (display). */
-  seedValue: number;
-  finalValue: number;
+  /** Portfolio value at the first and last bar, MAJOR units (display),
+   * coverage-typed so a non-finite value never serializes as a bare `null`. */
+  seedValue: WindowValue;
+  finalValue: WindowValue;
   /** Time-weighted (holding-period) return over [first bar, last bar]. */
   timeWeightedReturn: BacktestReturn;
   /** Money-weighted (XIRR) ANNUALIZED return: seed outflow → terminal inflow. */
@@ -128,12 +146,18 @@ export type BacktestPerformance = Readonly<{
  * so minor or major units both work. Returns 0 for fewer than two points or a
  * monotonically non-decreasing curve. A non-positive peak (bankruptcy — the
  * affordability guards forbid it in this engine) contributes no drawdown rather
- * than a meaningless division.
+ * than a meaningless division. A non-finite mark is skipped (matching
+ * fillConfidence; the runner never emits one) so the result is always a finite
+ * number, never a NaN/Infinity that would serialize to `null`. The [0, 1] range
+ * assumes equity ≥ 0 — which the runner enforces (`invalid_bar_price`, and cash
+ * never folds negative); a negative mark would push a >1 ratio, so callers off
+ * the runner boundary owe that guarantee.
  */
 export function maxDrawdown(equity: readonly number[]): number {
   let peak = -Infinity;
   let mdd = 0;
   for (const value of equity) {
+    if (!Number.isFinite(value)) continue;
     if (value > peak) peak = value;
     if (peak > 0) {
       const drawdown = (peak - value) / peak;
@@ -244,8 +268,8 @@ export function buildPerformance(input: Readonly<{
   const { timeWeightedReturn, moneyWeightedReturn } = closedFormReturns(fromMs, toMs, input.seedValue, input.finalValue);
   return {
     currency: input.currency,
-    seedValue: input.seedValue,
-    finalValue: input.finalValue,
+    seedValue: windowValue(input.seedValue),
+    finalValue: windowValue(input.finalValue),
     timeWeightedReturn,
     moneyWeightedReturn,
     maxDrawdown: maxDrawdown(input.equity),
@@ -263,6 +287,8 @@ function demo(): void {
   assert(maxDrawdown([100, 120, 90, 110]) === 0.25, "mdd 25%");
   assert(maxDrawdown([100, 110, 130]) === 0, "monotonic up → 0");
   assert(maxDrawdown([]) === 0 && maxDrawdown([100]) === 0, "degenerate → 0");
+  // A non-finite mark is skipped, so the result is always a finite number.
+  assert(Number.isFinite(maxDrawdown([100, -Infinity])) && Number.isFinite(maxDrawdown([100, NaN, 90])), "non-finite mark → finite mdd");
   // Confidence.
   const c = fillConfidence([0.05, 0.1, 0.03]);
   assert(c.fills === 3 && c.maxParticipation === 0.1 && Math.abs(c.meanParticipation - 0.06) < 1e-9, "confidence agg");
@@ -285,6 +311,9 @@ function demo(): void {
   assert(perf.moneyWeightedReturn.status === "covered"
     && Math.abs(perf.moneyWeightedReturn.ratio - 0.21) < 1e-9, "xirr 21%/yr over 365d");
   assert(Math.abs(perf.maxDrawdown - 0.2) < 1e-9, "mdd 20% (1.0M→0.8M)");
+  // Boundary values are coverage-typed and covered for a finite run.
+  assert(perf.seedValue.status === "covered" && perf.seedValue.value === 1_000_000
+    && perf.finalValue.status === "covered" && perf.finalValue.value === 1_210_000, "boundary values covered");
   // Single-bar series: zero window → both returns unavailable, not fabricated.
   const flat = buildPerformance({
     currency: "KRW", from: "2024-01-01T00:00:00.000Z", to: "2024-01-01T00:00:00.000Z",
@@ -298,6 +327,9 @@ function demo(): void {
   const year = { from: "2024-01-01T00:00:00.000Z", to: "2025-01-01T00:00:00.000Z" };
   const nanSeed = buildPerformance({ currency: "KRW", ...year, seedValue: NaN, finalValue: 100, equity: [100], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
   assert(nanSeed.timeWeightedReturn.status === "unavailable" && nanSeed.moneyWeightedReturn.status === "unavailable", "NaN seed → unavailable");
+  // B-A: the echoed boundary value is coverage-typed too — a NaN seed is
+  // `unavailable`, never a `null` masquerading as a declared number.
+  assert(nanSeed.seedValue.status === "unavailable" && !JSON.stringify(nanSeed.seedValue).includes("null"), "NaN seed value → unavailable, never null");
   const tiny = buildPerformance({ currency: "KRW", from: "2024-01-01T00:00:00.000Z", to: "2024-01-01T00:01:00.000Z", seedValue: 100, finalValue: 101, equity: [100, 101], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });
   assert(tiny.moneyWeightedReturn.status === "unavailable" && tiny.moneyWeightedReturn.reason === "unrepresentable", "tiny window → XIRR unrepresentable");
   const wipeout = buildPerformance({ currency: "KRW", ...year, seedValue: 100, finalValue: 0, equity: [100, 0], participations: [], realizedSellsMinor: [], taxPaidValue: 0 });

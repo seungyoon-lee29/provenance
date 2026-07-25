@@ -107,8 +107,10 @@ describe("T8 performance report — blind acceptance", () => {
       expect(mdd).toBeCloseTo(0.00006, 10);
 
       expect(perf.currency).toBe("KRW");
-      expect(perf.seedValue).toBe(seedValue);
-      expect(perf.finalValue).toBe(finalValue);
+      // boundary values are coverage-typed (adversarial re-gate 2026-07-25) —
+      // interface adaptation, the asserted numbers are unchanged.
+      expect(perf.seedValue).toEqual({ status: "covered", value: seedValue });
+      expect(perf.finalValue).toEqual({ status: "covered", value: finalValue });
       expect(perf.maxDrawdown).toBeCloseTo(mdd, 9);
 
       expect(perf.timeWeightedReturn.status).toBe("covered");
@@ -143,8 +145,8 @@ describe("T8 performance report — blind acceptance", () => {
       if (result.status !== "complete") return;
       const perf = result.performance;
 
-      expect(perf.seedValue).toBe(seedCash);
-      expect(perf.finalValue).toBe(seedCash);
+      expect(perf.seedValue).toEqual({ status: "covered", value: seedCash });
+      expect(perf.finalValue).toEqual({ status: "covered", value: seedCash });
       expect(perf.maxDrawdown).toBe(0); // <2 equity points
       expect(perf.timeWeightedReturn.status).toBe("unavailable");
       expect(perf.moneyWeightedReturn.status).toBe("unavailable");
@@ -194,8 +196,8 @@ describe("T8 performance report — blind acceptance", () => {
       if (result.status !== "complete") return;
       const perf = result.performance;
 
-      expect(perf.seedValue).toBe(seedCash);
-      expect(perf.finalValue).toBe(seedCash);
+      expect(perf.seedValue).toEqual({ status: "covered", value: seedCash });
+      expect(perf.finalValue).toEqual({ status: "covered", value: seedCash });
       expect(perf.maxDrawdown).toBe(0);
 
       expect(perf.timeWeightedReturn.status).toBe("covered");

@@ -259,6 +259,22 @@ describe("dividend entitlement (§9)", () => {
     const shell = await shellOf(service);
     expect(shell.cash.find((row) => row.currency === "USD")!.balance).toBe(100_000);
   });
+
+  it("refuses a dividend whose currency differs from the held position's basis (adversarial re-gate 2026-07-25)", async () => {
+    const { service, simulator, lifecycle } = harness();
+    const { account } = await submit(service, limitBuy(10, 110), "div-ccy");
+    await simulator.ingest(WORKSPACE, account, observation()); // fill → USD position
+    // A KRW dividend on a USD position would fabricate KRW cash in the account —
+    // the fold credits perShare.currency unconditionally. Fail closed like fills.
+    const mismatched = await lifecycle.applyDividend(WORKSPACE, account, {
+      action: actionReference("action:div-krw"),
+      instrument: AAPL,
+      perShare: { amount: 100, currency: "KRW" },
+    });
+    expect(mismatched).toEqual({ status: "refused", reason: "invalid_adjustment" });
+    const shell = await shellOf(service);
+    expect(shell.cash.some((row) => row.currency === "KRW")).toBe(false);
+  });
 });
 
 describe("late valid fill after confirmed cancellation (§9)", () => {
