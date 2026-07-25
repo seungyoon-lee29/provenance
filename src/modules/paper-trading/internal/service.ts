@@ -108,6 +108,20 @@ function roundUpToTick(amount: number, currency: string): number {
   return Math.ceil(amount / tick - 1e-9) * tick;
 }
 
+/**
+ * The unit price a MARKET order reserves cash at: the observation price lifted
+ * by the policy's slippage ceiling, rounded up to the tick.
+ *
+ * Exported because order SIZING must divide by exactly this number. A caller
+ * that sizes against the raw close overshoots the reservation by the slippage
+ * and every order is refused `insufficient_cash` — so the number has to have
+ * one definition with two callers (`#reservationUnitPrice` here, the strategy
+ * catalog's sizing there), not two definitions that must match.
+ */
+export function marketReservationUnitPrice(price: number, currency: string, maxSlippageBps: number): number {
+  return roundUpToTick(price * (1 + maxSlippageBps / 10_000), currency);
+}
+
 export class PaperTradingService {
   readonly journal: PaperJournal;
   readonly #intents = new FencedKeyedStore<IntentRecord>();
@@ -322,8 +336,12 @@ export class PaperTradingService {
     const observation = this.deps.observations.currentObservation(payload.instrument);
     if (observation === undefined) return undefined;
     if (observation.freshness !== "realtime" && observation.freshness !== "delayed") return undefined;
-    const bounded = observation.price.amount * (1 + this.deps.policy.maxSlippageBps / 10_000);
-    return { amount: roundUpToTick(bounded, observation.price.currency), currency: observation.price.currency };
+    const bounded = marketReservationUnitPrice(
+      observation.price.amount,
+      observation.price.currency,
+      this.deps.policy.maxSlippageBps,
+    );
+    return { amount: bounded, currency: observation.price.currency };
   }
 
   /** SEC-09 wiring: the module's non-journal fenced stores, for the erasure participant. */
