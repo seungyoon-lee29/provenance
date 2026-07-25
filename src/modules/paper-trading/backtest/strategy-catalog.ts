@@ -110,12 +110,34 @@ function define<S extends z.ZodType<Readonly<Record<string, unknown>>>>(
   };
 }
 
+/**
+ * Why the default is not 1.
+ *
+ * A market order accepted at bar N's close FILLS at bar N+1's price, and that
+ * price is unknowable when the order is sized — refusing to know it is the
+ * look-ahead guarantee, not a limitation. The engine reserves at bar N's
+ * ceiling price; if bar N+1 opens higher than the slippage ceiling absorbs, the
+ * reservation is short and `#covered` skips the WHOLE allocation. The order
+ * then sits open with the cash reserved for the rest of the run: fillCount 0,
+ * no refusal, a green report. (Measured: a 70,000 → 72,000 bar on a series
+ * seeded to buy 100% of cash never fills.)
+ *
+ * Committing every last won therefore cannot survive an ordinary up-gap, so
+ * the default leaves headroom. It is a modelling choice, not a law: a gap
+ * larger than the headroom still leaves the order unfilled, which shows up in
+ * the report as reserved cash against an open order with zero fills. Callers
+ * who want the exact behaviour set the fraction explicitly.
+ */
+const DEFAULT_CASH_FRACTION = 0.95;
+
 const cashFractionSchema = z
   .number()
   .gt(0)
   .lte(1)
-  .default(1)
-  .describe("Share of available cash to commit per entry (0 < f ≤ 1).");
+  .default(DEFAULT_CASH_FRACTION)
+  .describe(
+    "Share of available cash to commit per entry (0 < f ≤ 1). Below 1 by default: a market order fills at the NEXT bar's price, so committing everything cannot absorb an up-gap and the order silently stays unfilled.",
+  );
 
 /** Available cash in the series currency, or 0 when the account holds none. */
 function availableCash(view: StrategyView, currency: string): number {

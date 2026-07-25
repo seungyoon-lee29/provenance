@@ -103,4 +103,39 @@
     기존 돈 경로 테스트 전건 불변으로 확인.
   - 회귀의 무게중심은 **체결 여부**다: 액션 모양이 아니라 `fillCount > 0` 을 실 러너로 검증한다 —
     두 함정 모두 "액션은 옳은데 체결이 0"으로 실패하기 때문.
-- 다음: S2(오퍼레이션 카탈로그 + CLI 완성).
+- **S2 완료** — `src/operations/catalog.ts` + CLI 전면 개편 + 회귀 12. check **733 green**(721 → +12).
+  - **카탈로그가 유일 정의, CLI 는 transport.** CLI 는 파일 읽기·플래그 파싱·envelope·exit code 만
+    소유하고 "오퍼레이션이 무엇인가"는 전부 카탈로그가 소유한다. MCP(S3)가 같은 카탈로그를 소비한다.
+  - 오퍼레이션 4종: `strategy.list`·`strategy.describe`(read) · `backtest.run`(compute) ·
+    `paper.account`(read). **`paper open` 은 카탈로그에 없다** — 돈 genesis = write, 티켓 41 원칙.
+  - **평탄화 0 실증**: 거절된 백테스트는 오퍼레이션 층에서 `ok` 이고 값 안에 `{status:"refused",
+    reason:"empty_series"}` 가 그대로 산다. 오퍼레이션 층이 거절하는 것은 자기 소관(모르는 이름·
+    잘못된 입력)뿐이고, 이유를 `unknown_operation`/`unknown_strategy`/`invalid_params`/`invalid_input`/
+    `unavailable` 로 구분해 준다.
+  - `strategy.describe` 는 zod → JSON Schema(`io:"input"` — 기본값 있는 필드는 optional)로 발행.
+    **한계 명시**: 교차 필드 refinement(`fast < slow`)는 JSON Schema 로 표현 불가라 스키마에
+    안 나타난다. 실행 시엔 그대로 집행되므로 발행 스키마는 유효성의 **하한**이지 상한이 아니다.
+  - `--strategy <이름>` / `--params '<json>'` / `--dry-run` 추가. 모듈 경로는 `--strategy-module`
+    로 분리하고 `BACKTEST_STRATEGY_MODULE_ENABLED=true` 뒤로 — **정확히 이 문자열만** 통과
+    (`"1"`·`"TRUE"`·`"true "` 전부 거부). 게이트는 **모든 IO 앞**이다(비활성 시 시리즈 파일조차
+    읽지 않는다 — 첫 구현이 파일 읽기 뒤에 있어 회귀가 잡았다).
+  - **함정 ③ 발견 (실 CLI 스모크에서만 드러남)**: 단위 테스트는 전건 green 인데 실제 CLI 실행이
+    `fills: 0` 이었다. 근인은 **시장가 주문이 bar N 종가에 접수되고 bar N+1 가격에 체결**된다는 것.
+    그 가격은 사이징 시점에 알 수 없고(look-ahead 금지 — 한계가 아니라 보증이다), 가격이
+    슬리피지 천장 이상으로 오르면 예약이 모자라 `#covered` 가 배분 전체를 건너뛴다. 주문은 남은
+    구간 내내 열린 채 현금만 묶이고 **fillCount 0 · 거절 0 · 리포트 green**.
+    (실측: 70,000 → 72,000 한 칸 상승이면 현금 100% 투입은 절대 체결 안 됨.)
+    → `cashFraction` 기본값을 **0.95** 로. 모델링 선택이지 법칙이 아님을 doc 에 명시하고,
+    헤드룸보다 큰 갭은 여전히 미체결로 남되 **리포트의 "열린 주문 + 묶인 현금"으로 보인다**고 기록.
+    회귀는 상승 시리즈에서 기본값=체결 1 / `cashFraction:1`=체결 0 을 **둘 다** 고정한다.
+  - **함정 ③ 의 교훈**: 단위 테스트를 평탄한 시리즈로만 짜면 이 계열은 전부 통과한다.
+    실 프로세스 스모크가 잡았다 — T8 의 "실 KIS 렌더 확인" 관행이 여기서도 값을 했다.
+  - **블라인드 스위트 취급**: `t8-blind.test.ts` 는 **호출 시그니처만** 적응
+    (`strategy`→`strategyModule`, `seed`→`cash`, 게이트 플래그 stub). **단언은 한 줄도 안 고쳤다.**
+    T8 재게이트의 `WindowValue` 선례와 동일 취급. 빈 시리즈 → `refused`/exit 1 블라인드 계약을
+    지키려고 `seriesSchema` 에 `.min(1)` 을 넣지 않았다 — 스키마는 shape, 엔진은 도메인 거절.
+- **의도적 비범위 (기록)**: `market.quote` 오퍼레이션. `market-server.ts` 가 `server-only` +
+  Next alias 라 CLI/MCP 에서 소비하면 seam 규칙을 건드리고, Stage 3 가 이 층을 재작성한다.
+  게다가 에이전트 표면에 새 IO 경로를 붙이는 일이라 꼬리에 얹을 게 아니라 자기 게이트가 필요하다.
+  → 카탈로그는 read 오퍼레이션을 받을 형태로 열어두고, 배선은 Stage 3 이후 별도 슬라이스.
+- 다음: S3(MCP stdio 서버 — 공식 SDK).

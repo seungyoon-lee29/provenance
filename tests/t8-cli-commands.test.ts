@@ -1,9 +1,9 @@
 import { fileURLToPath } from "node:url";
 
 import type { Pool } from "pg";
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { paperAccountCommand, paperOpenCommand, runBacktestCommand } from "../src/cli/commands";
+import { paperAccountCommand, paperOpenCommand, runBacktestCommand, STRATEGY_MODULE_FLAG } from "../src/cli/commands";
 
 /**
  * T8 S2 acceptance — handler-level (network-off, no process spawn): one
@@ -22,15 +22,28 @@ const unreachablePool = {
 } as unknown as Pool;
 
 describe("T8 S2 CLI handlers", () => {
+  // T10 S2: --strategy-module is opt-in (BACKTEST_STRATEGY_MODULE_ENABLED).
+  // These T8 cases exercise that path, so the flag is enabled for them only.
+  beforeAll(() => {
+    process.env[STRATEGY_MODULE_FLAG] = "true";
+  });
+  afterAll(() => {
+    delete process.env[STRATEGY_MODULE_FLAG];
+  });
+
   it("backtest run: fixture series + strategy → ok envelope with the S1 report (fill literal 10,006)", async () => {
     const { envelope, exitCode } = await runBacktestCommand({
       series: fixture("synthetic-series.json"),
-      strategy: fixture("buy-once.strategy.ts"),
-      seed: 1_000_000,
+      strategyModule: fixture("buy-once.strategy.ts"),
+      cash: 1_000_000,
     });
     expect(exitCode).toBe(0);
     if (!envelope.ok) throw new Error(envelope.error.message);
-    const report = envelope.result as { status: string; mode: string; fillCount: number; cash: readonly { balance: number }[] };
+    // T10 S2: the result discloses WHICH strategy produced the report alongside
+    // the report itself, so the outcome moved under `outcome`.
+    const { outcome: report } = envelope.result as {
+      outcome: { status: string; mode: string; fillCount: number; cash: readonly { balance: number }[] };
+    };
     expect(report.status).toBe("complete");
     expect(report.mode).toBe("approximate");
     expect(report.fillCount).toBe(1);
@@ -40,8 +53,8 @@ describe("T8 S2 CLI handlers", () => {
   it("backtest run: missing series file → usage failure, exit 1, same envelope shape", async () => {
     const { envelope, exitCode } = await runBacktestCommand({
       series: fixture("does-not-exist.json"),
-      strategy: fixture("buy-once.strategy.ts"),
-      seed: 1_000_000,
+      strategyModule: fixture("buy-once.strategy.ts"),
+      cash: 1_000_000,
     });
     expect(exitCode).toBe(1);
     expect(envelope.ok).toBe(false);
@@ -52,8 +65,8 @@ describe("T8 S2 CLI handlers", () => {
   it("backtest run: non-positive seed refused before any file IO", async () => {
     const { envelope, exitCode } = await runBacktestCommand({
       series: fixture("synthetic-series.json"),
-      strategy: fixture("buy-once.strategy.ts"),
-      seed: 0,
+      strategyModule: fixture("buy-once.strategy.ts"),
+      cash: 0,
     });
     expect(exitCode).toBe(1);
     expect(envelope.ok).toBe(false);
@@ -62,8 +75,8 @@ describe("T8 S2 CLI handlers", () => {
   it("backtest run: strategy module without a function export → usage failure", async () => {
     const { envelope, exitCode } = await runBacktestCommand({
       series: fixture("synthetic-series.json"),
-      strategy: fixture("synthetic-series.json"),
-      seed: 1_000_000,
+      strategyModule: fixture("synthetic-series.json"),
+      cash: 1_000_000,
     });
     expect(exitCode).toBe(1);
     expect(envelope.ok).toBe(false);
@@ -106,7 +119,7 @@ describe("T8 S2 CLI handlers", () => {
 
   it("backtest run: a series with fractional/negative bar volume is rejected at the schema boundary (usage/1)", async () => {
     const badVolume = fileURLToPath(new URL("./fixtures/t8/bad-volume-series.json", import.meta.url));
-    const { envelope, exitCode } = await runBacktestCommand({ series: badVolume, strategy: fixture("buy-once.strategy.ts"), seed: 1_000_000 });
+    const { envelope, exitCode } = await runBacktestCommand({ series: badVolume, strategyModule: fixture("buy-once.strategy.ts"), cash: 1_000_000 });
     expect(exitCode).toBe(1);
     expect(envelope.ok).toBe(false);
     if (envelope.ok) throw new Error("expected failure");

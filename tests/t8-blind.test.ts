@@ -11,7 +11,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   runBacktest,
@@ -24,6 +24,7 @@ import {
   paperAccountCommand,
   paperOpenCommand,
   runBacktestCommand,
+  STRATEGY_MODULE_FLAG,
 } from "../src/cli/commands";
 
 // ---------------------------------------------------------------------------
@@ -418,8 +419,18 @@ beforeAll(() => {
 });
 
 describe("S2 CLI commands (blind)", () => {
+  // Post-gate interface adaptation (T10 S2, runtime-identical): the module
+  // strategy path these blind cases drive is now opt-in behind
+  // BACKTEST_STRATEGY_MODULE_ENABLED. No assertion below is changed.
+  beforeAll(() => {
+    process.env[STRATEGY_MODULE_FLAG] = "true";
+  });
+  afterAll(() => {
+    delete process.env[STRATEGY_MODULE_FLAG];
+  });
+
   it("11. ENVELOPE UNIFORMITY: success/refused/api all share the documented shape and exit-code mapping", async () => {
-    const ok = await runBacktestCommand({ series: VALID_SERIES_PATH, strategy: VALID_STRATEGY_PATH, seed: 100_000 });
+    const ok = await runBacktestCommand({ series: VALID_SERIES_PATH, strategyModule: VALID_STRATEGY_PATH, cash: 100_000 });
     expect(ok.envelope.ok).toBe(true);
     if (ok.envelope.ok) {
       expect(ok.envelope).toHaveProperty("command");
@@ -429,8 +440,8 @@ describe("S2 CLI commands (blind)", () => {
 
     const refused = await runBacktestCommand({
       series: EMPTY_SERIES_PATH,
-      strategy: VALID_STRATEGY_PATH,
-      seed: 100_000,
+      strategyModule: VALID_STRATEGY_PATH,
+      cash: 100_000,
     });
     expect(refused.envelope.ok).toBe(false);
     if (!refused.envelope.ok) {
@@ -458,8 +469,8 @@ describe("S2 CLI commands (blind)", () => {
   it("12. Series/strategy file loading: nonexistent path, wrong JSON shape, and a strategy exporting no function all yield usage/1", async () => {
     const nonexistent = await runBacktestCommand({
       series: NONEXISTENT_SERIES_PATH,
-      strategy: VALID_STRATEGY_PATH,
-      seed: 100_000,
+      strategyModule: VALID_STRATEGY_PATH,
+      cash: 100_000,
     });
     expect(nonexistent.exitCode).toBe(1);
     expect(nonexistent.envelope.ok).toBe(false);
@@ -467,8 +478,8 @@ describe("S2 CLI commands (blind)", () => {
 
     const malformed = await runBacktestCommand({
       series: MALFORMED_SERIES_PATH,
-      strategy: VALID_STRATEGY_PATH,
-      seed: 100_000,
+      strategyModule: VALID_STRATEGY_PATH,
+      cash: 100_000,
     });
     expect(malformed.exitCode).toBe(1);
     expect(malformed.envelope.ok).toBe(false);
@@ -476,8 +487,8 @@ describe("S2 CLI commands (blind)", () => {
 
     const noFunctionStrategy = await runBacktestCommand({
       series: VALID_SERIES_PATH,
-      strategy: NO_FUNCTION_STRATEGY_PATH,
-      seed: 100_000,
+      strategyModule: NO_FUNCTION_STRATEGY_PATH,
+      cash: 100_000,
     });
     expect(noFunctionStrategy.exitCode).toBe(1);
     expect(noFunctionStrategy.envelope.ok).toBe(false);

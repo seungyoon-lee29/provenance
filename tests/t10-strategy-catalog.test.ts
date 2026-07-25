@@ -49,15 +49,24 @@ async function report(name: string, params: unknown, bars: BacktestSeries, seed 
 }
 
 describe("T10 S1 — declarative strategy catalog", () => {
-  it("buy_and_hold at cashFraction 1 actually fills (slippage-headroom sizing)", async () => {
-    // The trap: floor(1,000,000 / 10,000) = 100 shares costs 1,000,600 at the
-    // simulation-v1 buy price and #covered skips the WHOLE allocation, so a
-    // naive built-in reports 0 fills with no error. Ceiling sizing → 99.
-    const outcome = await report("buy_and_hold", {}, series(10_000, 10_000, 10_000));
+  it("buy_and_hold fills on a flat series (reservation-price sizing)", async () => {
+    // The trap: sizing at the raw close overshoots the reservation price
+    // (roundUpToTick(close x 1.0025)) and #covered skips the WHOLE allocation,
+    // so a naive built-in reports 0 fills with no error.
+    const outcome = await report("buy_and_hold", { cashFraction: 1 }, series(10_000, 10_000, 10_000));
     expect(outcome.fillCount).toBeGreaterThan(0);
     expect(outcome.positions[0]?.quantity).toBe(99);
     expect(outcome.expiryCount).toBe(0);
     expect(outcome.refusals).toEqual([]);
+  });
+
+  it("fills on a RISING series — the default leaves headroom for the next bar's price", async () => {
+    // A market order accepted at bar N's close fills at bar N+1's price. With
+    // cashFraction 1 the reservation is short the moment the price ticks up and
+    // the order stays open forever: fillCount 0 and a green report.
+    const rising = series(70_000, 72_000, 75_000, 74_000, 78_000);
+    expect((await report("buy_and_hold", {}, rising, 10_000_000)).fillCount).toBe(1);
+    expect((await report("buy_and_hold", { cashFraction: 1 }, rising, 10_000_000)).fillCount).toBe(0);
   });
 
   it("built-ins submit GTC, so a daily series fills instead of expiring", async () => {
@@ -68,10 +77,10 @@ describe("T10 S1 — declarative strategy catalog", () => {
     expect(outcome.fillCount).toBe(1);
   });
 
-  it("cashFraction scales the entry and defaults to the full balance", async () => {
+  it("cashFraction scales the entry and defaults to a headroom-leaving share", async () => {
     const half = await report("buy_and_hold", { cashFraction: 0.5 }, series(10_000, 10_000, 10_000));
     expect(half.positions[0]?.quantity).toBe(49);
-    expect(compiled("buy_and_hold").params).toEqual({ cashFraction: 1 });
+    expect(compiled("buy_and_hold").params).toEqual({ cashFraction: 0.95 });
   });
 
   it("sma_cross enters on the golden cross and goes flat on the death cross", async () => {
