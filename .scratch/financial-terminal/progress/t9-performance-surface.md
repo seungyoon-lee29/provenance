@@ -1,5 +1,7 @@
 # T9 — 성과 리포트 표면: gross vs net + tax drag (착수 2026-07-25)
 
+상태: **resolved** (2026-07-26). Owner: main(Fable 5). 커밋 d3203cb + 적대 재게이트 e278b03. 잔여: 없음.
+
 > Stage형 예외(AGENTS.md 2026-07-24 명문화): 번호 티켓 대신 이 문서로 갈음. 정식 티켓(42~)은 Stage 3 뒤.
 
 ## Blast radius / 검증 tier 선언 (착수 전 필수 절)

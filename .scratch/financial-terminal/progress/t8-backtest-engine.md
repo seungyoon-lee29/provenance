@@ -1,6 +1,10 @@
 # T8 — 백테스트 엔진 (InternalPaperSimulator × 과거 캔들 + 시간축 커서)
 
-상태: **claimed** (2026-07-24). Owner: main(Fable 5). Claimed at: 2026-07-24. Last heartbeat: 2026-07-24 (S1·S2 green).
+상태: **resolved** (2026-07-26). Owner: main(Fable 5). Claimed at: 2026-07-24.
+Last heartbeat: 2026-07-26 (클로즈아웃 — 잔여 없음).
+슬라이스 전건 완료: S1 러너 코어(5cab9f0 선행) · S2 CLI + PgPaperJournalStore 배선(11ea9f2) ·
+S3 거래세(af0e5d7·dca1858) · S4a TWR·XIRR·MDD·체결신뢰도(5cab9f0) · S4b 승률(bea8b88) ·
+적대 재게이트 6건 근본 수정(e278b03). check 708 green.
 
 정본 문맥: pivot 메모 §6 "이후 — 엔진" T8 + §3 결정 3(캔들 only)·6(엔진 하나, 정밀도 모드)·
 7(신뢰도 판정)·8(백테스트 먼저 — 결정론·CI 가능). 스케치: [design/t8-transaction-cost-model-v1.md](../design/t8-transaction-cost-model-v1.md).
