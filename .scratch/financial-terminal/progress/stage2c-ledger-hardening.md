@@ -23,8 +23,8 @@
 
 1. **PaperMoney minor-unit 정수 전환** — `amount` 를 최소단위 정수(KRW 원 / USD 센트)로.
    시뮬레이터는 이미 BigInt tick 정수 — 구멍은 원장 fold 와 JSONB 왕복의 float 산술이다.
-   `currencyMinorUnitScale` 이 이미 있으니 경계 변환만 정리하면 된다. mockstock `fillOrder` 의
-   toCents/fromCents 패턴이 참조 설계.
+   `currencyMinorUnitScale` 이 이미 있으니 경계 변환만 정리하면 된다.
+   체결 경로에서 toMinor/fromMinor 를 경계에서만 적용하는 패턴이 참조 설계.
 2. **money-conservation property 를 PG 러너로도 실행** — 현재 memory store 전용.
    기존 계약 테스트의 `PG_INTEGRATION` 게이트 패턴 재사용 (composition 배선은 불필요 — 그건 T8).
 3. **0006 마이그레이션 (방어층)** — entry JSONB 의 account/revision ↔ 관계형 컬럼 일치 CHECK(또는 생성 컬럼),

@@ -19,7 +19,7 @@ Last heartbeat: 2026-07-20T17:20:00Z
 
 개인용 트랙(KIS, 24/25/26)은 `free_personal` personal-license라 guest 공용 feed로 재배포
 불가(map line 16; ticket 01 line 26 "무료 비용은 공개 표시·재배포 권리를 뜻하지 않는다").
-취업용 목표(배포·공개 서비스 운영)에는 **재배포 가능한 public-license 실데이터**를 guest
+공개 배포·운영 목표에는 **재배포 가능한 public-license 실데이터**를 guest
 shell(F1)에 붙여야 하는데, 현재 guest feed는 synthetic만 있어 F11 공개 스크린샷·배포 게이트가
 막혀 있다. 사용자 결정(2026-07-20): 개인용/게스트용 두 트랙을 분리 운영하고, 게스트 실데이터
 파이프라인을 **재배포권이 가장 명확하고 즉시 live인 소스**로 먼저 증명한다.

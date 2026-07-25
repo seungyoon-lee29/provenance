@@ -36,7 +36,7 @@ KIS 공식 저장소(`koreainvestment/open-trading-api`)에 이미 있는 것:
 > "모의투자보다 실전투자 API 키 사용을 권장합니다. 모의투자 환경은 체결 가능한 주문 수량(유동성)이
 > 실제 시장보다 크게 제한되어, 일부 종목·기간에서 시세가 누락되거나 부정확하게 채워질 수 있습니다."
 
-→ **우리 차별점 3줄 요약** (면접 답변용):
+→ **차별점 3줄 요약**:
 1. 백테스트와 모의투자가 **같은 체결 엔진**을 쓴다 → 결과가 일관되고 원인 추적이 된다
 2. 공식이 인정한 모의투자 유동성 제약을 **실전 호가 기반 자체 체결**로 우회한다
 3. Docker + 웹서버 2개가 아니라 **CLI + MCP** — 에이전트가 쓰는 도구다
@@ -59,17 +59,15 @@ KIS 공식 저장소(`koreainvestment/open-trading-api`)에 이미 있는 것:
 | 10 | **`notification-center` 삭제** | 워커가 아무것도 안 돌려서 죽은 코드 2,342줄 |
 | 11 | **`actual-portfolio`는 `calculation/`만 남기고 삭제** | TWR·XIRR은 순수 함수라 실계좌 없이도 백테스트 성과 리포트에 재사용됨. 실계좌 연동은 v2 |
 | 12 | **저장소 이름 변경** | "값을 모르면 지어내지 않는다"가 핵심 가치인데 이름이 "가짜". 그리고 `Bloomberg`는 실제 상표 |
-| 13 | **웹·인증 걷어내기 = A안, 단계 실행** (2026-07-22 최종) | 게이트 뒤에 보여줄 방이 없어 "수정"이 아니라 신규 개발이 됨. 엄밀함 자산(property·mutation·XIRR 2근·CAS outbox)은 엔진 측에 잔존. CLI+MCP가 이미 두 어댑터. B안은 mockstock 형태로의 회귀 (§8) |
+| 13 | **웹·인증 걷어내기 = A안, 단계 실행** (2026-07-22 최종) | 게이트 뒤에 보여줄 방이 없어 "수정"이 아니라 신규 개발이 됨. 엄밀함 자산(property·mutation·XIRR 2근·CAS outbox)은 엔진 측에 잔존. CLI+MCP가 이미 두 어댑터. B안은 범용 웹 모의투자 앱으로의 회귀 (§8) |
 | 14 | **Alpaca 삭제** | `src/**/alpaca*` 파일 0개 — 어댑터가 구현된 적 없음. env·스키마·테스트 문자열뿐. KIS가 브로커 역할 전담 |
 | 15 | **research-assistant + dev-only 페이지 삭제** | `src/composition/` 참조 0건 = 프로덕션 배선 없음. `GEMINI_API_KEY` 미사용이 방증 |
 | 16 | **credential-vault(234줄)는 남긴다** | CLI도 브로커 키를 디스크에 저장하므로 AES-256-GCM 암호화가 그대로 필요 |
 
-### 포트폴리오 구성 (직무: 백엔드 / 풀스택)
+### 완결 조건
 
-- **이 저장소** — 백엔드 깊이: Ports & Adapters, property/mutation testing, 금액 정합성, 보안
-- **OREUDA** — 풀스택 + 모바일: Expo RN + NestJS + PostGIS, 오프라인 outbox 동기화, GPS 판정
-- **mockstock은 뺀다** — 셋 중 가장 얕음.
-  단 **조건**: 이 저장소가 공개 + 배포되어야 함. private·미배포 저장소는 포트폴리오에 없는 것과 같다.
+이 저장소의 성격은 **백엔드 깊이**(Ports & Adapters · property/mutation testing · 금액 정합성 · 보안)다.
+완결 조건은 **공개 + 배포** — private·미배포 상태로는 아무도 검증할 수 없으므로 완성으로 치지 않는다.
 
 ---
 
@@ -105,7 +103,7 @@ KIS 공식 저장소(`koreainvestment/open-trading-api`)에 이미 있는 것:
 ① **틀린 전제**: 위 두 줄("Lean 상수 그대로 = 동일 모델", "임의 파라미터 발명 금지").
 ② **실제 구현**: 참여율 상한 **10%**(Zipline/Lean 2.5% 아님), 슬리피지 **선형** `min(25, 5+20×p)` bps(둘 다 quadratic `price×0.1×p²` 아님), **5bps 바닥**·**25bps 캡**(둘 다 0 바닥·무캡). 형태도 상수도 자체 재파라미터화다.
 ③ **왜 이 쪽이 나은가**: Zipline/Lean의 2.5%·quadratic은 소액 참여에서 슬리피지가 ~0.6bps로 **리테일 체결을 과소평가**한다. 우리 5–7bps 선형이 한국 리테일 현실에 더 보수적이고, 정수(BigInt) exact + adverse tick 라운딩이라 Zipline float보다 산술이 엄밀하다.
-④ **어긋난 것 (서술 리스크)**: 이 문서·포폴 서술이 "공식과 동일 모델"이라고 주장하면 **거짓**이다(Zipline/Lean 아는 면접관에게 걸린다). 서술을 **"참여율 기반 슬리피지(Lean/Zipline 계열)를 한국 리테일 현실에 맞춰 선형·bps 상하한으로 재파라미터화"**로 고칠 것 — 이유 있는 이탈이 거짓 동일보다 강한 스토리다.
+④ **어긋난 것 (서술 리스크)**: 이 문서·README 서술이 "공식과 동일 모델"이라고 주장하면 **거짓**이다(Zipline/Lean 소스를 아는 사람에게 즉시 걸린다). 서술을 **"참여율 기반 슬리피지(Lean/Zipline 계열)를 한국 리테일 현실에 맞춰 선형·bps 상하한으로 재파라미터화"**로 고칠 것 — 이유 있는 이탈이 거짓 동일보다 강한 스토리다.
 ⑤ **부수 오류 정정**: 위 표 Zipline `volume_limit`은 **0.25가 아니라 0.025**(라이브러리 기본값 — zipline.ml4trading.io 소스 확인, Lean과 동일 값). `재조사 금지` 태그였으나 "동일 모델" 근거값이라 재확인해 표에서 정정함.
 ⑥ **미구현 갭 (T8 필수)**: `commissions are zero` — 결정5의 **거래세(0.15%+농특세)가 아직 fill path에 없다.** T8에서 슬리피지 함수 안이 아니라 **별도 cost/fee 모델**로 편입할 것(Zipline/Lean도 slippage와 commission을 분리, 거래세는 매도측만 붙는 비대칭). 참고로 `maxSlippageBps: 25`는 10% 상한 하에선 도달 불가(최대 7bps)라 사실상 미발동 파라미터다.
 
@@ -150,7 +148,7 @@ paper 원장 · 포트폴리오 저널 · 브로커 outbox가 전부 그 위에 
 `DeliveryDispatcher`·`broker-sync/sync-worker.ts`가 `composition`·`worker` 어디에도 배선되지 않음.
 → 실제 배포하면 알림이 영원히 안 가고 브로커 싱크도 안 돈다.
 
-**③ UI가 백엔드와 안 붙어 있다 — "엉망"의 정체**
+**③ UI가 백엔드와 안 붙어 있다**
 | 위치 | 상태 |
 |---|---|
 | `/` 게스트 셸 | **진짜 동작** — 지수·차트·워치리스트·공시·헤드라인 실데이터 |
@@ -416,7 +414,7 @@ push 는 하지 않았다 — 원격 반영은 사용자가 `ALLOW_PUSH=1` 로 �
 | **UI를 새로 디자인** | 이미 검증된 것(a11y·성능 예산·Playwright)을 깨뜨림. 잘라내는 게 손대는 양이 더 적음 |
 | **실계좌 연동(F6/F10) 유지** | 워커가 안 돌아 죽은 코드. TWR/XIRR은 실계좌 없이도 재사용됨. v2 |
 | **KRX 유료 호가 데이터 구매** | 사용자가 배제 |
-| **B안: 웹 인증 트랙 유지 + 로그인 게이트 수정** (2026-07-22 최종 기각) | "두 줄 수정"처럼 보이지만 게이트 뒤에 보여줄 방(세션 인지 Blotter·per-user 원장 바인딩)이 없어 **신규 개발**이고, 그마저 T2(영속성)에 막혀 있음. 인증 보안 자산을 잃는다는 반론은 과장 — 엄밀함의 계급(property·mutation·XIRR 2근·CAS outbox·AES vault)은 엔진 측에 다수 잔존하고, 사용자 인증 서사는 OREUDA(NestJS)가 자연스러운 집. CLI+MCP가 이미 같은 포트를 소비하는 두 어댑터라 아키텍처 증명에 웹 불필요. 결정적으로 B를 끝까지 가면 "웹 모의투자 앱" = **포트폴리오에서 뺀 mockstock 형태로의 회귀**. 단 하나 열어둔 것: 게스트 터미널(비로그인 데모) 존치 — Stage 3/F11 에서 결정 |
+| **B안: 웹 인증 트랙 유지 + 로그인 게이트 수정** (2026-07-22 최종 기각) | "두 줄 수정"처럼 보이지만 게이트 뒤에 보여줄 방(세션 인지 Blotter·per-user 원장 바인딩)이 없어 **신규 개발**이고, 그마저 T2(영속성)에 막혀 있음. 인증 보안 자산을 잃는다는 반론은 과장 — 엄밀함의 계급(property·mutation·XIRR 2근·CAS outbox·AES vault)은 엔진 측에 다수 잔존한다. CLI+MCP가 이미 같은 포트를 소비하는 두 어댑터라 아키텍처 증명에 웹 불필요. 결정적으로 B를 끝까지 가면 이 저장소의 차별점이 없는 **범용 "웹 모의투자 앱"으로 회귀**한다. 단 하나 열어둔 것: 게스트 터미널(비로그인 데모) 존치 — Stage 3/F11 에서 결정 |
 
 ---
 
@@ -437,5 +435,5 @@ push 는 하지 않았다 — 원격 반영은 사용자가 `ALLOW_PUSH=1` 로 �
 
 - KIS 공식: `github.com/koreainvestment/open-trading-api` — `examples_llm/`(카테고리별 API), `stocks_info/`(종목·테마·업종 마스터), `backtester/`, `strategy_builder/`, `MCP/`
 - KIS API 포털: `apiportal.koreainvestment.com/apiservice` (JS SPA — WebFetch 불가, 브라우저 필요)
-- 참고 CLI: `github.com/JungHoonGhae/tossinvest-cli` (Go, MIT) / `github.com/HyeokjaeLee/koreainvestment-cli` (TS, MIT, ⭐0)
+- 참고 CLI: `github.com/JungHoonGhae/tossinvest-cli` (Go, MIT) / `github.com/HyeokjaeLee/koreainvestment-cli` (TS, MIT)
 - 체결 모델: Lean `Common/Orders/Slippage/VolumeShareSlippageModel.cs`, Zipline `finance/slippage.py`
