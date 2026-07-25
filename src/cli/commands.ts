@@ -4,15 +4,12 @@ import { pathToFileURL } from "node:url";
 
 import type { Pool } from "pg";
 
-import { CLI_WORKSPACE, createDurablePaperTrading } from "../composition/paper-assembly";
+import { CLI_WORKSPACE, cliViewer, createDurablePaperTrading } from "../composition/paper-assembly";
 import { runBacktest } from "../modules/paper-trading/backtest/backtest-runner";
 import type { BacktestStrategy } from "../modules/paper-trading/backtest/backtest-runner";
-import { defaultPaperAccount } from "../modules/paper-trading/internal/service";
 import { operationCatalog, seriesSchema } from "../operations/catalog";
 import type { OperationDependencies, OperationResult } from "../operations/catalog";
 import { getDatabasePool } from "../platform/runtime/dependencies";
-import { brandReference } from "../shared/contracts/brands";
-import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
 /**
  * T8 S2 / T10 S2 — CLI command handlers.
@@ -74,20 +71,6 @@ function withBacktestExitCode(command: string, result: OperationResult): CliOutc
 function catalogFor(deps?: Readonly<{ pool?: Pool }>): ReturnType<typeof operationCatalog> {
   const dependencies: OperationDependencies = { pool: () => deps?.pool ?? getDatabasePool() };
   return operationCatalog(dependencies);
-}
-
-function cliViewer(): WorkspaceViewerContext {
-  return {
-    kind: "workspace",
-    requestId: "cli",
-    workspaceReference: brandReference<string, "WorkspaceReference">(CLI_WORKSPACE),
-    accountReference: brandReference<string, "AccountReference">("cli:account"),
-    sessionReference: brandReference<string, "SessionReference">("cli:session"),
-    sessionGeneration: brandReference<string, "SessionGeneration">("cli:1"),
-    // Must equal the assembly's constant epoch or #authorized denies.
-    accountAuthorizationEpoch: brandReference<string, "AccountAuthorizationEpoch">("cli"),
-    membershipRevision: brandReference<string, "MembershipRevision">("cli:1"),
-  };
 }
 
 /**
@@ -274,14 +257,25 @@ export async function paperOpenCommand(
   try {
     const pool = deps?.pool ?? getDatabasePool();
     const service = createDurablePaperTrading({ pool, seedCash: [{ amount: args.seed, currency: args.currency }] });
-    await service.journal.init();
-    const account = defaultPaperAccount(CLI_WORKSPACE);
-    const existed = service.journal.ownerOf(account) !== undefined;
+    // Read BEFORE opening: the read never provisions, so what it sees is this
+    // process's pre-genesis view. Same service instance, so both share one
+    // hydration. NOT atomic with the open below — two CLIs racing the same
+    // database can both report `created: true` while only one genesis lands
+    // (the loser's ledger is intact, its OUTPUT is wrong). Single-owner is this
+    // surface's assumption, not an invariant the store enforces; a second local
+    // owner needs a genesis outcome from `open` itself, not a read-then-write.
+    const before = await service.readAccount(cliViewer());
+    // `api` (exit 2), not `crash`: this is the wiring-drift condition, and the
+    // same condition on the `paper.account` surface maps to `unavailable` → api
+    // → exit 2 (see `fromOperation`). One fact must not leave two surfaces with
+    // two exit codes — an agent branching on exit 2 for infra would misread
+    // `paper open` alone as a caller-input error.
+    if (before.status === "denied") return fail(command, "api", "paper account is not readable on this surface");
     const shell = await service.open({ requestRevision: "cli" }, cliViewer()).initial;
     if (shell.status !== "ready") return fail(command, "crash", `unexpected shell status: ${shell.status}`);
     // Genesis is once-only: a second open with a different seed keeps the
     // ORIGINAL ledger untouched — reported honestly via `created`.
-    return ok(command, { workspace: CLI_WORKSPACE, account: String(account), created: !existed, cash: shell.cash, positions: shell.positions });
+    return ok(command, { workspace: CLI_WORKSPACE, account: String(shell.account), created: before.status === "absent", cash: shell.cash, positions: shell.positions });
   } catch {
     // SEC-05: never copy a raw driver error into output — a Postgres connection
     // failure message can carry the DATABASE_URL, password and all. Fixed string.

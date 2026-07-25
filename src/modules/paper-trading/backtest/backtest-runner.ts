@@ -354,11 +354,12 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     equity.push(cashMinor + grossMinorOf(positionQty, { amount: bar.close, currency: series.currency }));
 
     // 2) Decide at this bar's close — the view exposes bars [0, cursor] only.
-    //    presentState hands out the journal's live money objects (order.fills
-    //    et al.); a structuredClone isolates the strategy so it can never
-    //    mutate the ledger through the view (codex gate BLOCKER: a mutated
-    //    fill.quantity folded into a negative-cash / oversold report). `bar()`
-    //    returns clones too, so the returned bars are read-only in effect.
+    //    Ledger isolation is `presentState`'s job now (it clones and freezes at
+    //    its own seam — arch-1). This SECOND clone is for a different reason:
+    //    the strategy is untrusted code, and a frozen view would turn a stray
+    //    write into a TypeError that kills the run. Thawing it keeps such a
+    //    write confined and silent, which is what the isolation test pins.
+    //    `bar()` returns clones too, so the returned bars are read-only in effect.
     const presented = structuredClone(presentState(service.journal.state(workspace, account), account));
     const view: StrategyView = {
       cursor,

@@ -19,7 +19,7 @@ import type {
   PaperTradingCommand,
 } from "./contracts";
 import { fromMinorUnits, minorUnitsOf } from "./contracts";
-import { PaperJournal } from "./journal";
+import { deepFreeze, PaperJournal } from "./journal";
 import type { CommandDecision, PaperAccountState, PaperJournalStore } from "./journal";
 
 /**
@@ -51,9 +51,37 @@ export type PaperTradingPolicy = Readonly<{
   maxSlippageBps: number;
 }>;
 
+/**
+ * The answer to a read-only account read (arch-1).
+ *
+ * `absent` is NOT a refusal — a workspace that has not opened an account yet is
+ * a normal state, and saying so is the honest answer (CONTEXT.md
+ * `Information Outcome`: "데이터 없음" is a value-less success, not a failure).
+ * Collapsing it into `refused`/`undefined` would make "no account yet"
+ * indistinguishable from "you may not look", which is exactly the distinction
+ * `denied` exists to keep.
+ */
+export type PaperAccountRead =
+  | Readonly<{
+      status: "ready";
+      account: InternalPaperAccountReference;
+      cash: readonly PaperCashRow[];
+      positions: readonly PaperPositionRow[];
+      orders: readonly PaperOrderView[];
+    }>
+  | Readonly<{ status: "absent" }>
+  | Readonly<{ status: "denied" }>;
+
 export type PaperTradingDependencies = Readonly<{
   now: () => string;
-  identity: Readonly<{ currentAuthorizationEpoch(viewer: ViewerContext): string }>;
+  /**
+   * `undefined` means "this identity does not authorize that viewer at all" —
+   * a real denial channel. Without it an assembly that serves one workspace can
+   * only refuse by returning some epoch it hopes will not match, which makes
+   * denial a guessable constant: a viewer carrying that exact string is
+   * authorized for every workspace (arch-1 adversarial round 2).
+   */
+  identity: Readonly<{ currentAuthorizationEpoch(viewer: ViewerContext): string | undefined }>;
   observations: PaperObservationPort;
   policy: PaperTradingPolicy;
   updateId: () => string;
@@ -211,6 +239,54 @@ export class PaperTradingService {
     return outcome;
   }
 
+  /**
+   * Read the viewer's Internal Paper Account without opening one (arch-1).
+   *
+   * `open` provisions — it is the money genesis door — so a surface that only
+   * wants to LOOK had to go around the service and hand-assemble the read from
+   * `journal.init`/`ownerOf`/`state`/`presentState`, neutering genesis by
+   * injecting an empty `seedCash`. That put this module's hydration ordering
+   * obligation back on its callers. This method is the missing door.
+   *
+   * Ordering is load-bearing twice over:
+   *  1. Authorization is decided BEFORE the hydration await, so an
+   *     unauthorized viewer cannot probe store health through the error
+   *     channel — and `denied` outranks `absent`, so it never learns whether an
+   *     account exists either.
+   *  2. Hydration is awaited BEFORE the synchronous `ownerOf` read, or a
+   *     service over a durable store would judge ownership against an empty
+   *     cache and report its own persisted account as `absent` (the codex T2-b
+   *     failure mode that `#ready` exists for).
+   *
+   * Freshness is FIRST-HYDRATION only, and that is the honest limit of this
+   * method: `#ready` is the constructor's one `init()`, and the journal only
+   * rebuilds a cache it has marked stale from inside its own mutation paths.
+   * A long-lived service that lost a genesis race would keep answering from the
+   * stale fold. Both surfaces today build a service per invocation and read
+   * before they mutate, so it is unreachable — reusing a service (the natural
+   * MCP optimisation) needs a fresh read on `PaperJournal` first.
+   * See progress/arch1-paper-read-account.md "이월".
+   *
+   * The projection is safe to hand out: `presentState` clones at its own seam,
+   * so no caller holds a handle on the ledger.
+   */
+  async readAccount(viewer: ViewerContext): Promise<PaperAccountRead> {
+    if (!this.#authorized(viewer)) return { status: "denied" };
+    await this.#ready;
+    const workspace = String(viewer.workspaceReference);
+    const account = this.#defaultAccount(workspace);
+    const owner = this.journal.ownerOf(account);
+    if (owner === undefined) return { status: "absent" };
+    // Defence in depth, not a live path: this reference is derived from the
+    // viewer's own workspace and `provision` only ever records `owner ===
+    // workspace`, so no caller can reach a mismatch. It fires on a corrupted or
+    // partially restored `paper_account_owner` row — the threat model migration
+    // 0006 already names — where the alternative is answering `ready` with an
+    // empty fold, a positive claim about an account this workspace does not own.
+    if (owner !== workspace) return { status: "denied" };
+    return { status: "ready", account, ...presentState(this.journal.state(workspace, account), account) };
+  }
+
   open(request: PaperPortfolioRequest, viewer: ViewerContext): PaperPortfolioLoad {
     if (!this.#authorized(viewer)) {
       return { initial: Promise.resolve({ status: "denied" }), refresh: () => Promise.resolve(undefined) };
@@ -360,7 +436,14 @@ export class PaperTradingService {
 
   #authorized(viewer: ViewerContext): viewer is WorkspaceViewerContext {
     if (viewer.kind !== "workspace") return false;
-    return this.deps.identity.currentAuthorizationEpoch(viewer) === String(viewer.accountAuthorizationEpoch);
+    const epoch = this.deps.identity.currentAuthorizationEpoch(viewer);
+    // Belt and braces, not the load-bearing guard: the comparison below already
+    // fails for `undefined` because its right side is always a string. The real
+    // defence is the TYPE — an identity that must be able to return `undefined`
+    // cannot express refusal as some other epoch string, which is what made
+    // refusal a guessable constant before (arch-1 round 2).
+    if (epoch === undefined) return false;
+    return epoch === String(viewer.accountAuthorizationEpoch);
   }
 }
 
@@ -378,13 +461,40 @@ function validPayload(payload: PaperOrderPayload): boolean {
   return true;
 }
 
-/** The one place the default Internal Paper Account reference is derived —
- * exported so composition surfaces (CLI) can address the account without
- * re-deriving the format (T8 S2). */
-export function defaultPaperAccount(workspace: string): InternalPaperAccountReference {
+/**
+ * The one place the default Internal Paper Account reference is derived.
+ *
+ * Module-private (arch-1): surfaces used to import this to address the account
+ * themselves, which is what let them assemble their own reads. They now get the
+ * reference back FROM `readAccount`/`open`, so the format never leaves here.
+ */
+function defaultPaperAccount(workspace: string): InternalPaperAccountReference {
   return brandReference<string, "InternalPaperAccountReference">(`paper-account:internal:${workspace}`);
 }
 
+/**
+ * Project a folded account state for a caller.
+ *
+ * Every projection is CLONED and then FROZEN before it leaves (arch-1
+ * adversarial round 2). `cash`/`positions` rows are built fresh here, but
+ * `payload` and `fills` are carried by reference straight out of the fold, and
+ * on the durable path those are re-parsed JSONB that never went through
+ * `deepFreeze` — so a caller that writes through them corrupts every later fold
+ * in the process. Cloning at this one seam covers all four callers; doing it at
+ * the call site did not, and the backtest runner had already discovered the
+ * hazard alone (a mutated `fill.quantity` folded into a negative-cash report —
+ * codex gate BLOCKER).
+ *
+ * The clone alone would make tampering harmless but SILENT. Freezing it keeps
+ * the existing runtime truth — a caller that writes to a fill throws — which is
+ * what callers on the in-memory path already relied on.
+ *
+ * ponytail: clone+freeze walks the whole projection on EVERY call, and the
+ * backtest runner calls this once per bar (then clones again to thaw the view
+ * for untrusted strategy code). Measured ~1.2µs per order, so a 3,000-order
+ * account costs a few ms per bar. If a long backtest ever feels it, project
+ * incrementally from the fold delta instead of rebuilding per bar.
+ */
 export function presentState(state: PaperAccountState, account: InternalPaperAccountReference): Readonly<{
   cash: readonly PaperCashRow[];
   positions: readonly PaperPositionRow[];
@@ -426,5 +536,5 @@ export function presentState(state: PaperAccountState, account: InternalPaperAcc
     });
   }
   orders.sort((left, right) => (left.acceptedAt ?? "").localeCompare(right.acceptedAt ?? "") || String(left.order).localeCompare(String(right.order)));
-  return { cash, positions, orders };
+  return deepFreeze(structuredClone({ cash, positions, orders }));
 }

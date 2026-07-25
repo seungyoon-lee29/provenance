@@ -1,11 +1,10 @@
 import type { Pool } from "pg";
 import { z } from "zod";
 
-import { CLI_WORKSPACE, createDurablePaperTrading } from "../composition/paper-assembly";
+import { CLI_WORKSPACE, cliViewer, createDurablePaperTrading } from "../composition/paper-assembly";
 import { runBacktest } from "../modules/paper-trading/backtest/backtest-runner";
 import type { BacktestSeries } from "../modules/paper-trading/backtest/backtest-runner";
 import { compileStrategy, findStrategy, STRATEGY_CATALOG } from "../modules/paper-trading/backtest/strategy-catalog";
-import { defaultPaperAccount, presentState } from "../modules/paper-trading/internal/service";
 
 /**
  * T10 S2 — the operation catalog.
@@ -217,16 +216,21 @@ export function createOperationCatalog(deps: OperationDependencies = {}): readon
       const resolvePool = deps.pool;
       if (resolvePool === undefined) return refused("unavailable", "no database is configured for this surface");
       try {
-        // seedCash [] — a READ must never be able to open a money genesis, so
-        // this goes through the journal rather than `service.open`.
+        // seedCash [] — unused on this path: `readAccount` never provisions, so
+        // the seed a genesis WOULD have used is not consulted here.
         const service = createDurablePaperTrading({ pool: resolvePool(), seedCash: [] });
-        await service.journal.init();
-        const account = defaultPaperAccount(CLI_WORKSPACE);
-        if (service.journal.ownerOf(account) === undefined) {
-          return { status: "ok", value: { workspace: CLI_WORKSPACE, exists: false } };
+        const read = await service.readAccount(cliViewer());
+        if (read.status === "denied") {
+          // Unreachable here because `cliViewer()` always carries CLI_WORKSPACE
+          // and the epoch the same assembly issues, so a denial means the wiring
+          // drifted — not a fact about the account, and never a claim that none
+          // exists. (The assembly's epoch stopped being a bare constant when the
+          // port was narrowed to this one workspace — arch-1 round 2.)
+          return refused("unavailable", "paper account is not readable on this surface");
         }
-        const presented = presentState(service.journal.state(CLI_WORKSPACE, account), account);
-        return { status: "ok", value: { workspace: CLI_WORKSPACE, exists: true, account: String(account), ...presented } };
+        if (read.status === "absent") return { status: "ok", value: { workspace: CLI_WORKSPACE, exists: false } };
+        const { account, cash, positions, orders } = read;
+        return { status: "ok", value: { workspace: CLI_WORKSPACE, exists: true, account: String(account), cash, positions, orders } };
       } catch {
         // SEC-05: never copy a raw driver error out — a Postgres connection
         // failure message can carry DATABASE_URL, password and all.

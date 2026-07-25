@@ -711,14 +711,26 @@ export class PaperJournal {
     // this reference; without the freeze a holder of `list()` could mutate a
     // validated fill's quantity or stored tax AFTER validation and the next
     // fold would apply the tampered value, minting or destroying cash (codex
-    // gate HIGH). The PG store re-parses JSONB, so it is already immutable.
+    // gate HIGH).
+    //
+    // ← 정정 (arch-1 적대 리뷰 2라운드): this used to claim "the PG store
+    // re-parses JSONB, so it is already immutable". FALSE — parsed JSONB is an
+    // ordinary mutable object, and `#hydrate` puts those rows straight into the
+    // fold cache unfrozen. So the freeze covers in-process appends ONLY, and
+    // anything hydrated from the durable store is unprotected here. That false
+    // premise is why `presentState` handed out live payloads for so long; the
+    // clone at that seam is what actually covers the durable path.
     return deepFreeze({ ...body, entryReference, account, revision, recordedAt: this.now() });
   }
 }
 
 /** Recursively freeze a value so nested money objects (fill, price, costs)
- * cannot be mutated after they are recorded. */
-function deepFreeze<T>(value: T): T {
+ * cannot be mutated after they are recorded.
+ *
+ * Exported (arch-1) so `presentState` can freeze the projection it hands out:
+ * a clone protects the ledger, and freezing the clone keeps caller-side
+ * tampering LOUD instead of silently discarded. */
+export function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
     Object.freeze(value);
     for (const key of Object.keys(value)) deepFreeze((value as Record<string, unknown>)[key]);
