@@ -9,6 +9,13 @@ Owner: claude-main
 Claimed at: 2026-07-19
 Last heartbeat: 2026-07-19 (compose:verify 드릴 통과·이식성 회귀 수정)
 
+> ⚠️ **보류 (2026-07-25, pivot 재점검)** — 잔여 ready-for-human 게이트(§11.3 k6 load·guest
+> 실데이터 스크린샷)를 **집행하지 말 것**. 이 게이트들은 pre-pivot 웹 릴리스 체계(ZIP·웹
+> 스크린샷·웹 성능 예산)의 것이고, pivot이 릴리스 체계 자체를 Stage 3에서 재정의하기로 했다
+> (pivot §"Stage 3": package-release/manifest/check-release-docs "npm publish 체제로 재정의할지
+> 삭제할지 이때 결정"). Stage 3 뒤 살아남는 게이트만 새 릴리스 티켓으로 승계한다.
+> 완료된 부분(패키징 인프라·문서 체커·compose:verify 드릴)은 이력으로 유효.
+
 ## Objective
 
 완성된 module seam을 black-box로 통합해 browser·접근성·성능·부하, Docker, secret-free ZIP, 운영 문서와 허용된 실데이터 screenshot까지 MVP release gate를 통과한다.

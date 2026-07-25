@@ -9,6 +9,11 @@ Owner: unassigned
 Claimed at: -
 Last heartbeat: -
 
+> **재점검 (2026-07-25)**: pivot·Stage 1~2c·T8/T9 이후에도 **그대로 유효** — 의존 4건(28·31·
+> 32·33) 전부 resolved, 어댑터·zod 스키마·`withRequestSpacing` 유량 게이트·CI 레인 전부 존속,
+> KIS/DART/Treasury/ECB는 엔진의 데이터 소스로 살아남는 경로다. 유의 1건: "릴리스 패키지로
+> 재배포되지 않는다" 항의 릴리스 체계는 Stage 3 재정의 대상이므로 착수 시 당시 정본을 따른다.
+
 ## Context
 
 현재 검증은 전부 **내가 틀리는 것**만 잡는다. network-off 결정론 TDD·property·mutation은

@@ -1,13 +1,31 @@
 # 38 - 상단 탭을 실제 페이지로
 
 Type: implementation
-Status: ready
+Status: resolved
 Triage: ready-for-agent
 Depends on: 36, 37
 Blocked by: 36
 Owner: unassigned
 Claimed at: -
-Last heartbeat: -
+Last heartbeat: 2026-07-25
+
+## Answer (2026-07-25 — 무효 처분, 코드 변경 없음)
+
+**pivot(2026-07-22) 배너의 "UI 트랙 이월/백로그 무효" 범주에 해당해 집행 없이 닫는다.**
+이 티켓의 수용 기준 전부(탭 라우트·로그인 상태 페이지·비로그인 로그인 유도·모바일 메뉴)가
+Stage 3(웹·인증 컷)에서 제거될 표면이다. Status: ready로 방치돼 있어 미래 세션이 집을 수
+있었던 것이 유일한 위험이었고, 이 처분이 그것을 닫는다. Stage 3 뒤 CLI/MCP가 얼굴이 되면
+"탭"이라는 개념 자체가 없다. 웹 셸 잔존분(게스트 쇼케이스)의 처분은 Stage 3 존치-조건
+(pivot §4 복원분: 하드코딩 게이트·Blotter 제거)이 정본이다.
+
+## Changed files
+- 이 티켓 파일만 (상태 처분)
+
+## Validation
+- 해당 없음 (문서 처분)
+
+## Residual risks
+- 없음 — 웹 표면 처분은 Stage 3 티켓이 소유
 
 ## Context
 
