@@ -206,6 +206,41 @@ async function runModuleStrategy(command: string, args: BacktestArgs, rawSeries:
   return withBacktestExitCode(command, { status: "ok", value: { strategy: { module: args.strategyModule }, outcome } });
 }
 
+/**
+ * Generic catalog access: every operation is reachable without a bespoke
+ * command, so adding an operation costs nothing on this surface (the MCP tools
+ * are already generic over the catalog — this keeps the CLI symmetric).
+ *
+ * EXIT-CODE CONTRACT, deliberately different from `backtest run`: a successful
+ * operation is exit 0 even when the domain outcome inside it is a refusal,
+ * because the CALL succeeded and the reason is in the envelope. Only
+ * operation-layer refusals (unknown name, invalid input, unavailable) are
+ * non-zero. Scripts that want a refused backtest to fail the shell should use
+ * the dedicated `backtest run`, which collapses it to exit 1.
+ */
+export async function callCommand(
+  operation: string | undefined,
+  rawInput: string | undefined,
+  deps?: Readonly<{ pool?: Pool }>,
+): Promise<CliOutcome> {
+  const command = "call";
+  const catalog = catalogFor(deps);
+  if (operation === undefined) {
+    return ok(command, {
+      operations: catalog.list().map(({ name, kind, summary }) => ({ operation: name, kind, summary })),
+    });
+  }
+  let input: unknown = {};
+  if (rawInput !== undefined) {
+    try {
+      input = JSON.parse(rawInput);
+    } catch (error) {
+      return fail(command, "usage", `--input is not valid JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  return fromOperation(command, await catalog.call(operation, input));
+}
+
 export async function strategyListCommand(): Promise<CliOutcome> {
   return fromOperation("strategy list", await catalogFor().call("strategy.list", {}));
 }

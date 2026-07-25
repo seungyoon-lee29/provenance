@@ -138,4 +138,40 @@
   Next alias 라 CLI/MCP 에서 소비하면 seam 규칙을 건드리고, Stage 3 가 이 층을 재작성한다.
   게다가 에이전트 표면에 새 IO 경로를 붙이는 일이라 꼬리에 얹을 게 아니라 자기 게이트가 필요하다.
   → 카탈로그는 read 오퍼레이션을 받을 형태로 열어두고, 배선은 Stage 3 이후 별도 슬라이스.
-- 다음: S3(MCP stdio 서버 — 공식 SDK).
+- **S3 완료** — `src/mcp/{server,main}.ts` + `provenance call` + 회귀 8. check **741 green**(733 → +8).
+  - **3툴 고정**(`list_operations`/`describe_operation`/`call_operation`)이 카탈로그에 대해
+    제네릭이다 — 오퍼레이션이 늘어도 에이전트 상주 컨텍스트 비용은 3개로 고정.
+    `describe_operation` 은 zod → JSON Schema 를 그 자리에서 뽑으므로 **툴 스키마를 손으로
+    쓰는 곳이 없다**.
+  - **isError 경계선**: 오퍼레이션 층 거절(모르는 이름·잘못된 입력)은 `isError:true` — 호출이
+    틀렸으니 에이전트가 고쳐 재시도해야 한다. **도메인 거절**(백테스트가 못 돈 것)은 `isError`
+    없이 `ok` 안에 이유를 달고 간다 — 호출은 정상이고 답이 "거절, 사유는 이것"이다.
+    둘을 합치면 이 표면이 존재하는 이유인 구분이 사라진다.
+  - `provenance call [--list] | call <op> --input '<json>'` 추가 — CLI 도 카탈로그에 제네릭이 됐다.
+    **exit code 계약을 의도적으로 분리**: `call` 은 오퍼레이션이 성공하면 안의 도메인 결과가
+    거절이어도 exit 0(호출은 성공, 사유는 envelope 안)이고, 전용 `backtest run` 만 거절을
+    exit 1 로 접는다. 셸 스크립트용 설탕과 범용 표면을 섞지 않는다.
+  - **실 프로세스 stdio 핸드셰이크 확인** (in-memory transport 가 감추는 층):
+    `initialize` → `protocolVersion 2025-06-18` 에코 · `tools/list` → 3툴 ·
+    `tools/call list_operations` → 4 오퍼레이션. **ready 메시지는 stderr, stdout 은 순수 JSON-RPC**
+    (stdout 오염은 클라이언트 파싱 오류로 즉사하므로 CLI `--json` 보다 실패가 가혹하다).
+  - 회귀는 **실 MCP Client** 를 SDK linked in-memory transport 로 붙여서 돌린다 —
+    우리 객체에 대한 단언이 아니라 프로토콜 구현이 핸드셰이크·툴 목록·호출 프레이밍을 검증한다.
+- **SDK 도입 실측 (사용자 재확인 후 진행)**: 착수 선언의 "runtime dep +1" 은 **틀렸다**.
+  실제 `@modelcontextprotocol/sdk@1.29.0` 은 lockfile 620 → **681 (+61 패키지)** 이고
+  `express`·`hono`·`cors`·`jose`·`eventsource`·`pkce-challenge` 등 **HTTP/OAuth 트랜스포트
+  기계 전체**를 끌고 온다. `npm audit` 에 **moderate 1건**(`@hono/node-server <2.0.5` 경로 순회)이
+  뜨고, SDK 가 `^1.19.9` 로 고정해 override 로는 못 푼다(수정본은 2.0.5+).
+  - **판정(사용자, 2026-07-26)**: stdio 경로에 도달 불가한 권고이고 +61 은 서사 비용이지
+    동작 비용이 아니므로 그대로 진행.
+  - **"도달 불가"를 주장에서 검증으로**: `stdio.js`·`server/index.js` 의 import 그래프에
+    hono/express 가 없음을 직독 확인했고(권고 대상은 `streamableHttp.js`·`sse.js`·`express.js`
+    전용), `tests/t10-mcp-server.test.ts` 가 **`src/mcp/server.ts` 의 SDK import 목록에
+    streamableHttp/sse/express 가 없음을 상시 단언**한다. 우리가 통제 가능한 실제 위험은
+    "나중에 누가 HTTP 트랜스포트를 import 하는 것"이고 그것이 이 테스트가 막는 것이다.
+  - **잔여**: SDK 가 hono 를 2.0.5+ 로 올릴 때까지 `npm audit` moderate 1건은 남는다.
+    릴리스 문서(Stage 3 재작성 대상)에 잔여 위험으로 명시할 것.
+- **벤더 중립성 (설계 기록)**: `src/operations/catalog.ts` 에 MCP import 가 **0** 이다.
+  lock-in 은 transport 층에만 있고 그 층이 제일 얇다(MCP 서버 ~140줄). 다른 규격이 뜨면
+  transport 를 하나 더 얹고, 규격 없이 붙이려는 에이전트는 이미 `call --json` 으로 쓸 수 있다.
+- 다음: S4(SKILL.md + README 온보딩 블록) → 4축 게이트.

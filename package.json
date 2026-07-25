@@ -37,9 +37,11 @@
     "compose:verify": "sh scripts/verify-compose.sh",
     "compose:up": "docker compose --profile local up --build --wait",
     "compose:down": "docker compose down --remove-orphans",
-    "prepare": "husky"
+    "prepare": "husky",
+    "mcp": "tsx src/mcp/main.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "next": "16.2.10",
     "pg": "8.22.0",
     "react": "19.2.7",

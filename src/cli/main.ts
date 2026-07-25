@@ -1,6 +1,7 @@
 import { parseArgs } from "node:util";
 
 import {
+  callCommand,
   paperAccountCommand,
   paperOpenCommand,
   runBacktestCommand,
@@ -26,6 +27,10 @@ import type { CliOutcome } from "./commands";
  */
 
 const USAGE = `provenance — 한국 시장 백테스트 + 모의투자 엔진
+
+  call [--list] | call <operation> [--input '<json>'] [--json]
+      Generic access to every operation. A successful call is exit 0 even when
+      the outcome inside it is a refusal — read the envelope.
 
   strategy list [--json]
   strategy describe <name> [--json]
@@ -53,6 +58,8 @@ async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome;
       strategy: { type: "string" },
       "strategy-module": { type: "string" },
       params: { type: "string" },
+      input: { type: "string" },
+      list: { type: "boolean", default: false },
       cash: { type: "string" },
       currency: { type: "string" },
     },
@@ -63,6 +70,10 @@ async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome;
   const dryRun = values["dry-run"] === true;
   const [group, sub, argument] = positionals;
 
+  if (group === "call") {
+    // `call --list` and bare `call` both enumerate; `call <operation>` runs.
+    return { outcome: await callCommand(values.list === true ? undefined : sub, values.input), json };
+  }
   if (group === "strategy" && sub === "list") {
     return { outcome: await strategyListCommand(), json };
   }
