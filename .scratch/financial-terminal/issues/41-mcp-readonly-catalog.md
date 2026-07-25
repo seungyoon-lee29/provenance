@@ -49,7 +49,10 @@ unavailable+reason 규율)가 같은 축에 있다. 값이 없을 때 그 이유
 - stdio JSON-RPC MCP 서버. 상시 노출 툴은 **정확히 3개**:
   `list_operations` / `describe_operation` / `call_operation`.
 - 오퍼레이션은 **read / compute / write 3분류**를 갖는다:
-  - **read**: 시장 데이터 outcome 조회, paper 계정/원장 조회, 백테스트 리포트 조회.
+  - **read**: 시장 데이터 outcome 조회, paper 계정/원장 조회.
+    (정정 2026-07-25 재검증: v2 초판의 "백테스트 리포트 조회"는 현재 리포트 영속이 없어
+    read로 성립하지 않는다 — 백테스트 결과는 compute 호출의 인라인 반환이며, 조회형
+    리포트는 영속이 생길 때만 추가한다. 리포트 영속 도입은 이 티켓 스코프가 아니다.)
   - **compute**: **백테스트 실행** — 내구 상태 mutation 0(인메모리 결정론 실행)이지만 조회가
     아니므로 별도 분류로 명시하고 카탈로그에 포함한다.
   - **write**(주문·설정 변경·erasure)는 카탈로그에 포함하지 않는다 — **티켓 40의 confirm
