@@ -1,0 +1,32 @@
+# 게이트 배선 원장 — "선언만 있고 안 도는 게이트"를 기계가 잡게 하는 정본 (2026-07-26)
+#
+# 계기: arch-1 아키텍처 리뷰에서 두 건이 동시에 드러났다.
+#   · stryker.config.mjs 는 주석에서 스스로를 "regression gate" 라 부르는데 CI·훅 어디에도 배선이 없었다.
+#   · test:persistence-pg 는 이름 변경(2026-07-22) 이후 나흘간 아무도 못 돌리는 상태였는데 아무도 몰랐다.
+# 실행되지 않는 게이트는 게이트가 아니고, 그 사실이 조용하면 "검증됨"으로 오독된다.
+#
+# 형식 (탭 또는 공백 구분 2열):
+#   <npm script>   wired:<이 문자열이 나타나야 하는 파일>
+#   <npm script>   unwired:<이유 — 왜 지금 안 도는지, 언제 배선할지>
+#
+# gate-liveness.sh 가 검사하는 것:
+#   1. package.json 의 test:*/verify:*/check:* 스크립트가 전부 이 원장에 있는가 (새 게이트를 몰래 못 들인다)
+#   2. wired: 로 선언한 게이트가 그 파일에서 실제로 참조되는가 (배선이 조용히 끊기면 잡힌다)
+#   3. unwired: 는 통과시킨다 — 목적은 차단이 아니라 부채를 기록으로 남기는 것
+
+test:public-seam	wired:package.json
+test:server-seam	wired:package.json
+test:browser	wired:.github/workflows/ci.yml
+test:performance	wired:.github/workflows/ci.yml
+test:persistence-pg	wired:compose.yaml
+verify:network-off	wired:compose.yaml
+verify:migrations	wired:compose.yaml
+verify:backup-drill	wired:compose.yaml
+check	wired:.husky/pre-commit
+check:pr	wired:package.json
+check:release-docs	unwired:F11 릴리스 체계가 Stage 3 에서 재정의 대기 — 그때 CI 레인에 넣을지 삭제할지 결정 (pivot 메모 §6 Stage 3)
+package:release	unwired:위와 동일 — 웹 ZIP 릴리스 전제라 npm publish 체제 재정의 대상
+test:mutation	unwired:설정 주석이 스스로 regression gate 라 주장하나 CI·훅 미배선. 범위도 runtime-policy·network-policy 2파일뿐이라 money 경로가 밖에 있다. 아키텍처 리뷰 별건 후보
+check:f1	unwired:F1 전용 확장 게이트 — 해당 트랙이 Stage 3 컷 대상이라 배선 보류
+check:f2	unwired:위와 동일
+test:watch	unwired:개발 편의용 워치 러너 — 게이트가 아니다

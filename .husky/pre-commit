@@ -2,5 +2,8 @@
 # 콘텐츠 게이트(whitespace·credential·secret 파일)는 CI와 공유하는 한 소스다. ticket 22.
 sh scripts/gates/content-gates.sh --cached || exit 1
 
+# 게이트 생존성 — 선언만 있고 안 도는 게이트, 못 돌리는 레인 등록을 잡는다 (2026-07-26, arch-1)
+sh scripts/gates/gate-liveness.sh || exit 1
+
 # 빌드 게이트 — CI(`PR-fast`)와 동일하게 전체 check(typecheck·lint·test·seams)
 npm run check

@@ -35,6 +35,8 @@ jobs:
             BASE="$(git rev-list --max-parents=0 HEAD | tail -1)" # fallback: root commit
           fi
           sh scripts/gates/content-gates.sh "${BASE}...HEAD"
+      - name: gate liveness (선언만 있고 안 도는 게이트 — 훅과 한 소스)
+        run: sh scripts/gates/gate-liveness.sh
       - name: build gates (npm run check — typecheck·lint·test·seams)
         run: npm run check
 
