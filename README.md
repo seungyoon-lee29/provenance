@@ -127,7 +127,7 @@ dependency map → frontier claim → single-file ownership
 - [하네스 사례 연구](./docs/notes/harness-and-loop-engineering.md): 일회성 다중 검수를 property·mutation·network-off 상시 검증으로 바꾼 과정
 - [릴리스 게이트](./docs/release/release.md): credential pattern, `.scratch/`와 미분류 파일을 fail-closed로 차단하는 재현 가능한 패키징
 
-`.scratch/`는 스펙·티켓·중간 가설을 포함하는 작업 정본이다. 포트폴리오 설명은 위의 정제된 문서를 기준으로 하고, 현재 사실 여부는 코드·테스트와 `resolved` 티켓의 검증 결과로 확인한다.
+`.scratch/`는 스펙·티켓·중간 가설을 포함하는 작업 정본이다. 이 저장소를 소개할 때는 위의 정제된 문서를 기준으로 하고, 현재 사실 여부는 코드·테스트와 `resolved` 티켓의 검증 결과로 확인한다.
 
 ---
 
@@ -224,5 +224,5 @@ npm run dev
 ## 면책
 
 - 초기 산출물은 실제 브로커로 **Live Trading 주문을 전송하지 않는다**.
-- 이 프로젝트는 학습·포트폴리오 목적이며, 어떤 화면·수치도 **투자자문이 아니다**.
+- 이 프로젝트는 학습·연구 목적이며, 어떤 화면·수치도 **투자자문이 아니다**.
 - 외부 데이터는 각 공급자의 라이선스가 허용하는 범위에서만 사용한다.
