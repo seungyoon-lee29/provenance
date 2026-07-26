@@ -1,3 +1,4 @@
+import "server-only";
 import type { WorkspaceViewerContext } from "../../shared/contracts/viewer-context";
 import { assertPublicRoute } from "./network-policy";
 import type {

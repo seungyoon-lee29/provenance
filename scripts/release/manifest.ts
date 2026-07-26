@@ -2,6 +2,7 @@
  * F11 release packaging — pure allowlist + secret-scan logic (spec §13.2, AC).
  *
  * The release ZIP ships exactly the tracked deliverable: source, lockfile,
+ * vendored local dependencies (`vendor/`, resolved by `npm ci` from disk),
  * Docker, migration, docs and manifests. It excludes agent working state
  * (`.scratch/`), any `.env*` except `.env.example`, `.secrets/`, `.git/`, and
  * every build/cache/raw artifact. `git ls-files` already drops gitignored paths

@@ -73,6 +73,12 @@ describe.skipIf(!hasGit())("F11 release manifest over the real tree", () => {
     expect(paths.has(".env.example")).toBe(true);
     expect(paths.has("package-lock.json")).toBe(true);
     expect(paths.has("Dockerfile")).toBe(true);
+    // vendor/ is a `file:` dependency of package.json — a release that drops it cannot
+    // `npm ci` at all. An exclude rule would make it vanish without tripping the
+    // uncategorized check above, so assert inclusion and category directly.
+    expect(paths.has("vendor/server-only/package.json")).toBe(true);
+    expect(paths.has("vendor/server-only/index.js")).toBe(true);
+    expect(included.find((entry) => entry.path === "vendor/server-only/index.js")?.category).toBe("vendor");
   });
 
   it("builds a manifest with a SHA-256 for every file and no leaked secret", () => {

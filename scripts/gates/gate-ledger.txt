@@ -22,7 +22,7 @@
 # 즉 스크립트는 typecheck 대비 커버리지 0 이면서 check 를 5단계로 보이게 만들고 있었다 —
 # 이 원장이 막으려는 바로 그 "조용한 검증됨 오독".
 # build 는 `npm run check` 에 넣지 않는다 (2026-07-26 결정, 측정 후).
-# ① 이미 돈다: Dockerfile:13 `RUN npm run build` → verify-compose.sh 첫 줄이 그 이미지를
+# ① 이미 돈다: Dockerfile 의 `RUN npm run build` 스텝 → verify-compose.sh 첫 줄이 그 이미지를
 #    `--build` 로 강제 → CI `PR-integration`(if: pull_request || push). 모든 PR·main push 에서 탄다.
 #    check 에 넣으면 pr-check 컨테이너 안에서 두 번 돈다.
 # ② 속도는 이유가 아니다 — 실측 cold 6.0s 로 check(8.9s) 보다 오히려 빠르다. 넣지 않는 이유는
@@ -44,15 +44,21 @@
 #    이제 next build red 다. 전에는 green 이었다.
 #    ⚠️ vendor/server-only 를 진짜 `server-only` 패키지로 교체하지 말 것 — 그 패키지의
 #    index.js 는 throw 라서 CLI 가 죽는다. 이유는 vendor/server-only/index.js 에 적어 뒀다.
-#    ⑤ 마커 누락은 tests/server-only-marker.test.ts 가 잡는다(민감 3개 디렉터리 전수).
+#    ⑤ 마커 누락은 tests/server-only-marker.test.ts 가 잡는다(민감 4개 디렉터리 전수:
+#       runtime·persistence·credential-vault·provider-transport).
 #       판별력 실증 2종: 마커 1개 제거 red · 마커 없는 새 파일 추가 red.
+#       provider-transport 는 codex 적대 리뷰가 잡은 누락이다 — https-executor·network-policy 가
+#       node:https/node:dns 로 **우연히** 막히고 있었다. ③이 지적한 바로 그 형태라 포함시켰다.
 #    ⑥ "Stage 3 가 웹을 지우니 위험은 자동 소멸" 이라는 초안 논거는 **철회했다** —
 #       credential-vault 는 Stage 3 존치 대상이고 게스트 터미널 존치는 미결이다(pivot :292-296).
 # tests/server-seam.example.ts 는 2026-07-26 삭제됐다. 위 ②③과 같은 계열의 거짓 산출물이었다:
 # 주석은 "dependencies.ts 의 shape 를 pin 한다" 고 주장했으나 헤더는 스스로 shape 를 안 잡는다고
 # 적고 있었고, 실측 커버리지가 **0** 이었다 — getDatabasePool 시그니처를 바꿔도 이 파일에서
 # 잡힌 오류 0건, 실 호출자(cli/commands.ts·identity-server.ts)만 red. `typeof getDatabasePool`
-# 은 동어반복이라 아무것도 고정하지 못한다. 그 파일이 지키는 척하던 불변식은 이제 ④가 지킨다.
+# 은 동어반복이라 아무것도 고정하지 못한다.
+# **④가 그 파일을 대체한 것은 아니다** — 옛 픽스처는 배럴 export 이름만 pin 했고(그마저 실 호출자와
+# 중복), ④의 마커는 client 번들 유입이라는 **다른 불변식**을 새로 세운 것이다. 대체 관계로 적으면
+# 그 자체가 또 하나의 과대 서술이다(codex 적대 리뷰 지적).
 build	wired:Dockerfile
 test:browser	wired:.github/workflows/ci.yml
 test:performance	wired:.github/workflows/ci.yml

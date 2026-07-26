@@ -19,10 +19,10 @@ import { describe, expect, it } from "vitest";
  * nothing, and swapping to a fetch/WebSocket driver would silently delete the coverage.
  *
  * This test does not check bundling — it checks that nobody adds a file to the server-only
- * surface without the marker. `next build` (Dockerfile:13, CI PR-integration) does the real
+ * surface without the marker. `next build` (the `RUN npm run build` step in Dockerfile, CI PR-integration) does the real
  * transitive enforcement.
  */
-const SERVER_ONLY_DIRS = ["src/platform/runtime", "src/platform/persistence", "src/platform/credential-vault"];
+const SERVER_ONLY_DIRS = ["src/platform/runtime", "src/platform/persistence", "src/platform/credential-vault", "src/platform/provider-transport"];
 
 const MARKER = 'import "server-only";';
 
@@ -40,6 +40,6 @@ describe("server-only marker", () => {
   });
 
   it("guards a surface that is not empty (the check above passes vacuously otherwise)", () => {
-    expect(SERVER_ONLY_DIRS.flatMap(tsFilesIn).length).toBeGreaterThanOrEqual(11);
+    expect(SERVER_ONLY_DIRS.flatMap(tsFilesIn).length).toBeGreaterThanOrEqual(17);
   });
 });

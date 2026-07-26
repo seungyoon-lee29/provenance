@@ -1,3 +1,4 @@
+import "server-only";
 export { AuthorizedResult, AuthorizedTransport } from "./authorized-transport";
 export { createPinnedHttpsTransportExecutor } from "./https-executor";
 export { assertPublicRoute, isPublicNetworkAddress, resolveProviderHostname } from "./network-policy";

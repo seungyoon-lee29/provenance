@@ -7,8 +7,8 @@ sh scripts/gates/gate-liveness.sh || exit 1
 
 # 전체 검증 게이트 — CI(`PR-fast`)와 동일하게 typecheck·lint·test.
 # seams 2단계는 2026-07-26 제거됐다(런타임 no-op 이었다 — gate-ledger.txt).
-# Next 번들 단계는 의도적으로 여기 없다: Dockerfile:13 이 이미 돌리고 CI `PR-integration`
-# 이 그걸 모든 PR·push 에서 태운다. 근거는 gate-ledger.txt 를 볼 것.
+# Next 번들 단계는 의도적으로 여기 없다: Dockerfile 의 이미지 빌드 스텝이 이미 돌리고
+# CI `PR-integration` 이 그걸 모든 PR·push 에서 태운다. 근거는 gate-ledger.txt 를 볼 것.
 # (이 주석에 그 스크립트 이름을 쓰지 않는 것도 의도적이다 — gate-liveness 3b 가 파일 안
 #  문자열 존재로 배선을 판정하므로, 여기 적으면 없는 배선이 있는 것처럼 통과한다.)
 npm run check

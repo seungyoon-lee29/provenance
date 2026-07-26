@@ -1,3 +1,4 @@
+import "server-only";
 import type { ProviderConnectionReference } from "../../shared/contracts";
 import type { ViewerContext, WorkspaceViewerContext } from "../../shared/contracts/viewer-context";
 import { AuthorizedTransport } from "./authorized-transport";

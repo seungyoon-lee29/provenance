@@ -1,3 +1,4 @@
+import "server-only";
 import { request as httpsRequest } from "node:https";
 
 import type { TransportExecutor } from "./types";
