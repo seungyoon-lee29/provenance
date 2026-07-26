@@ -42,14 +42,23 @@ describe("T10 S4 — agent onboarding documents", () => {
     expect(missing).toEqual([]);
   });
 
-  it("both documents publish the launch form that keeps stdout clean", () => {
+  it("both documents publish the launch form that keeps stdout clean, and neither publishes the npm one", () => {
     // `npm run` prints its script banner to STDOUT: it breaks a `--json | jq`
-    // pipe and, over MCP, corrupts the JSON-RPC stream outright. Publishing the
-    // wrong invocation is the one documentation error that cannot be recovered
-    // from by reading further, so the exact working form is pinned.
+    // pipe and, over MCP, corrupts the JSON-RPC stream outright — the client
+    // dies on a parse error before it can read anything else. Publishing that
+    // invocation is the one documentation error a reader cannot recover from.
     for (const [name, document] of [["SKILL.md", SKILL], ["README.md", README]] as const) {
       expect(document, name).toContain("node --import tsx src/cli/main.ts");
-      expect(document, name).toContain("src/mcp/main.ts");
+      // Presence alone is weak — a document can show the safe form AND an unsafe
+      // alternative and still satisfy it. So the known-unsafe spellings are
+      // banned outright. This is a blocklist, not a proof: it stops the
+      // spellings someone would actually reach for, not every possible one.
+      expect(document.toLowerCase(), name).not.toContain("npm run mcp");
+      expect(document, name).not.toContain('"command": "npm"');
     }
+    // The MCP entry is only ever published as a full argv, so pin that vector
+    // rather than the bare filename, which any prose mention would satisfy.
+    expect(README).toContain('"args": ["--import", "tsx", "src/mcp/main.ts"]');
+    expect(SKILL).toContain('"args": ["--import", "tsx", "src/mcp/main.ts"]');
   });
 });

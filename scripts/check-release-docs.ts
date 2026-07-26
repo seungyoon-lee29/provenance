@@ -24,7 +24,14 @@ function trackedMarkdown(): string[] {
 }
 
 const LINK = /\[[^\]]*\]\(([^)]+)\)/g;
-const SCRIPT = /npm run ([a-z0-9:_-]+)/g;
+/**
+ * `npm run [flags…] <script>`. The flag prefix is consumed so the SCRIPT NAME is
+ * what gets captured: `npm run --silent cli -- …` must check `cli`, not
+ * `--silent`. Capturing the first token instead both reported a flag as a stale
+ * script (a false positive that made documenting the flag impossible) and let a
+ * genuinely stale `npm run --silent no-such-script` through unreported.
+ */
+const SCRIPT = /npm run ((?:-{1,2}[a-z0-9-]+\s+)*)([a-z0-9:_-]+)/g;
 
 export function checkReleaseDocs(): DocCheckResult {
   const scripts = new Set(Object.keys(JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")).scripts ?? {}));
@@ -42,13 +49,7 @@ export function checkReleaseDocs(): DocCheckResult {
       if (!existsSync(resolve(ROOT, dirname(doc), path))) brokenLinks.push({ doc, link: target });
     }
     for (const match of content.matchAll(SCRIPT)) {
-      const script = match[1]!;
-      // A leading dash is an npm FLAG, never a script name (`npm run --silent
-      // cli -- …`). Reporting it as a stale reference is a false positive that
-      // makes documenting the flag impossible — and documenting it matters
-      // here, because npm's script banner goes to stdout and breaks a
-      // `--json | jq` pipe (T10 S4).
-      if (script.startsWith("-")) continue;
+      const script = match[2]!;
       if (!scripts.has(script)) missingScripts.push({ doc, script });
     }
   }
