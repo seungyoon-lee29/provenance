@@ -648,43 +648,66 @@ function poisonedPool(): Pool {
 }
 
 /**
- * `reason: "unavailable"` is reached by at least three different causes (no
- * database configured, the driver failing, and — if the CLI's authorization
- * wiring ever drifted — a refused read). Asserting only the reason cannot tell
- * them apart, so every case below pins the MESSAGE too. The poisoned pool makes
- * that discrimination real: a driver message can only be produced by a call
- * that was ADMITTED and went on to touch storage, so "everything is denied now"
- * cannot masquerade as this green.
+ * Three causes used to collapse onto `reason: "unavailable"`. One of them —
+ * "nothing is broken, this surface was never given a database" — now has its
+ * OWN reason, `configuration_required`, because the caller's next move differs:
+ * configure and re-call, versus wait and retry. Case 8 pins that split in both
+ * directions, since a reason an agent is told to branch on is a contract.
+ *
+ * TWO causes still share `unavailable` — the driver failing, and a read refused
+ * by an authorization drift — and they part only on the MESSAGE, so the
+ * message-pinning principle stands. The poisoned pool is what makes that
+ * discrimination real: `DRIVER_DOWN` can only be produced by a call that was
+ * ADMITTED and went on to touch storage, so "everything is refused now" cannot
+ * masquerade as this green. `READ_REFUSED` needs a LIVE database to reach (the
+ * CLI composition always supplies its own viewer), so this file can only assert
+ * that the driver arm never wears it.
  */
 const DRIVER_DOWN = "database unavailable";
+const READ_REFUSED = "paper account is not readable on this surface";
+const NO_DATABASE = "no database is configured for this surface";
 
 describe("ARCH-1 surface — paper.account operation", () => {
   it("8. a broken driver refuses `unavailable` with the DRIVER message, never throws, and never echoes the connection text", async () => {
     // The pool is INJECTED, so this reaches the durable path and fails inside
-    // the driver — the arm this change adds. Calling operationCatalog() with no
-    // pool would instead short-circuit on "no database configured", the
-    // pre-existing arm tests/t10-operation-catalog.test.ts already pins.
+    // the driver — a dead dependency, not a missing setting.
     const result = await operationCatalog({ pool: () => poisonedPool() }).call("paper.account", {});
     expect(result.status).toBe("refused");
     if (result.status !== "refused") return;
     expect(result.reason).toBe("unavailable");
     // The message the reason alone cannot carry: this call was ADMITTED and
-    // died in the driver. A read refused before storage (a denial, a missing
-    // database) reports something else, and this assertion goes red.
+    // died in the driver, so it is NOT the sibling `unavailable` cause.
     expect(result.message).toBe(DRIVER_DOWN);
-
-    // And the sibling `unavailable` cause is genuinely distinguishable.
-    const unconfigured = await operationCatalog().call("paper.account", {});
-    expect(unconfigured.status).toBe("refused");
-    if (unconfigured.status !== "refused") return;
-    expect(unconfigured.reason).toBe("unavailable");
-    expect(unconfigured.message).not.toBe(result.message);
-    expect(unconfigured.message).toMatch(/no database/i);
+    expect(result.message).not.toBe(READ_REFUSED);
 
     const serialized = JSON.stringify(result);
     expect(serialized).not.toContain(SENTINEL);
     expect(serialized).not.toContain("postgresql://");
     expect(serialized).not.toContain("password authentication failed");
+  });
+
+  // Deliberately unnumbered: the "8a/8b/…" prefixes belong to the SPEC 8
+  // assembly block below, and reusing them here would read as the same case.
+  it("reason split: an unconfigured surface refuses `configuration_required`, and the split holds in BOTH directions", async () => {
+    // Same operation, same arguments; only the pool differs. If the reasons do
+    // not diverge on that alone, the split an agent is told to branch on is
+    // prose, not behaviour.
+    const unconfigured = await operationCatalog().call("paper.account", {});
+    const brokenDriver = await operationCatalog({ pool: () => poisonedPool() }).call("paper.account", {});
+    expect(unconfigured.status).toBe("refused");
+    expect(brokenDriver.status).toBe("refused");
+    if (unconfigured.status !== "refused" || brokenDriver.status !== "refused") return;
+
+    expect(unconfigured.reason).toBe("configuration_required");
+    expect(unconfigured.message).toBe(NO_DATABASE);
+
+    // Neither reason appears in the other's situation: a missing setting is not
+    // a dead dependency to wait on, and a dead dependency is not something the
+    // caller can fix by configuring anything.
+    expect(unconfigured.reason).not.toBe(brokenDriver.reason);
+    expect(unconfigured.reason).not.toBe("unavailable");
+    expect(brokenDriver.reason).not.toBe("configuration_required");
+    expect(brokenDriver.message).not.toBe(NO_DATABASE);
   });
 
   it("9. the CLI account surface reports api/2 with the DRIVER message and leaks no connection text", async () => {

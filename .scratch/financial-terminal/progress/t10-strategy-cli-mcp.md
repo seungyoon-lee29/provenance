@@ -174,4 +174,42 @@
 - **벤더 중립성 (설계 기록)**: `src/operations/catalog.ts` 에 MCP import 가 **0** 이다.
   lock-in 은 transport 층에만 있고 그 층이 제일 얇다(MCP 서버 ~140줄). 다른 규격이 뜨면
   transport 를 하나 더 얹고, 규격 없이 붙이려는 에이전트는 이미 `call --json` 으로 쓸 수 있다.
+- **S4 착수 전 계약 정리 (2026-07-26)** — SKILL.md 를 쓰기 **전에** 오퍼레이션 거절 이유를 갈랐다.
+  - **왜 지금인가**: SKILL.md 를 발행하는 순간 "에이전트에게 분기하라고 알려준 것" 이 계약으로 굳는다.
+    `configuration_required`(설정하고 재시도)와 `unavailable`(의존성 장애, 대기)은 **다음 행동이 다른데**
+    둘 다 `unavailable` 이었고 차이는 message 문자열뿐이었다. 문서에 "message 가 `/no database/` 면
+    DATABASE_URL 을 설정하라" 고 쓰면 그 산문이 계약이 된다 — 참조 CLI 가 stdout 을 오염시켜
+    `--json` 파이프를 깨뜨린 것을 반명제로 삼은 이 저장소가 할 일이 아니다. 발행 전이 유일하게 싼 시점.
+  - **← 정정 (착수 전 기각 이력 조회 중 발견, `prior-decisions=` 규칙의 첫 실사용)**:
+    이 변경을 "티켓 41 결정을 뒤집는 것" 으로 판단하고 사용자 승인을 받았는데, **원문을 읽으니 반대였다.**
+    `issues/41-mcp-readonly-catalog.md:66,111` 은 "크리덴셜이 없으면 해당 오퍼레이션이 **`api_required`**
+    outcome 을 반환하고, 서버는 계속 뜬다" 라고 적는다 — 즉 41 은 기계 판독 가능한 "설정 필요" 이유를
+    **이미 요구했고**, S2 구현이 그걸 `unavailable` 로 평탄화한 것이 이탈이었다.
+    이 변경은 41 을 뒤집는 게 아니라 **복원한다.** 전제를 확인하지 않고 "뒤집는다" 고 보고한 것이 오류다.
+  - **이름은 `api_required` 대신 `configuration_required`**: 이 저장소에서 `api_required` 는 공급자 API
+    권한을 뜻한다(`outcome-classification.ts:49` 의 `requiredCapability`·`configurationRoute`). 여기서
+    빠진 것은 데이터베이스지 공급자 API 가 아니다. 41 의 의도를 지키되 이름은 사실에 맞춘다.
+  - **도달 표면은 MCP 하나**: `mcp/server.ts:133-138` 이 `DATABASE_URL` 미설정 시 pool 을 일부러 안 넣는다.
+    CLI 는 `databaseUrl()` 이 `DEFAULT_DATABASE_URL` 로 폴백하고 `catalogFor` 가 항상 pool 을 주입하므로
+    이 arm 에 **도달할 수 없다** — 그래서 CLI 매핑은 "그날을 위한" 것이지 지금 도는 경로가 아니다.
+  - **부수 수정**: `fromOperation` 의 `reason === "unavailable" ? api : usage` 삼항을
+    `Record<OperationRefusalReason, CliErrorCode>` 로 교체. 새 이유를 추가하면서 exit code 를 안 정하면
+    **컴파일 에러**가 된다. 옛 형태는 모든 미래 이유를 조용히 `usage`(exit 1, 호출자 입력 오류)로
+    분류했는데, 새 이유는 호출자 오타보다 환경 문제일 가능성이 훨씬 높다 — 기본값이 틀려 있었다.
+  - **blind 저자 지적과 그에 대한 판정 (AGENTS.md "서브에이전트 결론은 재현 후 채택" 첫 실사용)**:
+    저자가 "CLI 는 분리를 못 받아서, 사람이 configure-and-re-call 문제에 retry-forever 답을 받는다" 고
+    보고했다. 실측으로 재현했고 — `DATABASE_URL` 없이 `paperAccountCommand()` → `api` / `"database
+    unavailable"` / exit 2 — **관측은 맞지만 프레이밍은 채택하지 않는다.**
+    `DEFAULT_DATABASE_URL`(`defaults.ts:1`)이 `postgresql://…@127.0.0.1:5432/provenance` 라
+    CLI 는 기본값으로 **실제 연결을 시도하고 실패**한다. 그 메시지는 거짓이 아니라 정확한 관측이다.
+    CLI 가 `configuration_required` 를 내려면 "DATABASE_URL 미설정 = 미구성" 이라고 **단정**해야 하는데,
+    그건 호스트 개발에서 기본값이 실제로 동작하는 경로를 깨뜨리고 알 수 없는 것을 지어내는 것이다.
+    **두 표면은 아는 것이 다르다** — 카탈로그는 "pool 이 주입되지 않았다" 는 사실을 알고, CLI 는
+    "연결이 실패했다" 만 안다. 관측 불가능한 구분을 표면에 만들지 않고, S4 의 에러표가 그 차이를
+    정직하게 적는다: CLI 의 exit 2 = "설정되거나 기본값인 URL 로 DB 에 닿지 못했다 — 기동 여부와
+    DATABASE_URL 을 확인하라", MCP 의 `configuration_required` = "설정하고 다시 불러라".
+  - **드리프트 1건 동시 수정**: `mcp/server.ts:128` 의 `main()` doc 이 아직 "`paper.account` 는
+    `unavailable` 을 답한다"고 적고 있었다. 코드가 아니라 주석이지만 이 파일이 곧 SKILL.md 가
+    인용할 근거라 같은 커밋에서 고친다 — 정의 둘 금지는 주석에도 걸린다.
+  - 게이트: typecheck 0 · lint 0 error · **768 통과 / 56 skip** · seam 2종.
 - 다음: S4(SKILL.md + README 온보딩 블록) → 4축 게이트.

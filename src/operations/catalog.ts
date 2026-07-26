@@ -34,11 +34,25 @@ import { compileStrategy, findStrategy, STRATEGY_CATALOG } from "../modules/pape
 
 export type OperationKind = "read" | "compute";
 
+/**
+ * `configuration_required` vs `unavailable` is the one distinction an agent must
+ * be able to make WITHOUT reading prose: the first means "set something and call
+ * again", the second means "the dependency is down, waiting may help". Both used
+ * to be `unavailable`, separable only by the message string — and the moment
+ * SKILL.md tells an agent to match a message, that prose becomes contract we can
+ * no longer change. Splitting before publishing costs one union member; after,
+ * it costs every agent that learned the old shape (T10 S4).
+ *
+ * ← 티켓 41 결정 정정: 41 은 "크리덴셜 없으면 서버는 살아있고 오퍼레이션이 outcome 을
+ * 돌려준다"를 위해 `unavailable` 을 골랐다. 그 결론(서버가 죽지 않는다)은 유지된다 —
+ * 바뀐 것은 그 outcome 이 기계 판독 가능한 이유를 갖느냐뿐이다.
+ */
 export type OperationRefusalReason =
   | "unknown_operation"
   | "invalid_input"
   | "unknown_strategy"
   | "invalid_params"
+  | "configuration_required"
   | "unavailable";
 
 export type OperationResult =
@@ -214,7 +228,11 @@ export function createOperationCatalog(deps: OperationDependencies = {}): readon
     inputSchema: z.object({}).strict(),
     run: async () => {
       const resolvePool = deps.pool;
-      if (resolvePool === undefined) return refused("unavailable", "no database is configured for this surface");
+      // Reachable on the MCP surface only: `mcp/server.ts` deliberately omits the
+      // pool when DATABASE_URL is unset so the server still starts. The CLI
+      // always injects one (its DATABASE_URL falls back to a default), so it
+      // cannot produce this arm at all.
+      if (resolvePool === undefined) return refused("configuration_required", "no database is configured for this surface");
       try {
         // seedCash [] — unused on this path: `readAccount` never provisions, so
         // the seed a genesis WOULD have used is not consulted here.

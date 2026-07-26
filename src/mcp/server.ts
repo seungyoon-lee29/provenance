@@ -125,9 +125,12 @@ export function createMcpServer(catalog: OperationCatalog): McpServer {
 
 /**
  * Entry point. A missing database is NOT a startup failure: the server comes up
- * and `paper.account` answers `unavailable` (ticket 41 — no credentials means
- * the operation returns an outcome and the server stays up). The pool factory
- * is lazy, so nothing connects until a durable operation is actually called.
+ * and `paper.account` answers `configuration_required` (ticket 41 — no
+ * credentials means the operation returns an outcome and the server stays up;
+ * the reason is machine-readable so the agent knows to SET something rather than
+ * to wait). This is the only surface that reaches that arm — the CLI always
+ * injects a pool. The pool factory is lazy, so nothing connects until a durable
+ * operation is actually called.
  */
 export async function main(): Promise<void> {
   const dependencies: OperationDependencies = {};

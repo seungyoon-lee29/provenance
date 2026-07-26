@@ -120,7 +120,10 @@ describe("T10 S3 — MCP stdio server", () => {
   it("answers honestly when a durable operation has no database (server stays up)", async () => {
     const result = await client.callTool({ name: CALL_OPERATION, arguments: { operation: "paper.account" } });
     expect(result.isError).toBe(true);
-    expect(body(result).error).toBe("unavailable");
+    // This is the ONE surface that can reach it — `main()` omits the pool when
+    // DATABASE_URL is unset so the server still starts. The agent's next action
+    // is "set DATABASE_URL", which is why it is not `unavailable`.
+    expect(body(result).error).toBe("configuration_required");
     // Still serving afterwards — a missing dependency is not a startup failure.
     expect((await client.listTools()).tools).toHaveLength(3);
   });

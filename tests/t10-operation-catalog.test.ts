@@ -100,7 +100,10 @@ describe("T10 S2 — operation catalog", () => {
     const result = await operationCatalog().call("paper.account", {});
     expect(result.status).toBe("refused");
     if (result.status !== "refused") throw new Error("unreachable");
-    expect(result.reason).toBe("unavailable");
+    // NOT `unavailable`: "configure something and call again" and "the dependency
+    // is down" are different next actions, and an agent must tell them apart from
+    // the reason alone — never from the message prose (T10 S4).
+    expect(result.reason).toBe("configuration_required");
   });
 
   it("describe publishes a JSON Schema whose defaulted fields are optional", async () => {

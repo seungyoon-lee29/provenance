@@ -8,7 +8,7 @@ import { CLI_WORKSPACE, cliViewer, createDurablePaperTrading } from "../composit
 import { runBacktest } from "../modules/paper-trading/backtest/backtest-runner";
 import type { BacktestStrategy } from "../modules/paper-trading/backtest/backtest-runner";
 import { operationCatalog, seriesSchema } from "../operations/catalog";
-import type { OperationDependencies, OperationResult } from "../operations/catalog";
+import type { OperationDependencies, OperationRefusalReason, OperationResult } from "../operations/catalog";
 import { getDatabasePool } from "../platform/runtime/dependencies";
 
 /**
@@ -46,12 +46,29 @@ function fail(command: string, code: CliErrorCode, message: string): CliOutcome 
 }
 
 /**
- * Map an operation refusal onto the CLI's error vocabulary. `unavailable` is
- * infrastructure (exit 2); everything else is the caller's input (exit 1).
+ * Map an operation refusal onto the CLI's error vocabulary.
+ *
+ * Exhaustive by type, not by ternary: a `Record` over the union means adding an
+ * operation reason without deciding its exit code is a compile error. The old
+ * `reason === "unavailable" ? api : usage` form silently classified every future
+ * reason as caller input (exit 1), which is the wrong default — a new reason is
+ * far more likely to be environmental than to be the caller's typo.
  */
+const OPERATION_REASON_TO_CLI: Record<OperationRefusalReason, CliErrorCode> = {
+  unknown_operation: "usage",
+  invalid_input: "usage",
+  unknown_strategy: "usage",
+  invalid_params: "usage",
+  // Environment, not caller input — both are exit 2 (API/infra). The CLI cannot
+  // actually produce `configuration_required` (it always injects a pool), but
+  // the mapping has to be right for the day another transport shares this code.
+  configuration_required: "api",
+  unavailable: "api",
+};
+
 function fromOperation(command: string, result: OperationResult): CliOutcome {
   if (result.status === "ok") return ok(command, result.value);
-  return fail(command, result.reason === "unavailable" ? "api" : "usage", result.message);
+  return fail(command, OPERATION_REASON_TO_CLI[result.reason], result.message);
 }
 
 /**
