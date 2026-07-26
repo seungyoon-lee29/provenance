@@ -4,6 +4,82 @@
 > 좁혀졌다. 아래 본문과 로드맵(F0~F11)은 재작성 전의 옛 서술이다. 현행 계획:
 > [docs/notes/2026-07-22-pivot-backtest-strategy-engine.md](docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)
 
+---
+
+## 에이전트로 쓰기 (현행 표면 — CLI · MCP)
+
+백테스트 엔진은 두 표면을 갖는다. 정의는 하나(`src/operations/catalog.ts`)이고 CLI 와 MCP 는
+그 위의 transport 다. 에이전트용 사용 계약 전문: **[SKILL.md](SKILL.md)**.
+
+### 설치 — 생략 금지 체크리스트
+
+에이전트가 그대로 따라 실행할 수 있게 결정론적으로 적는다. 순서를 바꾸거나 건너뛰지 말 것.
+
+```bash
+# 1. 클론 후 저장소 루트에서
+npm install
+
+# 2. 확인 — 아래 두 줄이 그대로 나오면 엔진은 동작한다
+node --import tsx src/cli/main.ts strategy list --json
+node --import tsx src/cli/main.ts backtest run \
+  --series tests/fixtures/t8/synthetic-series.json \
+  --strategy buy_and_hold --cash 1000000 --json
+
+# 3. (선택) 모의계좌를 쓸 때만 — PostgreSQL 이 필요하다
+export DATABASE_URL="postgresql://…"
+npm run db:migrate
+```
+
+세 가지 디테일이 실제로 사람을 걸리게 한다:
+
+- **`npm run` 으로 부르지 마라.** npm 이 스크립트 배너를 **stdout** 에 찍어서 `--json | jq`
+  파이프가 깨지고, MCP 로 쓰면 JSON-RPC 스트림이 오염돼 클라이언트가 즉사한다.
+  `node --import tsx <파일>` 로 직접 부른다 (부득이하면 `npm run --silent cli -- …`).
+- **`SKILL.md` 는 로컬 파일로 읽어라** — 원격 fetch 도구로 가져오지 말고 클론한 저장소에서
+  직접 읽는다. 표면의 진실은 이 워킹 트리이지 어딘가의 캐시가 아니다.
+- **PostgreSQL 은 `paper account` 에만 필요하다.** 백테스트는 DB 없이 완전히 돈다.
+
+### MCP 서버 등록
+
+```json
+{
+  "mcpServers": {
+    "provenance": {
+      "command": "node",
+      "args": ["--import", "tsx", "src/mcp/main.ts"],
+      "cwd": "/절대/경로/provenance"
+    }
+  }
+}
+```
+
+`DATABASE_URL` 이 없어도 서버는 뜬다 — `paper.account` 만 `configuration_required` 를
+돌려주고 나머지 오퍼레이션은 정상 동작한다. 툴은 3개 고정(`list_operations` ·
+`describe_operation` · `call_operation`)이라 오퍼레이션이 늘어도 상주 컨텍스트 비용은 그대로다.
+
+### 이 프롬프트를 에이전트에게 복사해줘
+
+```text
+이 저장소(provenance)는 한국 시장 캔들 시리즈 위에서 선언형 전략을 돌리는 로컬 백테스트
+엔진이다. 시작하기 전에 저장소 루트의 SKILL.md 를 읽어라 — 사용 계약이 거기 있다.
+
+핵심만 미리 말하면:
+- 명령은 `node --import tsx src/cli/main.ts <…> --json` 으로 부른다. `npm run` 은 stdout 을
+  오염시키니 쓰지 마라.
+- 무엇이 있는지는 `call --list` 로 물어라. 스키마는 `strategy describe <이름>` 으로 받아라.
+  추측하지 마라.
+- 이 엔진은 값을 모르면 숫자를 만들지 않는다. `{"status":"unavailable","reason":…}` 를
+  0 이나 null 로 번역하지 말고 이유를 그대로 전달해라.
+- `fillCount: 0` 은 "수익률 0%" 가 아니라 "체결이 없었다" 이다. 열린 주문을 확인해서 보고해라.
+- 쓰기 오퍼레이션은 없다. 모의계좌 생성(`paper open`)과 `--strategy-module` 플래그는
+  사람이 한다 — 대신 실행하지 말고 명령줄을 제시해라.
+- 시세를 가져오지 않는다. 캔들 시리즈 파일은 사용자가 준다. 없으면 지어내지 말고 요청해라.
+```
+
+전체 설치·운영(웹 스택 포함)은 [docs/release/setup.md](docs/release/setup.md).
+
+---
+
 > **데이터 정직성(data honesty)을 1급 제약으로 설계한 Bloomberg 스타일 금융 터미널 MVP.**
 > 값을 모르면 값을 만들어내지 않는다 — 표시할 수 없는 데이터는 숫자 대신 *왜 없는지*를 보여준다.
 

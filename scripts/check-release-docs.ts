@@ -43,6 +43,12 @@ export function checkReleaseDocs(): DocCheckResult {
     }
     for (const match of content.matchAll(SCRIPT)) {
       const script = match[1]!;
+      // A leading dash is an npm FLAG, never a script name (`npm run --silent
+      // cli -- …`). Reporting it as a stale reference is a false positive that
+      // makes documenting the flag impossible — and documenting it matters
+      // here, because npm's script banner goes to stdout and breaks a
+      // `--json | jq` pipe (T10 S4).
+      if (script.startsWith("-")) continue;
       if (!scripts.has(script)) missingScripts.push({ doc, script });
     }
   }

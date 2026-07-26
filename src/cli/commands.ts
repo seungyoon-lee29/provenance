@@ -54,7 +54,7 @@ function fail(command: string, code: CliErrorCode, message: string): CliOutcome 
  * reason as caller input (exit 1), which is the wrong default — a new reason is
  * far more likely to be environmental than to be the caller's typo.
  */
-const OPERATION_REASON_TO_CLI: Record<OperationRefusalReason, CliErrorCode> = {
+export const OPERATION_REASON_TO_CLI: Record<OperationRefusalReason, CliErrorCode> = {
   unknown_operation: "usage",
   invalid_input: "usage",
   unknown_strategy: "usage",
