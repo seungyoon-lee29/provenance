@@ -1,8 +1,57 @@
-# 한국어 금융 터미널 (`provenance`)
+# provenance — 한국 시장 백테스트 · 모의투자 엔진
 
-> ⚠️ **2026-07-22 방향 전환 진행 중** — 제품 범위가 "한국 시장 백테스트 + 실시간 모의투자 엔진, CLI + MCP"로
-> 좁혀졌다. 아래 본문과 로드맵(F0~F11)은 재작성 전의 옛 서술이다. 현행 계획:
-> [docs/notes/2026-07-22-pivot-backtest-strategy-engine.md](docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)
+한국 시장 규칙(증권거래세·휴장일·KRX 세션) 위에서 도는 결정론 백테스트 엔진. 얼굴은
+**CLI + MCP** 라서 사람보다 에이전트가 먼저 쓴다. 백테스트와 모의계좌가 같은 체결
+엔진(`InternalPaperSimulator` + append-only `PaperJournal`)을 공유한다.
+
+**값을 모르면 숫자를 만들지 않는다.** 이건 표어가 아니라 리턴 타입이다:
+
+```console
+$ node --import tsx src/cli/main.ts backtest run \
+    --series tests/fixtures/t8/synthetic-series.json --strategy buy_and_hold --cash 1000000 --json
+```
+```jsonc
+// 실제 응답에서 cash·positions·orders·fills 를 생략한 발췌 (그대로 재현된다)
+{"ok":true,"result":{
+  "outcome":{ "status":"complete", "mode":"approximate", "priceBasis":"raw",
+              "costModel":"none", "barCount":3, "fillCount":1, /* … */
+  "performance":{
+    "timeWeightedReturn":  {"status":"covered","ratio":-0.000564},
+    "winRate":             {"status":"unavailable","reason":"no_sells"},   // 0% 가 아니다
+    "fillConfidence":      {"fills":1,"maxParticipation":0.00094},         // 이 체결을 믿어도 되나
+    "tax":{"status":"covered","taxPaid":0,"taxDrag":{"status":"covered","ratio":0}}
+  }}}}
+```
+
+지표마다 `covered` / `unavailable` + 이유가 붙는다. 매도가 없으면 승률은 **0% 가 아니라 없는
+것**이고, 세금 총액을 믿을 수 없으면 gross·net·drag **블록 전체**가 `unavailable` 로 내려간다 —
+반쪽 숫자가 투자 판단에 쓰이느니 없는 편이 낫다.
+
+## 무엇이 어려웠나
+
+이 저장소가 실제로 값을 한 지점만 — 전부 코드로 확인 가능하게 적는다.
+
+- **미래를 못 보게 만드는 것.** 전략에 넘기는 뷰는 커서까지만 열려 있고, 그 너머를 읽으면
+  `RangeError` 다 (`backtest-runner.ts:368`). 미완성 bar 에서의 체결도 거부한다 — 백테스트에서
+  가장 흔한 거짓말이 look-ahead 라서, 규율이 아니라 **타입과 예외**로 막았다.
+- **정직함을 타입으로 만드는 것.** 위 출력의 `covered`/`unavailable` 은 서식이 아니라 유니언
+  타입이다. 계산할 수 없는 지표는 `null` 로 직렬화될 자리가 애초에 없다.
+- **돈을 정수로 유지하는 것.** 원장은 minor-unit 정수 fold 이고, 2^53 을 넘길 수 있는 곱은
+  BigInt 로 간다. float 누적 드리프트가 실제로 한 번 났고, 같은 구조의 쌍둥이가 다른 경로에
+  남아 있던 것을 나중 감사에서 또 잡았다.
+- **모르는 세율을 거부하는 것.** 증권거래세는 체결연도 키로 시행령 부칙까지 대조했고, 연중에
+  세율이 바뀐 2019 이전은 **연도 키로 확정 불가라 fail-closed** 다 — 시리즈가 `taxClass` 를
+  선언한 경우에 한해서다. 생략하면 세금 없는 시뮬레이션이고 결과에 `costModel:"none"` 으로
+  공시된다. 어느 쪽이든 그럴듯한 값을 지어내지는 않는다.
+- **가드가 진짜 살아 있는지 실증하는 것.** no-live·egress 모듈은 Stryker mutation 으로 "가드를
+  물리적으로 부수면 테스트가 죽는지" 까지 회귀 게이트를 건다.
+
+## 왜 이 각도인가
+
+선행 연구는 QuantConnect Lean · NautilusTrader 다. 그쪽이 채운 칸(멀티에셋 백테스트·저지연)을
+다시 만들지 않고 **비어 있는 교차점**을 겨냥한다 — *한국 시장 규칙 × 에이전트 인터페이스(MCP) ×
+데이터 정직성*. 체결 모델도 "Lean 과 동일" 이 아니라 한국 리테일 현실에 맞춘 **선형
+재파라미터화**(거래량 참여 상한 10%, 슬리피지 5bps + 20bps × 누적참여율, 상한 25bps)다.
 
 ---
 
@@ -30,7 +79,7 @@ npm run compose:up     # postgres + 루프백 ingress 까지 함께 뜬다
 npm run db:migrate     # 기본값 127.0.0.1:5432 로 붙는다
 ```
 
-세 가지 디테일이 실제로 사람을 걸리게 한다:
+네 가지 디테일이 실제로 사람을 걸리게 한다:
 
 - **`npm run` 으로 부르지 마라.** npm 이 스크립트 배너를 **stdout** 에 찍어서 `--json | jq`
   파이프가 깨지고, MCP 로 쓰면 JSON-RPC 스트림이 오염돼 클라이언트가 즉사한다.
@@ -84,30 +133,27 @@ npm run db:migrate     # 기본값 127.0.0.1:5432 로 붙는다
 
 ---
 
-> **데이터 정직성(data honesty)을 1급 제약으로 설계한 Bloomberg 스타일 금융 터미널 MVP.**
-> 값을 모르면 값을 만들어내지 않는다 — 표시할 수 없는 데이터는 숫자 대신 *왜 없는지*를 보여준다.
+## 이 표면에 없는 것 — 두 종류를 구별한다
 
-TypeScript 모듈형 모놀리스 · Next.js 16 · PostgreSQL · Redis · 비동기 워커로 구현했으며,
-비로그인 공개 조회, 로그인 사용자별 포트폴리오·설정, 커스터마이징 가능한 고밀도 터미널 UI,
-Paper Trading, 안전한 브로커 연결 구조를 포함한다. 외부 데이터 예산은 **USD 0** — 무료·공개
-라이선스 소스만, 그것도 라이선스가 허용하는 화면·사용자에게만 사용한다.
+"제품에 없다" 와 "이 CLI·MCP 표면에 배선하지 않았다" 는 사용자에게 전혀 다른 말이다.
+전자로 잘못 적으면 사용자가 있는 기능을 찾아 떠난다.
 
----
+- **표면에 없을 뿐, 제품에는 있는 것** — 시세 조회(KIS·국채·ECB FX 어댑터), 공시 조회(Open DART),
+  캔들 생성, 모의 주문 제출(`PaperTradingService`, 백테스트 러너가 쓰는 바로 그 seam).
+  웹 층(`server-only` alias)에 묶여 있어 Stage 3 재작성 뒤 별도 슬라이스로 연다.
+  주문 제출은 confirm token(티켓 40)이 선행이라 **의도적으로 안 열었다**.
+- **불변식으로 금지한 것 — 실거래 주문 하나뿐.** `src/composition/runtime-policy.ts` 가
+  `ENABLE_LIVE_TRADING=true` 를 throw 로 거부하고, 그 문자열을 테스트가 상시 단언한다.
+- **구현 자체가 없는 것 — 뉴스.** 금지된 게 아니라 어댑터를 아직 안 만들었다.
 
-## 왜 이 프로젝트인가
-
-금융 데이터 UI에서 가장 위험한 실패는 "그럴듯한 거짓 숫자"다. 지연된 값을 실시간처럼,
-장 마감 후 전일 종가를 현재가처럼, 개인 계정으로 받은 데이터를 공개 서비스처럼 보여주는 순간
-사용자는 잘못된 판단을 한다. 이 프로젝트는 **그 실패를 타입·계약·불변식으로 구조적으로
-불가능하게 만드는 것**을 목표로 삼았다.
-
-핵심 질문은 "무엇을 보여줄까"가 아니라 **"이 값을 보여줄 권리와 근거가 있는가"** 다.
+정본 표는 [SKILL.md](SKILL.md) §"없는 것".
 
 ---
 
-## 핵심 설계: 데이터 정직성 모델
+## 데이터 정직성 모델 — 시세 쪽
 
-모든 시장 정보는 세 가지 축을 함께 운반한다.
+성과 지표가 `covered`/`unavailable` 로 갈리듯, 시장 정보는 세 축을 함께 운반한다. 백테스트가
+쓰는 것과 같은 원칙을 데이터 수집 쪽에 적용한 층이다.
 
 | 축 | 값 | 의미 |
 |---|---|---|
@@ -124,35 +170,49 @@ Paper Trading, 안전한 브로커 연결 구조를 포함한다. 외부 데이�
 ## 아키텍처
 
 **Ports & Adapters** 기반 모듈형 모놀리스. 각 도메인 모듈은 공개 인터페이스(port)만 노출하고,
-조합 계층(`src/composition`)이 런타임 정책에 따라 어댑터를 조립한다.
+조합 계층(`src/composition`)이 런타임 정책에 따라 어댑터를 조립한다. **오퍼레이션 정의는
+한 곳**(`src/operations/catalog.ts`)이고 CLI 와 MCP 는 그 위의 transport 다.
 
 ```
 src/
-├── app/               Next.js App Router (라우트 · 터미널 UI · 위젯)
-├── modules/           도메인 모듈 (단일 컨텍스트)
-│   ├── financial-information/   시장·뉴스·공시·차트 정보 + InformationOutcome 정규화
-│   ├── identity/               세션·계정·워크스페이스 (hash-only, fence-first erasure)
-│   ├── provider-connections/   사용자별 Provider Credential (AES-256-GCM)
-│   ├── actual-portfolio/       읽기 전용 실계좌 스냅샷
-│   ├── paper-trading/          내부 Paper 원장 (돈의 유일 변경 경계)
-│   ├── research-assistant/     source-owned AI envelope (라이선스·redaction 백스톱)
-│   ├── notification-center/    인앱 알림 정본 + 외부 전달
-│   └── terminal-view/          위젯·패널을 조합하는 뷰 계층
+├── operations/        오퍼레이션 카탈로그 — 두 표면의 단일 정의
+├── cli/ · mcp/        transport (CLI 명령 · MCP stdio 서버 툴 3개)
+├── modules/
+│   ├── paper-trading/
+│   │   ├── internal/            체결 엔진 · append-only 원장 (돈의 유일 변경 경계)
+│   │   │                        + 증권거래세 · Postgres 원장 store
+│   │   └── backtest/            시간축 커서 러너 · 전략 카탈로그 · 성과 리포트
+│   ├── financial-information/   시장·공시·차트 + InformationOutcome 정규화
+│   ├── actual-portfolio/        calculation/ 만 — TWR · XIRR · P&L 분해 (순수 함수)
+│   ├── identity/                세션·계정 (hash-only, fence-first erasure)   ← Stage 3 컷 대상
+│   ├── provider-connections/    사용자별 Provider Credential (AES-256-GCM)   ← Stage 3 컷 대상
+│   └── terminal-view/           게스트 터미널 뷰 계층                        ← Stage 3 컷 대상
 ├── composition/       런타임 정책 · 싱글턴 조립 · 크리덴셜 게이팅
-├── platform/          런타임 의존성 (DB 풀 등)
-├── shared/            공유 계약 (InformationOutcome · brands · viewer-context)
-└── worker/            비동기 워커
+├── platform/          영속성(unit-of-work) · credential-vault · provider-transport
+├── shared/            공유 계약 (InformationOutcome · brands)
+├── app/               Next.js App Router (게스트 터미널 · API 라우트)        ← Stage 3 컷 대상
+└── worker/            헬스 엔드포인트 (스케줄 작업 없음)
 ```
 
-### 두 데이터 트랙 — 재배포 경계
+`research-assistant`·`notification-center`·`actual-portfolio` 의 실계좌 트랙, F9 브로커 전송
+경로는 피벗에서 **삭제됐다**(Stage 1 ~8,400줄 + Stage 2 ~16,400줄). 옛 문서에 완료로 적힌 항목이라도 위 트리에
+없으면 지금은 없는 것이다.
 
-라이선스가 다르면 대상 사용자도 다르다. 이 경계는 코드로 강제된다.
+### 두 데이터 트랙 — 재배포 경계 (웹 층)
+
+라이선스가 다르면 대상 사용자도 다르다. 이 경계는 코드로 강제되며, 웹 층과 함께 Stage 3 에서
+존치 여부를 결정한다.
 
 - **개인용 (KIS 한국투자증권 · `personal`)** — 로그인한 owner 본인에게만. 개인 API 키로 받은
-  국내주식 시세를 workspace 위젯에 표시. `personal` 라이선스는 owner 외 조회 시 `api_required`로
-  차단되며 **공개 feed·다른 사용자 캐시로 절대 재배포되지 않는다.**
-- **게스트용 (공개 정본 · `public`)** — 비로그인 누구나. 재배포가 명확히 허용된 public-domain
-  소스(미 재무부·ECB·SEC EDGAR·Open DART 등)만 공개 터미널에 배선. *(어댑터 배선 진행 중)*
+  국내주식·업종지수 시세. `personal` 라이선스는 owner 외 조회 시 `api_required`로 차단되며
+  **공개 feed·다른 사용자 캐시로 절대 재배포되지 않는다.**
+- **게스트용 (공개 소스 · `public`)** — 비로그인 누구나. 재배포 권리는 소스마다 다르고, 그
+  차이를 뭉뚱그리지 않는다(정본: [rights.md](docs/release/rights.md)).
+  - 미 재무부 수익률 곡선 — public domain. `PUBLIC_MARKET_ENABLED=true` 로 열린다.
+  - ECB 파생 USD/KRW — public domain 이 아니라 **출처 표기 조건부 재사용**이다. 같은 플래그.
+  - Open DART 공시 — 플래그에 더해 `DART_API_KEY` 가 있어야 열린다.
+
+  게스트 KOSPI/S&P/NASDAQ 은 **재배포 가능한 무료 소스가 없어** 정직하게 `api_required` 로 남는다.
 
 ---
 
@@ -166,8 +226,8 @@ src/
 |---|---|
 | **No Live Trading** | 초기 산출물은 실제 브로커로 주문을 전송하지 않는다. Paper 경로만 실행 |
 | **No Redistribution / Egress** | 개인 키 데이터가 공개 feed로 새지 않는다. 외부 전송 목적지는 허용목록으로 pin |
-| **Money Conservation** | append-only 원장 fold에서 돈은 생성·소멸하지 않는다 (§8 trio) |
-| **Actual / Paper Isolation** | 실계좌 원장과 Paper 원장은 서로의 상태를 오염시키지 않는다 |
+| **Money Conservation** | append-only 원장 fold에서 돈은 생성·소멸하지 않는다 (§8 trio). 메모리·실 Postgres 두 러너로 |
+| **Actual / Paper Isolation** | 두 모듈 트리가 서로를 import 하지 않는다 (순수 계산 규칙 재사용은 허용) |
 
 ---
 
@@ -176,17 +236,23 @@ src/
 - **Network-off 결정론 TDD** — 모든 단위·통합 테스트는 네트워크 없이 결정론적으로 돈다.
   외부 공급자는 저수준 HTTP 주입(seam)으로 대체하고, 실제 API는 **opt-in contract test**로 분리.
 - **Contract tests** — 실 KIS 등 외부 API 계약은 환경변수 게이트(`KIS_CONTRACT=1`)로만 실행.
-- **Property + Mutation** — `fast-check`(불변식 property) + `@stryker-mutator`(가드 kill 실증).
-- **적대적 리뷰** — 고위험 산출물(크리덴셜·돈·인증 경로)은 구현과 다른 프레이밍의 blind 검수와
-  독립적인 test-authorship로 반례를 찾고, 직접 근거가 확인된 지적만 수정.
-- **Browser / A11y** — Playwright + `@axe-core/playwright`로 실 DOM·접근성·성능 예산 검증.
+- **Property + Mutation** — `fast-check`(불변식 property) + `@stryker-mutator`(가드 kill 실증,
+  범위는 `runtime-policy`·`network-policy` 2개 모듈).
+- **적대적 리뷰** — 고위험 산출물(돈·크리덴셜·인증 경로)은 구현과 다른 계열 모델의 blind 검수와
+  독립적인 test-authorship로 반례를 찾고, 직접 재현된 지적만 수정한다. **채택해 반영한 수정은
+  같은 등급으로 다시 공격한다** — 1라운드 수정이 원 문제보다 나빴던 사례가 실제로 있었다.
+- **문서 드리프트 가드** — 에이전트가 행동 근거로 삼는 문장은 테스트가 붙잡는다. `SKILL.md` 는
+  카탈로그의 모든 오퍼레이션·거절 이유를 담아야 하고, 호스트 DB 엔드포인트는 기본값·`.env.example`·
+  compose 세 곳이 일치해야 하며, 문서가 "구조적으로 불가능" 이라 단정한 지점은 코드에 묶여 있다.
+- **Browser / A11y** — Playwright + `@axe-core/playwright`로 실 DOM·접근성·성능 예산 검증(웹 층).
 - **CI parity** — 로컬 pre-commit 훅과 동일한 게이트를 GitHub Actions에서 원격 강제.
 
 ```bash
-npm run check            # typecheck + lint + test (+ public/server seam)
+npm run check            # typecheck + lint + test
+npm run build            # check 에 포함돼 있지 않다 — Stage 게이트는 이 넷이다
 npm run test:mutation    # Stryker (no-live · egress 모듈)
 npm run verify:network-off
-npm run test:persistence-pg
+npm run test:persistence-pg   # 실 Postgres 필요 (compose:up)
 ```
 
 ---
@@ -215,11 +281,15 @@ dependency map → frontier claim → single-file ownership
 
 - **크리덴셜 원문은 어디에도 평문 금지** — 코드·문서·설정·권한 allowlist 어디에도. 서버 환경변수
   또는 **AES-256-GCM 암호화 저장소**에만 둔다. 사용자별 키는 마스킹되어 저장·조회된다.
-- **Hash-only 세션** — 불투명 세션 프루프. generation·authorization epoch·deletion fence로
-  탈취·재사용·권한 이탈을 봉쇄.
-- **Fence-first erasure (SEC-09)** — 삭제는 fence를 먼저 세운 뒤 한 트랜잭션으로 원자 수행,
-  잔류 PII 표면을 100% 커버.
-- **Enumeration-safe 로그인** — 이메일 챌린지는 계정 존재 여부를 누설하지 않는다.
+  (vault 구현은 있고 로컬 KEK keyring 은 디스크에 있다. 다만 **CLI 의 브로커 키 저장은 아직
+  없다** — credential 오퍼레이션이 없고 T11 범위다. vault 를 Stage 3 이후에도 남기는 이유가
+  그 예정된 소비자다.)
+- **egress 허용목록** — 외부 전송 목적지는 호스트명으로 pin 되고 리다이렉트를 거부한다. 공개 소스
+  어댑터는 기본 off 플래그 뒤에 있다.
+- **`--strategy-module` 은 사실상 RCE** — 임의 TS 파일을 실행하므로
+  `BACKTEST_STRATEGY_MODULE_ENABLED=true` 없이는 비활성이고, 에이전트가 아니라 사람이 켠다.
+- 아래 셋은 웹·인증 층 소속이라 Stage 3 컷 대상이다: **Hash-only 세션**(generation·authorization
+  epoch·deletion fence), **fence-first erasure(SEC-09)**, **enumeration-safe 이메일 로그인**.
 
 ---
 
@@ -227,77 +297,60 @@ dependency map → frontier claim → single-file ownership
 
 | 영역 | 사용 |
 |---|---|
-| 언어·런타임 | TypeScript, Node.js |
-| 웹 | Next.js 16 (App Router, Turbopack), React 19 |
-| 데이터 | PostgreSQL (`pg`), Redis |
+| 언어·런타임 | TypeScript, Node.js ≥ 22 (`tsx` 로더로 직접 실행) |
+| 에이전트 표면 | `@modelcontextprotocol/sdk` (MCP stdio) |
+| 데이터 | PostgreSQL (`pg`) · Redis (웹 층 시세 캐시) |
 | 검증 | zod (런타임 스키마) |
 | 테스트 | Vitest, fast-check, Stryker, Playwright, axe-core |
+| 웹 (컷 대상) | Next.js 16 (App Router), React 19 |
 | 인프라 | Docker Compose, GitHub Actions, Husky |
 
 ---
 
-## 실행
+## 실행 — 웹 스택
 
-### 1) 네트워크-오프 개발 (기본)
+엔진만 쓸 거라면 위의 「에이전트로 쓰기」 절이 전부다. 아래는 Stage 3 에서 존치 여부를 결정할
+웹 층이다.
 
 ```bash
-npm install
 npm run dev            # http://localhost:3000 — scripted 공급자 (실 API 불필요)
+npm run compose:up     # 풀 스택 (app + PostgreSQL + Redis + 루프백 ingress)
+npm run compose:down   # named volume 은 남는다 (원장 보존)
 ```
 
-### 2) 풀 스택 (Docker: app + PostgreSQL + Redis)
-
-```bash
-npm run compose:up     # 마이그레이션 포함 기동
-npm run compose:down
-```
-
-### 3) 실 KIS 개인용 데이터 (single_owner)
-
-로컬 PostgreSQL + 마이그레이션 후, `.env.local`에 `KIS_APP_KEY` / `KIS_APP_SECRET`(개인 키)를
-두고 아래 환경으로 부팅한다. **비밀은 파일에만, 코드/로그에는 절대 노출하지 않는다.**
-
-```bash
-export DATABASE_URL="postgresql://…"
-npm run db:migrate
-
-APP_ENVIRONMENT=development \
-IDENTITY_PERSISTENCE=postgres \
-LOCAL_PROVIDER_CREDENTIAL_MODE=single_owner \
-LOCAL_PROVIDER_OWNER_WORKSPACE_ID=<owner workspace id> \
-RUN_KIS_PAPER_READ_CONTRACT=true \
-npm run dev
-```
-
-로그인 owner의 workspace 위젯에서 실 KIS 국내주식 시세가 freshness·출처와 함께 렌더된다.
-(장 마감 시간대에는 전일 종가가 `stale · eod`로 정직하게 표기된다.)
+실 KIS 개인용 시세(single_owner) 부팅 환경과 게스트 공개 소스 플래그는
+[docs/release/setup.md](docs/release/setup.md) 에 있다. **비밀은 `.env.local` 에만, 코드·로그·
+문서에는 절대 노출하지 않는다.**
 
 ---
 
 ## 프로젝트 상태 (정직한 로드맵)
 
-이 저장소는 승인된 MVP 스펙(F0–F11)을 기준으로 티켓 단위로 구현·검증한다.
+2026-07-22 피벗 이후의 실행 단위다. 정본 계획은
+[피벗 메모](docs/notes/2026-07-22-pivot-backtest-strategy-engine.md) §6.
 
-| 스파인 | 내용 | 상태 |
+| 단계 | 내용 | 상태 |
 |---|---|---|
-| **F0** | 기반·공유 계약·AES-256-GCM vault·조합 harness | ✅ |
-| **F1** | 비로그인 터미널 shell (공개 outcome만) | ✅ |
-| **F2** | 차트 tracer (OHLCV·지표·freshness) | ✅ |
-| **F3** | Identity·Provider Connections·workspace 레이아웃 | ✅ |
-| **F4** | 정보 outcome·source-owned AI tracer | ✅ |
-| **F5** | 알림·외부 전달 tracer | ✅ |
-| **F6** | Actual Portfolio 베이스라인 (읽기 전용 동기화) | ✅ |
-| **F7** | 포트폴리오 회계 (TWR·XIRR·P&L 분해) | ✅ |
-| **F8** | 내부 Paper Trading (append-only 원장) | ✅ |
-| **F9** | Broker Paper 실행 (durable outbox·exactly-once) | ✅ |
-| **F10** | Broker Sync (read-only, complete-snapshot 승격) | ✅ |
-| **F11** | 릴리스 통합 (Docker·ZIP·문서·스크린샷·load) | 🔶 배포 환경 게이트 대기 |
-| — | Persistence seam(pg 이관)·불변식 property/mutation·CI parity | ✅ |
-| — | **실 KIS 개인용 시세** 어댑터 + 배선 (첫 실 공급자, end-to-end 라이브 스모크 확인) | ✅ |
-| — | 게스트 공개 실데이터 트랙 (소스 확정 → 어댑터 배선) | 🔶 진행 중 |
+| **Stage 0–1** | 체크포인트 + 죽은 코드 절단 (workspace·dev 페이지·AI·F9 브로커·Alpaca) | ✅ |
+| **Stage 2** | Postgres 영속화(paper 원장·마이그레이션 0005/0006) · notification-center 삭제 · actual-portfolio 축소 | ✅ |
+| **Stage 2-c** | 원장 minor-unit 정수 전환 · money-conservation property 를 PG 러너로 | ✅ |
+| **T8** | 백테스트 엔진 — 시간축 커서(look-ahead 차단) · 증권거래세 · TWR·XIRR·MDD·승률·체결신뢰도 | ✅ |
+| **T9** | gross vs net + tax drag 공시 (coverage 유니언 — 총액 불신 시 블록 전체 unavailable). 무세 재실행이 아니라 세금을 terminal value 에 되더하는 **1차 근사**이고, 절약분 재투자는 가정하지 않는다 | ✅ |
+| **T10** | 전략 정의 층 + 오퍼레이션 카탈로그 + CLI + MCP + `SKILL.md` | 🔶 종료 판정 대기 |
+| **Stage 3** | 웹·인증 컷 (identity·provider-connections·terminal-view·auth 라우트) | ⬜ |
+| **T11** | 실시간 모의투자 — 같은 엔진에 실시간 피드 + 주문 confirm token(티켓 40) | ⬜ |
+| **T12** | 호가 수집기 — 돌린 시점부터 정밀 체결 모드 데이터가 쌓인다 | ⬜ |
 
-- **Paper Trading은 완전 구현**, **Live Trading 주문 전송은 의도적으로 비활성**.
-- 실시간 스트리밍(SSE/WS)·해외/선물·per-user KIS 키·임시공휴일 캘린더는 이월 backlog.
+다음 순서는 **아직 정하지 않았다** — T10 종료 판정 뒤 정식 티켓(42~)이냐 Stage 3(웹 컷)이냐가
+열려 있다. v1 의 완결 조건은 기능 목록이 아니라 **공개 + 배포**다(피벗 메모 §3).
+
+**피벗 이전(F0–F11)의 결과**: 남은 것은 체결 엔진·회계 계산·KIS/공개 소스 어댑터·영속성 seam·
+불변식 property/mutation·CI parity 다. 알림·실계좌 동기화·브로커 전송·AI 트랙은 삭제됐다.
+F11 릴리스 통합은 웹 ZIP 패키징 전제라 **Stage 3 에서 npm publish 체제로 재정의할지 결정**한다.
+
+**아직 없는 것 (과대 서술 금지)**: 호가단위 라운딩·상하한가·VI 는 미구현이다 — 구현된 한국 규칙은
+증권거래세(연도별·ETF 면제·2020 이전 fail-closed)와 KRX 휴장일·세션 판정이다. 해외주식 시세 경로는
+조사만 확정(피벗 메모 §4)했고 어댑터는 없다. 휴장일 커버 연도는 2026 뿐이고 임시공휴일은 미포함이다.
 
 ---
 
