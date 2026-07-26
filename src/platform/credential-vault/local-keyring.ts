@@ -1,3 +1,4 @@
+import "server-only";
 import { lstatSync, readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 

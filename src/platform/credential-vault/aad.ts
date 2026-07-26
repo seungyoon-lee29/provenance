@@ -1,3 +1,4 @@
+import "server-only";
 import type { CredentialAadContext } from "./types";
 
 function encodePart(value: string): Buffer {

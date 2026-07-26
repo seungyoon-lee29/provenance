@@ -1,3 +1,4 @@
+import "server-only";
 import { Pool } from "pg";
 import { createClient, type RedisClientType } from "redis";
 

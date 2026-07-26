@@ -1,3 +1,4 @@
+import "server-only";
 import { randomBytes } from "node:crypto";
 
 import { brandReference } from "../../shared/contracts/brands";

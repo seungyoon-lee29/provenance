@@ -1,0 +1,7 @@
+{
+  "name": "server-only",
+  "version": "0.0.0-local",
+  "private": true,
+  "main": "index.js",
+  "description": "Node no-op stand-in for the React server-only marker. See index.js for why this is vendored."
+}

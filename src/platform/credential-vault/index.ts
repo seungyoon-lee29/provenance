@@ -1,3 +1,4 @@
+import "server-only";
 export { encodeCredentialAad } from "./aad";
 export { CredentialVault } from "./credential-vault";
 export { openAes256Gcm, sealAes256Gcm } from "./crypto";

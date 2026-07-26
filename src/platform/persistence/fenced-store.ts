@@ -1,3 +1,4 @@
+import "server-only";
 /**
  * Fenced keyed persistence substrate (SEC-09 as a Prevent, not a bolt-on).
  *

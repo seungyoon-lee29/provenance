@@ -1,3 +1,4 @@
+import "server-only";
 import type { VaultKeyVersion } from "../../shared/contracts";
 import type { VaultKey } from "./types";
 

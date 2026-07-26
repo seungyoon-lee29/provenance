@@ -1,3 +1,4 @@
+import "server-only";
 import { createCipheriv, createDecipheriv } from "node:crypto";
 
 export type SealedAesGcm = Readonly<{ ciphertext: Uint8Array; tag: Uint8Array }>;

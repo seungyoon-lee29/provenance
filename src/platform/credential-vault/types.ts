@@ -1,3 +1,4 @@
+import "server-only";
 import type { ProviderConnectionReference, VaultKeyVersion, WorkspaceReference } from "../../shared/contracts";
 
 export type ProviderEnvironment = "paper" | "live";

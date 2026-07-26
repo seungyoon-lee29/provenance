@@ -7,6 +7,9 @@ RUN apk add --no-cache postgresql17-client
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+# vendor/ holds the `file:` no-op stand-in for the `server-only` marker; npm ci resolves it
+# from disk, so it must land before install. See vendor/server-only/index.js.
+COPY vendor ./vendor
 RUN npm ci
 
 COPY . .

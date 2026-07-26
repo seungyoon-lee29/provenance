@@ -40,6 +40,9 @@ type CategoryRule = Readonly<{ test: (path: string) => boolean; category: string
 
 const CATEGORY_RULES: readonly CategoryRule[] = [
   { test: (p) => p === "package.json" || p === "package-lock.json", category: "lockfile" },
+  // vendor/ holds the `file:` no-op stand-in for the `server-only` marker. `npm ci` resolves it
+  // from disk, so a release that omits it cannot install at all. Ships, deliberately.
+  { test: (p) => p.startsWith("vendor/"), category: "vendor" },
   { test: (p) => p === "Dockerfile" || p === "compose.yaml" || p === ".dockerignore", category: "docker" },
   { test: (p) => p.startsWith("db/") || p === "scripts/migrate.ts", category: "migration" },
   { test: (p) => p.startsWith("docs/") || /^[A-Z0-9_]+\.md$/.test(p) || p.endsWith("/manifest.json") || p.startsWith("dist/release/"), category: "docs" },

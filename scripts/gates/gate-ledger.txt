@@ -32,10 +32,27 @@
 #    잡는다. 프로브: 순수 JS 서버 모듈(비밀 상수, 빌트인 의존 0)을 "use client" 파일에서
 #    import 하고 사용해도 tsc·next build 둘 다 green. `import "server-only"` 를 붙이면 red.
 #    즉 E4(pg→dns/net/tls)는 우연히 잡힌 것이다.
-# ④ 그 마커를 정본 모듈에 달 수 없다 — server-only 는 node_modules/next/dist/compiled 에만
-#    있어 Next 밖에서 안 풀린다. platform/runtime/dependencies.ts 에 달면
-#    `Cannot find module 'server-only'` 로 CLI(`paper account`)가 죽는다(실측). 현재 마커를
-#    쓰는 6파일이 전부 web composition 인 것은 그래서다. 경계 게이트는 미해결 — 별건.
+# ④ ← 해소 (2026-07-26 같은 날, fable·codex 상의 후). ③의 구멍을 닫았다.
+#    당시 판단은 "마커를 정본 모듈에 달 수 없다" 였다 — server-only 가 Next 밖에서 안 풀려
+#    dependencies.ts 에 달면 CLI 가 죽었기 때문이다. **그 전제가 불완전했다.**
+#    Next 는 bare specifier `server-only` 를 레이어별로 자체 alias 하며 **로컬 패키지 내용을
+#    읽지 않는다.** 그래서 Node 용 no-op 스텁을 `file:` 로 꽂으면 양쪽이 동시에 성립한다.
+#    → vendor/server-only (빈 파일) + package.json `file:vendor/server-only`.
+#    실증 (Next 16.2.10 Turbopack): CLI `paper account` exit 0 · MCP 기동 exit 0 · vitest green,
+#    그리고 마커 단 모듈을 "use client" 에 넣으면 next build exit 1.
+#    **진짜 수확**: keyring.ts(빌트인 의존 0 — ③이 못 잡던 바로 그 형태)를 client 로 끌면
+#    이제 next build red 다. 전에는 green 이었다.
+#    ⚠️ vendor/server-only 를 진짜 `server-only` 패키지로 교체하지 말 것 — 그 패키지의
+#    index.js 는 throw 라서 CLI 가 죽는다. 이유는 vendor/server-only/index.js 에 적어 뒀다.
+#    ⑤ 마커 누락은 tests/server-only-marker.test.ts 가 잡는다(민감 3개 디렉터리 전수).
+#       판별력 실증 2종: 마커 1개 제거 red · 마커 없는 새 파일 추가 red.
+#    ⑥ "Stage 3 가 웹을 지우니 위험은 자동 소멸" 이라는 초안 논거는 **철회했다** —
+#       credential-vault 는 Stage 3 존치 대상이고 게스트 터미널 존치는 미결이다(pivot :292-296).
+# tests/server-seam.example.ts 는 2026-07-26 삭제됐다. 위 ②③과 같은 계열의 거짓 산출물이었다:
+# 주석은 "dependencies.ts 의 shape 를 pin 한다" 고 주장했으나 헤더는 스스로 shape 를 안 잡는다고
+# 적고 있었고, 실측 커버리지가 **0** 이었다 — getDatabasePool 시그니처를 바꿔도 이 파일에서
+# 잡힌 오류 0건, 실 호출자(cli/commands.ts·identity-server.ts)만 red. `typeof getDatabasePool`
+# 은 동어반복이라 아무것도 고정하지 못한다. 그 파일이 지키는 척하던 불변식은 이제 ④가 지킨다.
 build	wired:Dockerfile
 test:browser	wired:.github/workflows/ci.yml
 test:performance	wired:.github/workflows/ci.yml
