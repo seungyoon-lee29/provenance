@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { OPERATION_REASON_TO_CLI } from "../src/cli/commands";
+import { loadRuntimeConfig } from "../src/composition/runtime-policy";
 import { operationCatalog } from "../src/operations/catalog";
 
 /**
@@ -43,6 +44,26 @@ describe("T10 S4 — agent onboarding documents", () => {
     // it here is impossible without also failing the compiler there.
     const missing = Object.keys(OPERATION_REASON_TO_CLI).filter((reason) => !SKILL.includes(reason));
     expect(missing).toEqual([]);
+  });
+
+  it("the ONE capability SKILL.md calls structurally impossible is still structurally impossible", () => {
+    // SKILL.md draws a line an agent acts on: everything else it lists as
+    // "missing" is merely unwired to this surface and the agent must NOT tell a
+    // user the product cannot do it — but live order submission is absent by
+    // invariant, so the agent is told to correct the user outright. A promise
+    // that strong has to be tied to the code that keeps it, or the day someone
+    // enables live trading the document starts lying at maximum stakes.
+    expect(SKILL).toContain("Live Trading submission is unavailable in this release");
+    expect(() =>
+      loadRuntimeConfig({
+        APP_ENVIRONMENT: "development",
+        APP_PUBLIC_ORIGIN: "http://localhost:3000",
+        PROVIDER_BILLING_MODE: "free_only",
+        LOCAL_PROVIDER_CREDENTIAL_MODE: "contract_only",
+        CREDENTIAL_VAULT_PROVIDER: "disabled",
+        ENABLE_LIVE_TRADING: "true",
+      }),
+    ).toThrow("Live Trading submission is unavailable in this release");
   });
 
   it("both documents publish the launch form that keeps stdout clean, and neither publishes the npm one", () => {
