@@ -25,9 +25,9 @@ node --import tsx src/cli/main.ts backtest run \
   --series tests/fixtures/t8/synthetic-series.json \
   --strategy buy_and_hold --cash 1000000 --json
 
-# 3. (선택) 모의계좌를 쓸 때만 — PostgreSQL 이 필요하다
-export DATABASE_URL="postgresql://…"
-npm run db:migrate
+# 3. (선택) 모의계좌(`paper account`/`paper open`)를 쓸 때만 — PostgreSQL 이 필요하다
+npm run compose:up     # postgres + 루프백 ingress 까지 함께 뜬다
+npm run db:migrate     # 기본값 127.0.0.1:5432 로 붙는다
 ```
 
 세 가지 디테일이 실제로 사람을 걸리게 한다:

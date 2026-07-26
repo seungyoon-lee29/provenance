@@ -364,4 +364,35 @@
     단정하는 유일한 지점이라 가장 높은 stakes 에서 거짓이 될 수 있는 자리다. 판별력: 가드 제거 시 red.
   - **남은 한계(정직하게)**: 표면/제품 혼동은 **산문 문제라 테스트가 못 잡는다.** 오퍼레이션 이름과
     거절 이유는 가드가 있지만, "없다" 의 범위를 잘못 적는 것은 리뷰만이 잡는다. 이번엔 사용자가 잡았다.
-- 다음: T10 종료 판정 → 정식 티켓(42~) 또는 Stage 3.
+- **사용자 지시 전면 재감사 (2026-07-26)** — "껐다 켜면 다 날아가는 것 아니냐 / 안 돌아가는 것
+  아니냐 / 안 되는 걸 된다고 하고 진행한 것 아니냐". 문서로 답하지 않고 **전부 실행해서** 답했다.
+  - **내구성: 사실이 아님(안심해도 됨). 실측으로 증명.**
+    ① PG 레인 재현 — `docker compose --profile verify run --rm persistence-integration` → **57 통과**.
+       커밋 2510f84 의 주장은 **정직했다**(독립 재현 완료).
+    ② **별개 프로세스** 간 왕복 — 컨테이너 안에서 `paper open` 후 **다른 node 프로세스**로
+       `paper account` → 원장 그대로 읽힘. genesis-once 도 정상(`created:false`, 다른 시드 무시).
+    ③ **postgres 컨테이너 재시작** 후 원장 건재, CLI 가 다시 읽어냄.
+    ④ `compose:down` 은 `-v` 가 없어 named volume(`provenance_postgres-data`) 이 남는다.
+    ⑤ `npm run build` 통과 — 웹 앱도 빌드된다.
+  - **그러나 "안 돌아간다" 쪽에 진짜 결함이 있었다 — 그리고 그건 T10 이 만든 표면의 문제다.**
+    `compose.yaml` 의 `postgres` 는 **호스트 포트를 발행하지 않는다**(runtime 네트워크 전용).
+    그런데 CLI 는 호스트에서 돌고 `DEFAULT_DATABASE_URL`·`.env.example` 이 둘 다
+    `127.0.0.1:5432` 를 가리킨다. 결과: **저장소 문서를 그대로 따르면 durable 경로가 안 된다.**
+    재현 — 스택 healthy 상태에서 `npm run db:status` → `ECONNREFUSED 127.0.0.1:5432`.
+    더 나쁜 것은 **SKILL.md 의 조언이 막다른 길이었다**는 점이다: exit 2 에 "postgres 기동 여부를
+    확인하라" 고 적었는데, `docker ps` 에는 healthy 로 보인다. 에이전트와 사용자가 함께 갇힌다.
+    → **근본 수정**: `postgres-ingress` 를 `local` 프로파일에 추가했다. app/worker ingress 와
+      **완전히 같은 패턴**(루프백 전용 바인딩 + 기존 범용 `scripts/tcp-forwarder.ts`)이라
+      **새 코드 0**이고 postgres 자체는 여전히 호스트에 안 열린다.
+      실증: 호스트에서 `db:status` 가 마이그레이션 6건을 반환하고, **CLI `paper account` 와
+      MCP `call_operation` 이 둘 다 실 DB 를 읽는다 — T10 durable 경로가 호스트에서 증명된 첫 사례.**
+  - **드리프트 가드 추가** (`tests/host-database-endpoint.test.ts`): 호스트 DB 엔드포인트는
+    `DEFAULT_DATABASE_URL`·`.env.example`·compose 발행 포트 **세 곳에 적힌 한 사실**이다. 셋이
+    갈라진 것이 바로 이번 사고이고, **각 파일은 저마다 자기모순이 없어서 아무도 못 잡았다.**
+    셋의 일치와 루프백 바인딩을 단언한다. 판별력 3종: 포트 변경 red · **ingress 삭제(=출하돼
+    있던 그 상태) red** · `0.0.0.0` 바인딩 red.
+  - **`npm run check` 에 build 가 없다 (기록)**: 피벗 메모는 Stage 마다 4게이트(typecheck·lint·
+    test·**build**)를 요구하는데 `check` 는 build 를 안 돈다. 이번엔 수동으로 돌려 통과를 확인했다.
+    `check` 에 넣을지는 Stage 3 에서 Next 제거 여부와 함께 결정할 일이라 이번 슬라이스에서
+    바꾸지 않고 기록만 남긴다.
+- 다음: codex 교차 감사(진행 중) 회수 → T10 종료 판정.

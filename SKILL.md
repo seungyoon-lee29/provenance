@@ -176,7 +176,7 @@ MCP 의 `call_operation` 은 **오퍼레이션 이름**(점 표기)을 받고, C
 |---|---|---|---|
 | `usage` | 1 | 명령·인자·파라미터가 틀렸다 | **고쳐서 재시도.** 메시지에 보통 정답이 들어 있다(`known: buy_and_hold, sma_cross`) |
 | `refused` | 1 | 도메인이 거절했다 (`empty_series` 등) 또는 게이트가 막았다 | **재시도하지 마라.** 이유를 사용자에게 보고 |
-| `api` | 2 | 저장소 읽기가 실패했다 (MCP 의 `unavailable` 과 같은 조건) | 재시도 말고 **사람에게**. 원인을 단정하지 말고 그대로 전하라 — postgres 기동 여부와 `DATABASE_URL` 이 **첫 확인 대상**이지 확정된 원인이 아니다 |
+| `api` | 2 | 저장소 읽기가 실패했다 (MCP 의 `unavailable` 과 같은 조건) | 재시도 말고 **사람에게**. 원인을 단정하지 말라. 로컬 compose 를 쓴다면 **가장 흔한 원인은 "postgres 는 떠 있는데 호스트에 안 열려 있는 것"** 이다 — `npm run compose:up` 이 `postgres-ingress` 까지 띄웠는지 확인하라고 안내하라. `docker ps` 에 postgres 가 healthy 로 보이는 것만으로는 닿는다는 뜻이 아니다 |
 | `crash` | 1 | 예상 못 한 상태 | 보고하고 멈춰라 |
 
 exit 3(인증)은 **예약**이며 현재 도달 불가다.

@@ -122,6 +122,33 @@ services:
       retries: 20
     networks: [ingress, runtime]
 
+  # The CLI/MCP surface (T10) runs on the HOST, not in a container, so the durable
+  # commands (`paper open`, `paper account`) need a host-reachable database — and
+  # `postgres` deliberately publishes no port. Without this the repo's own setup
+  # contradicted itself: `compose:up` leaves postgres healthy while `db:migrate`
+  # and `.env.example`'s 127.0.0.1:5432 both fail with ECONNREFUSED.
+  # Same shape as the app/worker ingresses: loopback-only bind, `local` profile,
+  # the existing generic forwarder — postgres itself stays off the host.
+  postgres-ingress:
+    profiles: [local]
+    build: .
+    command: ["npm", "exec", "--", "tsx", "scripts/tcp-forwarder.ts"]
+    environment:
+      FORWARD_LISTEN_PORT: "5432"
+      FORWARD_TARGET_HOST: postgres
+      FORWARD_TARGET_PORT: "5432"
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:net').connect(5432,'127.0.0.1').on('connect',()=>process.exit(0)).on('error',()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    networks: [ingress, runtime]
+
   network-off:
     profiles: [verify]
     build: .
