@@ -7,7 +7,6 @@ export type AccountReference = Brand<string, "AccountReference">;
 export type SessionReference = Brand<string, "SessionReference">;
 export type ProviderConnectionReference = Brand<string, "ProviderConnectionReference">;
 export type EvidenceReference = Brand<string, "EvidenceReference">;
-export type AiMaterialReference = Brand<string, "AiMaterialReference">;
 export type JobContextReference = Brand<string, "JobContextReference">;
 export type JobAuthorizationVersion = Brand<string, "JobAuthorizationVersion">;
 export type DiagnosticReference = Brand<string, "DiagnosticReference">;

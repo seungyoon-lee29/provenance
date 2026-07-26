@@ -428,6 +428,19 @@
   - **보류(기록) ①: 죽은 인터페이스 3종**(`ResearchAssistant`·`NotificationCenter`·
     `ActualPortfolio`)이 `module-interfaces.ts` 에 남아 있다. 실사용 0 을 확인했으나 삭제하면
     계약 타입까지 파급되고 **Stage 3 가 이 층을 재작성 대상으로 명시**하므로 그 슬라이스에 맡긴다.
+    - **← 반박·해소 (2026-07-26, 사용자 지시로 실행).** 이 보류의 근거 두 절이 **둘 다 틀렸다.**
+      ① **"파급된다" 는 거짓** — 실증: 샌드박스에서 5종+값타입 24종+`AiMaterialReference` 를
+         지우고 `npm run check` 전량 green(typecheck 0 · lint 0 errors · 772 passed).
+         `brands.ts` 의 다른 항목·`src/shared/index.ts` 어디도 안 건드린다. 파급은 0 이었고,
+         **재현 없이 적힌 추측이 이월의 근거가 되어 있었다** — AGENTS.md 가 금지하는 형태다.
+      ② **"Stage 3 가 이 층을 재작성 대상으로 명시" 도 거짓** — 피벗 메모 `:311`·`:378` 이 위임한
+         것은 `map.md`/`spec.md` 재작성이고, 그 이유로 적힌 것은 "지울 코드의 스펙을 미리 고쳐
+         쓰는 낭비 방지" 다. 여기 5종의 모듈은 **이미 지워졌다**(Stage 1·2). 이유가 닿지 않는다.
+      ③ **셋도 아니라 다섯이었다** — `Identity`·`PaperTrading` 도 같은 기준으로 소비자 0.
+         그리고 이 둘은 **죽은 것보다 나쁘다**: 값 타입 이름을 살아있는 모듈이 **다른 모양으로**
+         재선언하는데(`identity/contracts.ts:23~` 10종, `paper-trading/internal/contracts.ts:169`·
+         `service.ts:124` 2종) 양쪽이 같은 배럴로 나간다. 돈 경로 위의 동명이형이다.
+      → 상세·반박 근거·남긴 것: `progress/stage3-prep-port-catalog.md`.
   - **보류(기록) ②: gate-liveness 의 `wired:package.json` 은 자기충족**이다(스크립트 이름이
     package.json 에 있다는 것만 본다). 이번 seam 건이 정확히 그 허점의 실례다. 오라클 강화는
     하네스 별건.

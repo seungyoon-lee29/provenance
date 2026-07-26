@@ -93,3 +93,13 @@ dangling 참조). **주장 1·2는 반증 실패(성립)**, **3·4는 실결함�
   카탈로그 전면 재작성을 Stage 3 직후로 명시 위임** ④ 소비처(identity-assembly는 주석 참조뿐, terminal-view
   게스트)가 **Stage 3 삭제 대상**이라 지금 편집하면 곧 지울 코드를 건드림. Stage 3 재작성 시 함께 제거.
   게스트 alert 광고도 notification-center가 이미 도달 UI 0이라 T3가 만든 위험이 아니다.
+  - **← 반박: 타입 표면 절반만 2026-07-26에 해소. 이 항목은 여전히 열려 있다.**
+    이월 사유 중 ③은 성립하지 않는다 — 메모가 위임한 것은 `map.md`/`spec.md` 재작성이고,
+    그 이유("지울 코드의 스펙을 미리 고쳐 쓰는 낭비 방지")는 **이미 지워진** 모듈의 포트에 닿지 않는다.
+    ④도 `module-interfaces.ts` **자신**을 덮지 않는다. ①·②는 참이지만 지연의 *근거*이지 *이유*가
+    아니었고, 세 번째 문서(t10)가 같은 항목을 또 이월한 시점에 비용이 역전됐다.
+    → `NotificationCenter`·`ActualPortfolio`(+`ResearchAssistant`·`Identity`·`PaperTrading`)를
+      카탈로그에서 제거함. `progress/stage3-prep-port-catalog.md` 참조.
+    **단 이 codex Medium 은 닫지 않는다** — 지적 범위의 사용자 노출 절반이 살아 있다:
+    `guest-terminal-view.ts:161-164` 가 삭제된 모듈에 대해 `login_required` 패널(`ai`·`alerts`)을
+    지금도 렌더하고, `guest/contracts.ts:74` 가 그 둘을 여전히 열거한다. Stage 3 게스트 결정과 함께.
