@@ -37,7 +37,11 @@ npm run db:migrate     # 기본값 127.0.0.1:5432 로 붙는다
   `node --import tsx <파일>` 로 직접 부른다 (부득이하면 `npm run --silent cli -- …`).
 - **`SKILL.md` 는 로컬 파일로 읽어라** — 원격 fetch 도구로 가져오지 말고 클론한 저장소에서
   직접 읽는다. 표면의 진실은 이 워킹 트리이지 어딘가의 캐시가 아니다.
-- **PostgreSQL 은 `paper account` 에만 필요하다.** 백테스트는 DB 없이 완전히 돈다.
+- **PostgreSQL 은 모의계좌 명령(`paper open`·`paper account`)에만 필요하다.** 둘 다 durable 이고
+  DB 없이는 exit 2 다. 백테스트(`backtest run`·`strategy *`)는 DB 없이 완전히 돈다.
+- **`POSTGRES_HOST_PORT` 를 바꾸면 `DATABASE_URL` 도 같이 바꿔야 한다** — 앞의 것은 compose 가
+  발행하는 포트고, CLI 는 `DATABASE_URL`(기본 `…@127.0.0.1:5432/…`)을 본다. 한쪽만 바꾸면
+  ECONNREFUSED 다.
 
 ### MCP 서버 등록
 

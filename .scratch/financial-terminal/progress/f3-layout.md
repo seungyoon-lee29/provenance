@@ -1,5 +1,11 @@
 # F3 — Workspace layout module (progress)
 
+> ⚠️ **SUPERSEDED — 이 문서의 "완료" 는 현재 코드에 대한 주장이 아니다 (2026-07-26 표기).**
+> 여기서 완료로 기록한 terminal-view 레이아웃 모듈 은(는) 2026-07-22 피벗의 Stage 1/2 컷에서 **삭제됐다.**
+> 작성 시점에는 참이었고 기록으로서 유효하지만, **현재 능력의 근거로 인용하지 말 것.**
+> 현행 범위는 [피벗 메모](../../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)와
+> [stage2-cleanup.md](./stage2-cleanup.md)가 정본이다.
+
 Status: DONE (unit-green, typecheck-clean). Browser/perf specs written but INTEGRATION PENDING (need the route mounted by the main agent).
 
 ## Files created (exact paths)

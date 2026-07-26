@@ -1,5 +1,11 @@
 # F10 Broker Sync — 배치 계획 (ticket 19)
 
+> ⚠️ **SUPERSEDED — 이 문서의 "완료" 는 현재 코드에 대한 주장이 아니다 (2026-07-26 표기).**
+> 여기서 완료로 기록한 브로커 read transport · 스냅샷 승격 · sync 워커 은(는) 2026-07-22 피벗의 Stage 1/2 컷에서 **삭제됐다.**
+> 작성 시점에는 참이었고 기록으로서 유효하지만, **현재 능력의 근거로 인용하지 말 것.**
+> 현행 범위는 [피벗 메모](../../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)와
+> [stage2-cleanup.md](./stage2-cleanup.md)가 정본이다.
+
 Owner: claude-main. Blast radius: read-only broker projection이 current total·P&L·rebalance·Paper fill 입력을 먹임 → money-display 경로. collaboration.md 최상위 tier(blind + 다른-계열 반박 패널 + mutation + Standards 축 1패스). 단, 주문 mutation/CAS/outbox 없음(read-only) → F9보다 blast radius 작음.
 
 ## 설계 스파인

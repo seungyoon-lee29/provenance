@@ -1,5 +1,11 @@
 # F5 (ticket 14) 진행 — 알림·외부 전달 tracer
 
+> ⚠️ **SUPERSEDED — 이 문서의 "완료" 는 현재 코드에 대한 주장이 아니다 (2026-07-26 표기).**
+> 여기서 완료로 기록한 notification-center · 인박스 표면 은(는) 2026-07-22 피벗의 Stage 1/2 컷에서 **삭제됐다.**
+> 작성 시점에는 참이었고 기록으로서 유효하지만, **현재 능력의 근거로 인용하지 말 것.**
+> 현행 범위는 [피벗 메모](../../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)와
+> [stage2-cleanup.md](./stage2-cleanup.md)가 정본이다.
+
 Owner: main-agent. Claimed 2026-07-16T03:46:16+09:00. 기준 규칙: `docs/agents/collaboration.md`(프로젝트 내부 규칙), spec §10~12·F5·UF-08·SEC-05/06/09·AT-10/11.
 
 ## Blast-radius 프레이밍 (docs/agents/collaboration.md "검증 깊이와 blast radius")

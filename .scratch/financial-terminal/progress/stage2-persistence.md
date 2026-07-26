@@ -84,7 +84,22 @@ codex 적대 리뷰 1회(4축: crash-consistency / fence·erasure / §8·§9 회
 **기각/범위 밖으로 판정한 2건**: "프로덕션이 `PgPaperJournalStore`를 구성하지 않는다" / "`PaperTradingErasure`가
 identity 컴포지션에 등록되지 않았다". 실측 결과 **paper-trading은 프로덕션 호출부가 0건**이다(pivot 메모 §5-③의
 기존 사실 — F8은 도달 가능한 UI가 없다). 즉 T2-b가 만든 결함이 아니고, 배포된 DB에 paper 행이 생길 수 없어
-오늘 놓칠 erasure 대상도 없다. 그리고 배선 대상인 웹/identity 컴포지션은 Stage 3에서 삭제된다 —
+오늘 놓칠 erasure 대상도 없다.
+
+> **← 정정 (2026-07-26)**: 위 두 전제는 **더 이상 참이 아니다.** T8/T10 이 CLI 를 배선해서
+> `paper-assembly.ts:98` 이 `PgPaperJournalStore` 를 조립하고, `paper open` 이 **실제 postgres 에
+> 행을 만든다**(이 날 실측: `paper_journal_entry` 1행, `paper_account_owner` 1행).
+> 즉 "프로덕션 호출부 0건" 도 "paper 행이 생길 수 없다" 도 폐기됐다.
+>
+> **그러나 결론(erasure 미배선 유지)은 다른 근거로 여전히 성립한다** — 이 날 검증했다:
+> CLI 워크스페이스는 `cli:local` 이고 웹 워크스페이스는 `session-store.ts:208` 이 만드는
+> `workspace:<token>` 이라 **구조적으로 충돌할 수 없다.** 웹 identity erasure 가 닿아야 할
+> 행이 아니라는 뜻이고, 그 판단은 `paper-assembly.ts:17-21`·`identity-assembly.ts:40` 에
+> 이미 명문화돼 있다(후자는 "웹이 지울 수 있는 워크스페이스에 행을 만드는 소비자가 생기면
+> 반드시 등록하라" 는 조건까지 적는다).
+>
+> 요컨대 **논거는 죽었고 결론은 살아 있다.** 이 문단을 "paper 행은 없다" 로 인용하지 말 것 —
+> 있다. 유지 근거는 네임스페이스 분리이지 부재가 아니다. 그리고 배선 대상인 웹/identity 컴포지션은 Stage 3에서 삭제된다 —
 지금 배선하면 곧 지울 코드를 쓰는 것이다. 대신 ① `PaperTradingErasure.erase`가 `tx`를 받아 스레딩하도록 고쳐
 **등록되는 순간 원자적으로 동작**하게 만들고 ② `identity-assembly.ts`에 등록 의무를 경고 주석으로 남겼다.
 실 소비자(T8+ 백테스트/CLI)가 붙을 때 등록이 필수다 — 아래 잔여 위험에 명시.

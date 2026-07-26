@@ -250,6 +250,13 @@ Stage 2 — ✅ 실행 완료 (2026-07-23~24, 커밋 79a3abb..4ad59d0) + ✅ 독
   ① **PG 원장 배선 유예 (가장 중요)** — PgPaperJournalStore 는 존재·계약테스트 통과지만 composition 에
     조립되지 않음(프로덕션 소비자 0건 근거로 codex 가 배선을 범위 밖 판정). **T8 착수 시 배선이 선행 조건.**
     "영속화 완료"를 배포 기준으로 액면 그대로 읽지 말 것
+    - **← 해소 (2026-07-26 확인, T8 에서 이미 이행됨)**: 이 유예는 **끝났다.**
+      `composition/paper-assembly.ts:98` 이 `new PgPaperJournalStore(deps.pool)` 로 조립하고,
+      CLI `paper open`·`paper account` 와 MCP `paper.account` 가 그 조립을 소비한다 —
+      **프로덕션 소비자 0건이 아니다.** 실증(2026-07-26): 별개 프로세스 간 왕복과 postgres 컨테이너
+      재시작을 거쳐도 원장이 살아남고, PG 레인 `persistence-integration` 이 57건 통과한다.
+      이 줄을 "PG 원장은 아무도 안 쓴다" 로 읽고 지우려 들지 말 것 — **돈 원장이다.**
+      (남은 미배선은 `PaperTradingErasure` 하나뿐이고, 그건 별개 항목이다.)
   ② **codex 적대 2차 발견 triage** (메인 판정, 코드 실독 후):
     - BLOCKER 0. crash-window 원자성·SELECT-then-INSERT race 는 codex 가 반증(클린)
     - [T8 선행-필수] money-conservation property 가 memory store 전용 — PG round-trip 미커버.

@@ -395,4 +395,42 @@
     test·**build**)를 요구하는데 `check` 는 build 를 안 돈다. 이번엔 수동으로 돌려 통과를 확인했다.
     `check` 에 넣을지는 Stage 3 에서 Next 제거 여부와 함께 결정할 일이라 이번 슬라이스에서
     바꾸지 않고 기록만 남긴다.
-- 다음: codex 교차 감사(진행 중) 회수 → T10 종료 판정.
+- **codex 교차 감사 회수 (다른 계열, 저장소 전체 주장 감사)** — 9건. **전부 재현 후 판정.**
+  - **채택 ①: `npm run check` 의 seam 게이트 2개가 런타임 no-op.** 가장 무거운 발견이다.
+    `tests/*-seam.example.ts` 는 **`import type` 만** 쓰므로 실행해도 아무 모듈을 로드하지 않고
+    성공 문자열만 찍는다. **실증: `src/shared/index.ts` 를 로드 시 throw 하게 만들어도
+    "public seam example passed" + exit 0.** 즉 pre-commit·CI 가 5단계로 보이던 `check` 에서
+    2단계가 아무것도 안 했다 — gate-ledger 가 막으려던 "조용한 검증됨 오독" 그 자체.
+    측정: tsc 는 두 파일을 **포함**하고(`--listFiles`), 타입 오류 주입 시 red 다. 즉 스크립트는
+    typecheck 대비 커버리지 **0**. → 스크립트 제거, 파일은 타입체크 픽스처로 유지, 원장에 사유 기록.
+    **픽스처의 실제 힘도 측정해서 적었다**: 배럴에서 포트 **이름**이 사라지면 red(TS2724),
+    인터페이스 **시그니처** 변경은 잡지 못한다(green). 주석에 이 한계를 그대로 명시했다 —
+    처음 쓴 주석이 "타입 계약을 강제한다"고 과장했고, 판별력 측정이 그 과장을 잡았다.
+  - **채택 ②: 정본 계획서의 해소 미표기.** 피벗 메모 §Stage2 ①이 "PgPaperJournalStore 는
+    프로덕션 소비자 0건" 이라고 적은 채였다. **지금은 CLI·MCP 가 소비한다.** 이 줄을 읽고
+    "아무도 안 쓰니 지워도 된다" 고 판단하면 **돈 원장을 지운다.** `← 해소` 절을 달았다.
+  - **채택 ③: stage2 문서의 논거가 죽었다 — 결론은 살아 있다.** stage2-persistence 가
+    erasure 미배선을 "paper 행이 생길 수 없다" 로 정당화했는데, 지금은 생긴다(실측: 1행).
+    **그러나 결론은 다른 근거로 성립한다 — 검증했다**: CLI 는 `cli:local`, 웹은
+    `session-store.ts:208` 의 `workspace:<token>` 이라 **구조적으로 충돌 불가**.
+    erasure 갭이 아니다. codex 프레이밍(=갭)은 기각, 논거 낡음은 채택해 `← 정정` 을 달았다.
+    **거짓 경보를 울릴 뻔한 지점이고, 재현 규칙이 막았다.**
+  - **채택 ④: F3~F11 진행 문서 11건이 삭제된 모듈을 "완료" 로 주장.** supersede 배너를 달았다
+    (작성 시점엔 참이었으므로 삭제하지 않고 인용 금지만 명시).
+  - **채택 ⑤: release.md 가 스크린샷 4건 주장, 매니페스트는 2건.** 삭제된 라우트를 찍던
+    synthetic 2건이 표에만 남아 있었다. 표를 매니페스트에 맞추고 **양방향 가드 추가**
+    (표에만 있어도 red, 매니페스트에만 있어도 red).
+  - **채택 ⑥: 내가 이 세션에 넣은 오류 2건.** README 의 "PostgreSQL 은 `paper account` 에만
+    필요" 는 거짓(`paper open` 도 durable), `POSTGRES_HOST_PORT` 만 바꾸면 `DATABASE_URL` 과
+    어긋나 ECONNREFUSED. 둘 다 수정.
+  - **기각(기록) ①: "blind 트레일러 거짓" HIGH** — 이미 `6f18a99` 에서 스스로 정정해 `waived` 로
+    바꿨다. 감사 시점 커밋 기준의 지적이라 유효했으나 현재 상태에는 남아 있지 않다.
+  - **보류(기록) ①: 죽은 인터페이스 3종**(`ResearchAssistant`·`NotificationCenter`·
+    `ActualPortfolio`)이 `module-interfaces.ts` 에 남아 있다. 실사용 0 을 확인했으나 삭제하면
+    계약 타입까지 파급되고 **Stage 3 가 이 층을 재작성 대상으로 명시**하므로 그 슬라이스에 맡긴다.
+  - **보류(기록) ②: gate-liveness 의 `wired:package.json` 은 자기충족**이다(스크립트 이름이
+    package.json 에 있다는 것만 본다). 이번 seam 건이 정확히 그 허점의 실례다. 오라클 강화는
+    하네스 별건.
+  - **codex 가 정직하다고 확인한 것**: 카탈로그/CLI/MCP 분리, 백테스트가 module seam 을 통과하는
+    것, MCP 에 durable write 부재, 라이브 주문 경로 부재, 현행 SKILL.md 의 능력/표면 구분.
+- 다음: T10 종료 판정 → 정식 티켓(42~) 또는 Stage 3.

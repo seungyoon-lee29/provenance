@@ -39,18 +39,23 @@ and is part of the production-stack drill above.
 
 ## Screenshots
 
-Four scenes with a provenance/rights manifest
-(`tests/release/screenshot-manifest.json`):
+Two scenes, and `tests/release/screenshot-manifest.json` is the source of
+truth — this table must match it entry for entry
+(`tests/release/release-docs.test.ts` asserts that):
 
 | File | Scene | Provenance |
 | --- | --- | --- |
-| `explicit-unavailable.png` | value-free unavailable outcome | synthetic |
-| `paper-workspace.png` | paper trading workspace | synthetic |
 | `guest-desktop-public.png` | logged-out desktop public quote | real public data (ready-for-human) |
 | `guest-mobile-public.png` | logged-out mobile public quote | real public data (ready-for-human) |
 
-Synthetic screens exclude secrets and personal account detail by construction.
-The two public screenshots are gated on an allowed real public-data contract.
+Both are gated on an allowed real public-data contract and are captured by
+`tests/browser/guest-shell.spec.ts`; they are build artifacts, not committed
+files, so an absent `.png` before a capture run is expected.
+
+The two synthetic scenes this table used to list (`explicit-unavailable.png`,
+`paper-workspace.png`) were removed with the routes they photographed — the
+`/f8-paper` and data-panel surfaces deleted by the 2026-07-22 pivot's Stage 1/2
+cut. The manifest dropped them; this table had not.
 
 ## Ready-for-human gates
 

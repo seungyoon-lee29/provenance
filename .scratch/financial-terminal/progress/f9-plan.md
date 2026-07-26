@@ -1,5 +1,11 @@
 # F9 Broker Paper execution — 배치 계획 (ticket 18)
 
+> ⚠️ **SUPERSEDED — 이 문서의 "완료" 는 현재 코드에 대한 주장이 아니다 (2026-07-26 표기).**
+> 여기서 완료로 기록한 브로커 실행 경로 전체 (book · outbox · transport · dispatcher) 은(는) 2026-07-22 피벗의 Stage 1/2 컷에서 **삭제됐다.**
+> 작성 시점에는 참이었고 기록으로서 유효하지만, **현재 능력의 근거로 인용하지 말 것.**
+> 현행 범위는 [피벗 메모](../../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)와
+> [stage2-cleanup.md](./stage2-cleanup.md)가 정본이다.
+
 Owner: claude-main (Fable 5 session). Blast radius: money/order 경로 → collaboration.md 최상위 tier(blind + 다른-계열 반박 + mutation + Standards 축 code-review 1패스).
 
 ## 불변식 (spec §9/AT-08/SEC-04·05·06·10)

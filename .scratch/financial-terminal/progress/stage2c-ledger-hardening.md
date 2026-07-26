@@ -17,6 +17,9 @@
 - **커밋 트레일러**: `Tier: top (adversarial=이 문서, blind=이 문서, standards=이 문서)` —
   tier-gate(commit-msg 훅)가 강제한다. **이 티켓이 2026-07-24 도입된 tier 체계의 첫 실전이다.**
 - **Contain**: 프로덕션 소비자 0 (paper-trading 은 아직 composition 미배선) — blast radius 낮음.
+  - **← 정정 (2026-07-26)**: 이 Contain 은 **만료됐다.** T8/T10 이 배선했고 CLI·MCP 가 소비한다
+    (`paper-assembly.ts:98`). 당시 판단은 유효했으나, 이 문서를 근거로 **지금** blast radius 를
+    낮게 잡지 말 것 — 이제 실 postgres 에 돈 원장 행이 생긴다(실측 확인).
   그래도 tier 는 코드 경로 기준으로 최상위 유지 (T8 부터 이 원장이 돈의 유일 경계가 된다)
 
 ## 스코프 (2026-07-24 codex 적대 2차 + 메인 판정 결과 — pivot 메모 §6 검증기록 ② 참조)

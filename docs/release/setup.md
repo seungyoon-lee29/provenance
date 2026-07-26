@@ -50,7 +50,10 @@ These run on the HOST and connect to `DATABASE_URL` (default
 host-reachable postgres has to exist first. `npm run compose:up` provides one:
 the `postgres` service itself publishes no port, and the `postgres-ingress`
 forwarder in the same `local` profile binds it to loopback — the same shape the
-app and worker ingresses use. Set `POSTGRES_HOST_PORT` if 5432 is taken.
+app and worker ingresses use. If 5432 is taken, `POSTGRES_HOST_PORT` moves the
+published port — and `DATABASE_URL` has to move with it, because that variable
+is what the CLI and the migration scripts actually read. Changing only one of
+the two reproduces the ECONNREFUSED described below.
 
 Without that ingress the commands below fail with `ECONNREFUSED 127.0.0.1:5432`
 even while `docker ps` shows postgres healthy, because the container port was

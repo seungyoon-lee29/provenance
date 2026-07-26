@@ -1,5 +1,11 @@
 # F4 (ticket 13) 진행 — 정보 outcome·AI tracer
 
+> ⚠️ **SUPERSEDED — 이 문서의 "완료" 는 현재 코드에 대한 주장이 아니다 (2026-07-26 표기).**
+> 여기서 완료로 기록한 research-assistant · 데이터 패널 라우트 은(는) 2026-07-22 피벗의 Stage 1/2 컷에서 **삭제됐다.**
+> 작성 시점에는 참이었고 기록으로서 유효하지만, **현재 능력의 근거로 인용하지 말 것.**
+> 현행 범위는 [피벗 메모](../../../docs/notes/2026-07-22-pivot-backtest-strategy-engine.md)와
+> [stage2-cleanup.md](./stage2-cleanup.md)가 정본이다.
+
 Owner: main-agent. Claimed 2026-07-16T00:41:26+09:00.
 
 ## Blast-radius 프레이밍 (새 규칙 적용)

@@ -14,8 +14,13 @@
 #   2. wired: 로 선언한 게이트가 그 파일에서 실제로 참조되는가 (배선이 조용히 끊기면 잡힌다)
 #   3. unwired: 는 통과시킨다 — 목적은 차단이 아니라 부채를 기록으로 남기는 것
 
-test:public-seam	wired:package.json
-test:server-seam	wired:package.json
+# test:public-seam / test:server-seam 는 2026-07-26 제거됐다. 게이트가 아니었기 때문이다 —
+# 두 예제는 `import type` 만 쓰므로 런타임에 아무 모듈도 로드하지 않고 성공 문자열만 찍었다.
+# 실증: src/shared 를 로드 시 throw 하게 만들어도 "public seam example passed" + exit 0.
+# 파일은 남겼다 — tsc 가 둘 다 포함하므로(--listFiles 확인) 타입 계약은 typecheck 가 지킨다.
+# 실증: seam 파일에 타입 오류를 주입하면 npm run typecheck 가 red.
+# 즉 스크립트는 typecheck 대비 커버리지 0 이면서 check 를 5단계로 보이게 만들고 있었다 —
+# 이 원장이 막으려는 바로 그 "조용한 검증됨 오독".
 test:browser	wired:.github/workflows/ci.yml
 test:performance	wired:.github/workflows/ci.yml
 test:persistence-pg	wired:compose.yaml
