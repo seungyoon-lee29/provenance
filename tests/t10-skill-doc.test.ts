@@ -55,10 +55,21 @@ describe("T10 S4 — agent onboarding documents", () => {
       // spellings someone would actually reach for, not every possible one.
       expect(document.toLowerCase(), name).not.toContain("npm run mcp");
       expect(document, name).not.toContain('"command": "npm"');
+
+      // The published MCP config must actually RUN: `node src/mcp/main.ts`
+      // without the loader cannot execute TypeScript, so a config missing
+      // `--import tsx` is broken in a way no reader can debug from the page.
+      //
+      // Asserted on the whitespace-stripped document, which is what makes this
+      // both precise and non-brittle. Checking the tokens INDEPENDENTLY does not
+      // work: `--import` and `tsx` also occur in every CLI example on the page,
+      // so a config that had lost its loader still passed (verified — the
+      // mutation stayed green). Checking the exact argv literal instead would
+      // fail on a harmless reformat. Stripping whitespace collapses both
+      // spellings onto one sequence that prose cannot accidentally satisfy.
+      const dense = document.replace(/\s+/g, "");
+      expect(dense, `${name} :: MCP argv`).toContain('"--import","tsx","src/mcp/main.ts"');
+      expect(dense, `${name} :: MCP command`).toContain('"command":"node"');
     }
-    // The MCP entry is only ever published as a full argv, so pin that vector
-    // rather than the bare filename, which any prose mention would satisfy.
-    expect(README).toContain('"args": ["--import", "tsx", "src/mcp/main.ts"]');
-    expect(SKILL).toContain('"args": ["--import", "tsx", "src/mcp/main.ts"]');
   });
 });

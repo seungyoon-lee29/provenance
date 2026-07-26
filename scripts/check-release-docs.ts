@@ -30,8 +30,15 @@ const LINK = /\[[^\]]*\]\(([^)]+)\)/g;
  * `--silent`. Capturing the first token instead both reported a flag as a stale
  * script (a false positive that made documenting the flag impossible) and let a
  * genuinely stale `npm run --silent no-such-script` through unreported.
+ *
+ * A flag is `-` followed by anything non-space, so `--workspace=pkg` and a bare
+ * `--` separator are consumed too — matching only `-{1,2}[a-z0-9-]+` left
+ * `--workspace=pkg` to be captured AS the script name, reintroducing the very
+ * false positive this regex exists to remove. Script names allow uppercase
+ * because npm does; excluding it made `npm run Build` match nothing at all,
+ * which is a silent miss rather than a report.
  */
-const SCRIPT = /npm run ((?:-{1,2}[a-z0-9-]+\s+)*)([a-z0-9:_-]+)/g;
+const SCRIPT = /npm run ((?:-\S+\s+)*)([A-Za-z0-9:_-]+)/g;
 
 export function checkReleaseDocs(): DocCheckResult {
   const scripts = new Set(Object.keys(JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")).scripts ?? {}));
