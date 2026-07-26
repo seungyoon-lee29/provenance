@@ -36,12 +36,21 @@ export type OperationKind = "read" | "compute";
 
 /**
  * `configuration_required` vs `unavailable` is the one distinction an agent must
- * be able to make WITHOUT reading prose: the first means "set something and call
- * again", the second means "the dependency is down, waiting may help". Both used
- * to be `unavailable`, separable only by the message string — and the moment
- * SKILL.md tells an agent to match a message, that prose becomes contract we can
- * no longer change. Splitting before publishing costs one union member; after,
- * it costs every agent that learned the old shape (T10 S4).
+ * be able to make WITHOUT reading prose: the first means "this surface was never
+ * given the dependency — set it and call again", the second means "the call
+ * reached storage and failed there". Both used to be `unavailable`, separable
+ * only by the message string — and the moment SKILL.md tells an agent to match a
+ * message, that prose becomes contract we can no longer change. Splitting before
+ * publishing costs one union member; after, it costs every agent that learned
+ * the old shape (T10 S4).
+ *
+ * `unavailable` deliberately does NOT promise "retry will help". Its catch arm
+ * below is blanket, so a bug in our own code arrives wearing the same reason as
+ * a dead driver, and the two cannot be told apart here without matching on
+ * driver text — which SEC-05 forbids, since that text can carry the connection
+ * string. SKILL.md therefore caps retries rather than inviting a wait loop; do
+ * not "improve" this comment back into a liveness claim it cannot keep
+ * (adversarial review round 1, 2026-07-26).
  *
  * ← 티켓 41 결정 정정: 41 은 "크리덴셜 없으면 서버는 살아있고 오퍼레이션이 outcome 을
  * 돌려준다"를 위해 `unavailable` 을 골랐다. 그 결론(서버가 죽지 않는다)은 유지된다 —

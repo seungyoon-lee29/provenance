@@ -14,11 +14,14 @@ import { operationCatalog } from "../src/operations/catalog";
  * import list, the CLI's exhaustive reason mapping); this is the same guard for
  * the one definition that lives in Markdown.
  *
- * Scope, deliberately narrow: it checks that the document MENTIONS every name
- * and every reason the surfaces can produce. It cannot check that the prose
- * around them is true — that is a reviewer's job. What it does catch is the
- * silent half of drift: an operation or a refusal reason added to the catalog
- * and never told to the agents that were taught the old shape.
+ * Scope, stated honestly because an overstated guard is worse than none: the
+ * first two cases check only that the document MENTIONS every name and every
+ * reason the surfaces can produce — they cannot check that the prose around
+ * them is TRUE, which stays a reviewer's job. What they do catch is the silent
+ * half of drift: an operation or a refusal reason added to the catalog and
+ * never told to the agents that were taught the old shape. The third case is
+ * stronger, pinning the published launch form outright, because publishing a
+ * broken one is the single documentation error a reader cannot recover from.
  */
 
 const ROOT = resolve(import.meta.dirname, "..");
