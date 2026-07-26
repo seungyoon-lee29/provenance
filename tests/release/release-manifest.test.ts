@@ -76,6 +76,8 @@ describe.skipIf(!hasGit())("F11 release manifest over the real tree", () => {
     // vendor/ is a `file:` dependency of package.json — a release that drops it cannot
     // `npm ci` at all. An exclude rule would make it vanish without tripping the
     // uncategorized check above, so assert inclusion and category directly.
+    // Shipping MIT-licensed code without its licence text violates the licence itself.
+    expect(paths.has("LICENSE")).toBe(true);
     expect(paths.has("vendor/server-only/package.json")).toBe(true);
     expect(paths.has("vendor/server-only/index.js")).toBe(true);
     expect(included.find((entry) => entry.path === "vendor/server-only/index.js")?.category).toBe("vendor");

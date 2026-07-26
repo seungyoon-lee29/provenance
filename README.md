@@ -4,6 +4,10 @@
 **CLI + MCP** 라서 사람보다 에이전트가 먼저 쓴다. 백테스트와 모의계좌가 같은 체결
 엔진(`InternalPaperSimulator` + append-only `PaperJournal`)을 공유한다.
 
+[**빠른 시작**](#설치--생략-금지-체크리스트) · [**명령 목록**](#명령-목록) · [**아키텍처**](#아키텍처) ·
+[**안전 불변식**](#안전-불변식-standing-invariants) · [**로드맵**](#프로젝트-상태-정직한-로드맵) ·
+[**에이전트 계약(SKILL.md)**](SKILL.md)
+
 **값을 모르면 숫자를 만들지 않는다.** 이건 표어가 아니라 리턴 타입이다:
 
 ```console
@@ -63,6 +67,9 @@ $ node --import tsx src/cli/main.ts backtest run \
 ### 설치 — 생략 금지 체크리스트
 
 에이전트가 그대로 따라 실행할 수 있게 결정론적으로 적는다. 순서를 바꾸거나 건너뛰지 말 것.
+
+**필요한 것**: Node.js ≥ 22 (그게 전부다 — 백테스트는 DB 없이 돈다).
+모의계좌(`paper open`·`paper account`)를 쓸 때만 **Docker + Docker Compose** 가 추가로 필요하다.
 
 ```bash
 # 1. 클론 후 저장소 루트에서
@@ -133,6 +140,87 @@ npm run db:migrate     # 기본값 127.0.0.1:5432 로 붙는다
 
 ---
 
+## 명령 목록
+
+CLI 는 여섯 그룹이다. 전부 `--json` 을 받고, 성공은 exit 0 · 사용법 오류는 exit 1 ·
+설정 문제는 exit 2 다. **호출이 성공해도 그 안이 거절(`refused`)일 수 있으니 봉투를 읽어라.**
+
+```bash
+# 짧게 쓰려고 함수 하나만 정의한다 (bash·zsh 공통).
+# `CLI="node --import tsx …"` 뒤에 `$CLI` 를 쓰는 형태는 zsh 에서 깨진다 — 단어 분할을 안 한다.
+pv() { node --import tsx src/cli/main.ts "$@"; }
+
+# 무엇이 있는지 물어보기 — 오퍼레이션 카탈로그가 정본이다
+pv call --list                                   # 오퍼레이션 전부 나열
+pv call <operation> [--input '<json>'] [--json]  # 아무 오퍼레이션이나 직접 호출
+
+# 전략
+pv strategy list [--json]
+pv strategy describe <name> [--json]             # 파라미터 스키마까지
+
+# 백테스트 (DB 불필요)
+pv backtest run --series <파일.json> --strategy <이름> \
+   [--params '<json>'] --cash <금액> [--dry-run] [--json]
+
+# 모의계좌 (PostgreSQL 필요)
+pv paper open --cash <금액> --currency <KRW|USD> [--json]
+pv paper account [--json]
+```
+
+내장 전략은 둘이다 — `buy_and_hold`(기준선), `sma_cross`(`--params '{"fast":5,"slow":20}'`).
+
+### `--series` 파일 형태
+
+시세를 가져오지 않는다. 캔들 시리즈는 **직접 준다.**
+
+```jsonc
+{
+  "instrument": "instr:005930", "venue": "KRX", "currency": "KRW",
+  "priceBasis": "raw",   // 생략 가능. "total_return" 은 거절된다
+  "taxClass": "equity",  // 생략하면 세금 미반영 (결과에 costModel:"none" 으로 공시)
+  "bars": [
+    { "periodStart": "2026-01-05T06:30:00.000Z", "close": 10000, "volume": 100000, "complete": true }
+  ]
+}
+```
+
+`periodStart` 는 **엄격 증가**여야 하고, `complete:false` 인 bar 는 거절된다 — 미완성 봉에서의
+체결이 곧 look-ahead 라서다. 돌아가는 예시: [tests/fixtures/t8/synthetic-series.json](tests/fixtures/t8/synthetic-series.json).
+
+### 직접 만든 전략 돌리기
+
+내장 둘로 부족하면 TS 파일 하나를 넘긴다. 함수 하나가 계약의 전부다:
+
+```ts
+// my-strategy.ts — default 또는 `strategy` 로 export 하면 된다
+import type { BacktestStrategy } from "./src/modules/paper-trading/backtest/backtest-runner";
+
+const strategy: BacktestStrategy = (view) =>
+  view.cursor === 0
+    ? [{ kind: "submit", order: { side: "buy", orderType: "market", quantity: 10, timeInForce: "GTC" } }]
+    : [];
+
+export default strategy;
+```
+
+`view` 는 `cursor`(방금 닫힌 봉) · `bar(i)` · `cash` · `positions` · `orders` 를 준다.
+**`bar(i)` 는 `i > cursor` 면 `RangeError` 다** — 미래를 읽는 순간 타입이 아니라 예외로 막힌다.
+돌려주는 것은 `{kind:"submit"|"cancel"}` 액션 배열이다.
+돌아가는 예시: [tests/fixtures/t8/buy-once.strategy.ts](tests/fixtures/t8/buy-once.strategy.ts).
+
+```bash
+BACKTEST_STRATEGY_MODULE_ENABLED=true pv backtest run \
+  --series <파일.json> --strategy-module ./my-strategy.ts --cash 1000000 --json
+```
+
+플래그 없이 부르면 실행하지 않고 거절한다 — 실측:
+`{"ok":false,...,"code":"refused","message":"--strategy-module executes an arbitrary file and is disa…"}`
+
+> ⚠️ `--strategy-module` 은 **임의 TS 파일을 실행한다 — 사실상 RCE**다. 그래서 환경변수 없이는
+> 꺼져 있고, **에이전트가 아니라 사람이 켠다.** 에이전트에게는 명령줄만 제시하게 하라.
+
+---
+
 ## 이 표면에 없는 것 — 두 종류를 구별한다
 
 "제품에 없다" 와 "이 CLI·MCP 표면에 배선하지 않았다" 는 사용자에게 전혀 다른 말이다.
@@ -170,8 +258,44 @@ npm run db:migrate     # 기본값 127.0.0.1:5432 로 붙는다
 ## 아키텍처
 
 **Ports & Adapters** 기반 모듈형 모놀리스. 각 도메인 모듈은 공개 인터페이스(port)만 노출하고,
-조합 계층(`src/composition`)이 런타임 정책에 따라 어댑터를 조립한다. **오퍼레이션 정의는
-한 곳**(`src/operations/catalog.ts`)이고 CLI 와 MCP 는 그 위의 transport 다.
+조합 계층(`src/composition`)이 런타임 정책에 따라 어댑터를 조립한다.
+
+핵심은 **오퍼레이션 정의가 한 곳**이라는 것이다. CLI 와 MCP 는 같은 카탈로그 위의 두 transport 라
+표면이 늘어도 정의는 갈라지지 않는다:
+
+```
+  사람                     에이전트
+   │                          │
+   ▼                          ▼
+┌──────────┐          ┌───────────────┐
+│   CLI    │          │  MCP (stdio)  │  툴 3개 고정
+│ src/cli  │          │   src/mcp     │  list · describe · call
+└────┬─────┘          └───────┬───────┘
+     └──────────┬─────────────┘
+                ▼
+     ┌─────────────────────────┐
+     │  오퍼레이션 카탈로그      │   ← 단일 정의 (zod 스키마 + 거절 이유)
+     │  src/operations/catalog │
+     └────────────┬────────────┘
+                  ▼
+     ┌─────────────────────────┐
+     │  composition            │   ← 런타임 정책 · 어댑터 조립 · 라이브 거래 차단
+     └────────────┬────────────┘
+                  ▼
+  ┌────────────────────────────────────────┐
+  │  paper-trading                         │
+  │  ┌──────────────┐   ┌────────────────┐ │
+  │  │  backtest/   │──▶│   internal/    │ │  ← 같은 체결 엔진
+  │  │ 시간축 커서   │   │ 시뮬레이터·원장 │ │    (백테스트도 모의계좌도)
+  │  │ look-ahead✕  │   │ 거래세·정수 fold│ │
+  │  └──────────────┘   └───────┬────────┘ │
+  └───────────────────────────┬─┴──────────┘
+                              ▼
+                   PostgreSQL (append-only 원장)
+                   └ 모의계좌만. 백테스트는 메모리로 끝난다
+```
+
+시리즈 파일은 **왼쪽 끝에서 사용자가 넣는다** — 이 엔진은 시세를 가져오지 않는다.
 
 ```
 src/
@@ -219,8 +343,13 @@ src/
 ## 안전 불변식 (Standing Invariants)
 
 틀리면 비싼 경로는 단위 테스트를 넘어 **상시 property로 검증**한다. 아래 네 불변식은
-`fast-check` 기반 standing property로 CI에 상시 편입되어 있으며, 그중 최상위 안전 모듈 2개는
-**Stryker mutation testing**으로 "가드를 물리적으로 부수면 테스트가 죽는지"까지 실증한다.
+`fast-check` 기반 standing property로 `npm run check` 에 들어 있고, 그 스크립트가 pre-commit
+훅과 CI 양쪽에 배선돼 있다.
+
+> **Stryker mutation testing 은 상시 게이트가 아니다.** `runtime-policy`·`network-policy` 2개
+> 모듈을 대상으로 수동 실행(`npm run test:mutation`)만 한다 — CI·훅 어디에도 안 걸려 있다.
+> 이 사실은 [gate-ledger.txt](scripts/gates/gate-ledger.txt) 에 `unwired` 사유와 함께 적혀 있고,
+> `gate-liveness.sh` 가 "선언만 있고 안 도는 게이트"를 커밋 시점에 잡는다.
 
 | 불변식 | 강제 내용 |
 |---|---|
@@ -248,11 +377,11 @@ src/
 - **CI parity** — 로컬 pre-commit 훅과 동일한 게이트를 GitHub Actions에서 원격 강제.
 
 ```bash
-npm run check            # typecheck + lint + test
-npm run build            # check 에 포함돼 있지 않다 — Stage 게이트는 이 넷이다
-npm run test:mutation    # Stryker (no-live · egress 모듈)
-npm run verify:network-off
+npm run check                 # typecheck + lint + test   — pre-commit·CI 양쪽 배선
+npm run build                 # Next 번들. check 에 없다 — Dockerfile 이미지 빌드로 CI 에서 돈다
+npm run verify:network-off    # compose 레인
 npm run test:persistence-pg   # 실 Postgres 필요 (compose:up)
+npm run test:mutation         # Stryker — 수동 전용, 게이트 아님 (위 주의 참고)
 ```
 
 ---
@@ -359,3 +488,14 @@ F11 릴리스 통합은 웹 ZIP 패키징 전제라 **Stage 3 에서 npm publish
 - 초기 산출물은 실제 브로커로 **Live Trading 주문을 전송하지 않는다**.
 - 이 프로젝트는 학습·연구 목적이며, 어떤 화면·수치도 **투자자문이 아니다**.
 - 외부 데이터는 각 공급자의 라이선스가 허용하는 범위에서만 사용한다.
+
+---
+
+## 라이선스
+
+**이 저장소의 코드**는 MIT — [LICENSE](LICENSE).
+
+**외부 시장 데이터는 별개다.** 코드 라이선스가 데이터 재사용 권리를 주지 않는다. 공급자마다
+조건이 다르고(미 재무부 public domain · ECB 출처 표기 조건부 · KIS 개인 키 데이터는 재배포 금지),
+그 경계는 코드로 강제된다 — 위 [두 데이터 트랙](#두-데이터-트랙--재배포-경계-웹-층) 절과
+[docs/release/rights.md](docs/release/rights.md) 를 볼 것.
