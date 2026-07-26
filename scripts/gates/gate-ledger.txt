@@ -21,6 +21,22 @@
 # 실증: seam 파일에 타입 오류를 주입하면 npm run typecheck 가 red.
 # 즉 스크립트는 typecheck 대비 커버리지 0 이면서 check 를 5단계로 보이게 만들고 있었다 —
 # 이 원장이 막으려는 바로 그 "조용한 검증됨 오독".
+# build 는 `npm run check` 에 넣지 않는다 (2026-07-26 결정, 측정 후).
+# ① 이미 돈다: Dockerfile:13 `RUN npm run build` → verify-compose.sh 첫 줄이 그 이미지를
+#    `--build` 로 강제 → CI `PR-integration`(if: pull_request || push). 모든 PR·main push 에서 탄다.
+#    check 에 넣으면 pr-check 컨테이너 안에서 두 번 돈다.
+# ② 속도는 이유가 아니다 — 실측 cold 6.0s 로 check(8.9s) 보다 오히려 빠르다. 넣지 않는 이유는
+#    중복이지 비용이 아니다. "빌드는 느리니까 뺐다" 로 이 줄을 읽지 말 것.
+# ③ 이 게이트가 잡는 범위를 과장하지 말 것 — 실측으로 좁혀졌다. server-only 모듈이 client
+#    번들에 들어가는 것을 잡는 것처럼 보이지만, 실제로는 **node 빌트인을 끌고 오는 모듈만**
+#    잡는다. 프로브: 순수 JS 서버 모듈(비밀 상수, 빌트인 의존 0)을 "use client" 파일에서
+#    import 하고 사용해도 tsc·next build 둘 다 green. `import "server-only"` 를 붙이면 red.
+#    즉 E4(pg→dns/net/tls)는 우연히 잡힌 것이다.
+# ④ 그 마커를 정본 모듈에 달 수 없다 — server-only 는 node_modules/next/dist/compiled 에만
+#    있어 Next 밖에서 안 풀린다. platform/runtime/dependencies.ts 에 달면
+#    `Cannot find module 'server-only'` 로 CLI(`paper account`)가 죽는다(실측). 현재 마커를
+#    쓰는 6파일이 전부 web composition 인 것은 그래서다. 경계 게이트는 미해결 — 별건.
+build	wired:Dockerfile
 test:browser	wired:.github/workflows/ci.yml
 test:performance	wired:.github/workflows/ci.yml
 test:persistence-pg	wired:compose.yaml

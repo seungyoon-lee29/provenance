@@ -37,7 +37,7 @@ jobs:
           sh scripts/gates/content-gates.sh "${BASE}...HEAD"
       - name: gate liveness (선언만 있고 안 도는 게이트 — 훅과 한 소스)
         run: sh scripts/gates/gate-liveness.sh
-      - name: build gates (npm run check — typecheck·lint·test·seams)
+      - name: 전체 검증 게이트 (npm run check — typecheck·lint·test)
         run: npm run check
 
   pr-integration:
