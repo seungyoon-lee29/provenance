@@ -52,25 +52,28 @@ describe("T10 S4 — agent onboarding documents", () => {
     // invocation is the one documentation error a reader cannot recover from.
     for (const [name, document] of [["SKILL.md", SKILL], ["README.md", README]] as const) {
       expect(document, name).toContain("node --import tsx src/cli/main.ts");
-      // Presence alone is weak — a document can show the safe form AND an unsafe
-      // alternative and still satisfy it. So the known-unsafe spellings are
-      // banned outright. This is a blocklist, not a proof: it stops the
-      // spellings someone would actually reach for, not every possible one.
-      expect(document.toLowerCase(), name).not.toContain("npm run mcp");
-      expect(document, name).not.toContain('"command": "npm"');
+      // Everything below runs on the WHITESPACE-STRIPPED document, which is what
+      // makes these assertions both precise and non-brittle. Raw `includes`
+      // checks were bypassable by spellings a real author would produce —
+      // `npm  run mcp` with two spaces, `{"command":"npm"}` without one — and an
+      // exact-literal argv check instead failed on a harmless reformat.
+      // Collapsing whitespace defeats both at once.
+      const dense = document.replace(/\s+/g, "");
+
+      // Presence of the safe form is weak on its own: a page can show it AND an
+      // unsafe alternative. So the known-unsafe launches are banned outright.
+      // Still a blocklist, not a proof — it covers the npm spellings (including
+      // a YAML-style `command: npm`), not every conceivable one.
+      expect(dense.toLowerCase(), `${name} :: npm launch`).not.toContain("npmrunmcp");
+      expect(dense, `${name} :: npm command (JSON)`).not.toContain('"command":"npm"');
+      expect(dense, `${name} :: npm command (YAML)`).not.toContain("command:npm");
 
       // The published MCP config must actually RUN: `node src/mcp/main.ts`
       // without the loader cannot execute TypeScript, so a config missing
       // `--import tsx` is broken in a way no reader can debug from the page.
-      //
-      // Asserted on the whitespace-stripped document, which is what makes this
-      // both precise and non-brittle. Checking the tokens INDEPENDENTLY does not
-      // work: `--import` and `tsx` also occur in every CLI example on the page,
-      // so a config that had lost its loader still passed (verified — the
-      // mutation stayed green). Checking the exact argv literal instead would
-      // fail on a harmless reformat. Stripping whitespace collapses both
-      // spellings onto one sequence that prose cannot accidentally satisfy.
-      const dense = document.replace(/\s+/g, "");
+      // Checking the tokens INDEPENDENTLY does not work — `--import` and `tsx`
+      // also occur in every CLI example on the page, so a config that had lost
+      // its loader still passed (verified: that mutation stayed green).
       expect(dense, `${name} :: MCP argv`).toContain('"--import","tsx","src/mcp/main.ts"');
       expect(dense, `${name} :: MCP command`).toContain('"command":"node"');
     }

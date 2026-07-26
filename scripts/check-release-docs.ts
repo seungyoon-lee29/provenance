@@ -37,8 +37,19 @@ const LINK = /\[[^\]]*\]\(([^)]+)\)/g;
  * false positive this regex exists to remove. Script names allow uppercase
  * because npm does; excluding it made `npm run Build` match nothing at all,
  * which is a silent miss rather than a report.
+ *
+ * Two more traps, both found by attacking this regex rather than reading it:
+ * the separator is HORIZONTAL space only, because `\s` let `npm run --if-present`
+ * at end of line reach across the newline and capture the next line's first word
+ * as the script name; and a script name must START alphanumeric, because
+ * otherwise that same trailing flag was itself captured as the script.
+ *
+ * Known residual: `npm run --workspace pkg build` (flag whose value is a
+ * SEPARATE token) reports `pkg`. Resolving it needs npm's per-flag arity table,
+ * which is not worth carrying — this repo has no workspaces, and the failure is
+ * a loud false positive rather than a silent miss.
  */
-const SCRIPT = /npm run ((?:-\S+\s+)*)([A-Za-z0-9:_-]+)/g;
+const SCRIPT = /npm run ((?:-\S+[^\S\n]+)*)([A-Za-z0-9][A-Za-z0-9:_-]*)/g;
 
 export function checkReleaseDocs(): DocCheckResult {
   const scripts = new Set(Object.keys(JSON.parse(readFileSync(resolve(ROOT, "package.json"), "utf8")).scripts ?? {}));

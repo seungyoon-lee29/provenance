@@ -62,6 +62,30 @@ describe("T8 S2 CLI handlers", () => {
     expect(envelope.error.code).toBe("usage");
   });
 
+  it("SEC-05: a series file that is not JSON never has its CONTENTS echoed into the envelope", async () => {
+    // The probe is a tracked source file — not JSON, and its first bytes are
+    // recognizable. `JSON.parse` quotes the offending source text in its error
+    // message, so copying that message out turned `--series` into "print this
+    // file": aiming it at `.env.local` used to answer
+    // `Unexpected token 'D', "DATABASE_U"...`. An AGENT drives this flag, which
+    // is what makes it a disclosure channel rather than a footgun.
+    // (T10 S4 adversarial review round 2, 2026-07-26.)
+    const { envelope, exitCode } = await runBacktestCommand({
+      series: fixture("buy-once.strategy.ts"),
+      strategyModule: fixture("buy-once.strategy.ts"),
+      cash: 1_000_000,
+    });
+    expect(exitCode).toBe(1);
+    if (envelope.ok) throw new Error("expected failure");
+    expect(envelope.error.code).toBe("usage");
+    // Fixed string: it names the FAILURE, never the content that caused it.
+    expect(envelope.error.message).toBe("series file is not valid JSON");
+    const serialized = JSON.stringify(envelope);
+    for (const leak of ["import", "BacktestStrategy", "SYNTHETIC"]) {
+      expect(serialized, `leaked ${leak}`).not.toContain(leak);
+    }
+  });
+
   it("backtest run: non-positive seed refused before any file IO", async () => {
     const { envelope, exitCode } = await runBacktestCommand({
       series: fixture("synthetic-series.json"),

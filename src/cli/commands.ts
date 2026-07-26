@@ -141,11 +141,26 @@ export async function runBacktestCommand(args: BacktestArgs, env: CliEnv = proce
     );
   }
 
+  let raw: string;
+  try {
+    raw = await readFile(resolve(args.series), "utf8");
+  } catch (error) {
+    // The filesystem error names the path the CALLER supplied, so echoing it
+    // discloses nothing they did not already hand us.
+    return fail(command, "usage", `cannot read series file: ${error instanceof Error ? error.message : String(error)}`);
+  }
+
   let series: unknown;
   try {
-    series = JSON.parse(await readFile(resolve(args.series), "utf8"));
-  } catch (error) {
-    return fail(command, "usage", `cannot read series file: ${error instanceof Error ? error.message : String(error)}`);
+    series = JSON.parse(raw);
+  } catch {
+    // SEC-05, same rule as the driver-error arm in `operations/catalog.ts`: a
+    // `JSON.parse` failure quotes the OFFENDING SOURCE TEXT, so echoing it turns
+    // "point this flag at a file" into "print that file". Aiming --series at
+    // `.env.local` returned `Unexpected token 'D', "DATABASE_U"...` before this
+    // split — bounded by V8's snippet length, but content is content, and an
+    // agent drives this flag. Fixed string; the caller knows which file it named.
+    return fail(command, "usage", "series file is not valid JSON");
   }
 
   if (args.strategyModule !== undefined) {
