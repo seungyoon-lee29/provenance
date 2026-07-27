@@ -6,19 +6,10 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { writeRelease } from "../../scripts/package-release";
+import { releaseGitLane } from "./git-lane";
 
 const work = mkdtempSync(join(tmpdir(), "fb-release-"));
 afterAll(() => rmSync(work, { recursive: true, force: true }));
-
-/** Packaging reads `git ls-files`; skip in a container build with no `.git`/git CLI. */
-function hasGit(): boolean {
-  try {
-    execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: resolve(import.meta.dirname, "../.."), stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function walk(dir: string, base = dir): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -27,7 +18,7 @@ function walk(dir: string, base = dir): string[] {
   });
 }
 
-describe.skipIf(!hasGit())("F11 release zip round-trip", () => {
+describe.skipIf(!releaseGitLane())("F11 release zip round-trip", () => {
   it("unpacks to exactly the manifest — secret-free, no agent/vcs/env artifacts", () => {
     const { manifest, zipPath } = writeRelease(join(work, "out"));
     const unpacked = join(work, "unpacked");

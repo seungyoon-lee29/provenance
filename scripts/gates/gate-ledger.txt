@@ -11,8 +11,29 @@
 #
 # gate-liveness.sh 가 검사하는 것:
 #   1. package.json 의 test:*/verify:*/check:* 스크립트가 전부 이 원장에 있는가 (새 게이트를 몰래 못 들인다)
-#   2. wired: 로 선언한 게이트가 그 파일에서 실제로 참조되는가 (배선이 조용히 끊기면 잡힌다)
-#   3. unwired: 는 통과시킨다 — 목적은 차단이 아니라 부채를 기록으로 남기는 것
+#   2. wired: 로 선언한 게이트가 그 파일에서 실제로 `npm run <script>` 로 **호출**되는가
+#      (주석에 이름만 적거나 package.json 안의 자기 정의에 매칭되는 것은 배선이 아니다)
+#   3. 훅·CI 가 실제로 부르는 스크립트는 이름 접두사와 무관하게 전부 이 원장에 있는가
+#   4. unwired: 는 통과시킨다 — 목적은 차단이 아니라 부채를 기록으로 남기는 것
+#
+# 2·3 강화 (2026-07-27, arch-2 A+B): 판정이 단순 substring 이라 세 가지가 새고 있었다.
+#   · `check:pr wired:package.json` 은 package.json 안의 자기 정의에 매칭돼 영원히 통과.
+#     그리고 check:pr 은 실제로 아무데서도 안 불렸다 — CI 는 compose:verify 를 직접 불렀다.
+#     → CI 가 collaboration.md 가 규정한 이름(check:pr)을 부르도록 배선을 실재화.
+#   · `compose:verify` 는 CI 의 PR-integration 레인 전체를 돌리는 진짜 게이트인데
+#     이름이 접두사 규칙(test/verify/check)에 안 걸려 원장 밖에 있었다. → 검사 3 신설.
+#   · 주석에 이름만 적어도 통과했다. `.husky/pre-commit` 이 "주석에 스크립트 이름을 쓰지
+#     않는다" 는 규율로 그 구멍을 피하고 있었는데, 규율로 지키는 불변식은 게이트가 아니다.
+#
+# 검사 4 신설 (2026-07-27, arch-2 후속): 1~3 은 전부 **npm 스크립트**의 배선만 본다.
+# `scripts/gates/*.sh` 자신은 npm 을 안 거치고 `sh scripts/gates/<name>.sh` 로 직접 불리므로
+# 그 층 전체가 사각지대였다 — negative-control.sh 를 CI 에서 조용히 빼도 아무것도 red 가
+# 되지 않았을 것이다. 이제 게이트 스크립트도 훅·CI 에서 실제 호출 형태로 확인한다.
+#
+# **원장은 정적 검사의 한계 안에 있다.** grep 은 "문자열이 있다"만 말하지 "그게 돌았고
+# 실패할 수 있다"는 말하지 못한다. 그 층은 `scripts/gates/negative-control.sh` 가 맡는다 —
+# 알려진 나쁜 입력을 먹여 red 를 확인하고, 양성 대조군으로 하네스 자신도 검사한다.
+# 원장(정적) + 음성 대조군(실행) 이 둘로 봐야 배선 주장이 증거가 된다.
 
 # test:public-seam / test:server-seam 는 2026-07-26 제거됐다. 게이트가 아니었기 때문이다 —
 # 두 예제는 `import type` 만 쓰므로 런타임에 아무 모듈도 로드하지 않고 성공 문자열만 찍었다.
@@ -60,17 +81,62 @@
 # 중복), ④의 마커는 client 번들 유입이라는 **다른 불변식**을 새로 세운 것이다. 대체 관계로 적으면
 # 그 자체가 또 하나의 과대 서술이다(codex 적대 리뷰 지적).
 build	wired:Dockerfile
-test:browser	wired:.github/workflows/ci.yml
-test:performance	wired:.github/workflows/ci.yml
+# advisory: = 배선돼 있고 실제로 돌지만 `continue-on-error: true` job 이라 **아무것도 막지 못한다**.
+# 전에는 이 둘이 wired: 였다 — 원장만 읽으면 집행되는 게이트로 읽혔다. 검사 6 이 ci.yml 의
+# 실제 플래그와 대조하므로 이제 이 선언은 대조된 사실이지 주장이 아니다.
+test:browser	advisory:.github/workflows/ci.yml
+test:performance	advisory:.github/workflows/ci.yml
 test:persistence-pg	wired:compose.yaml
 verify:network-off	wired:compose.yaml
 verify:migrations	wired:compose.yaml
 verify:backup-drill	wired:compose.yaml
 check	wired:.husky/pre-commit
-check:pr	wired:package.json
+check:pr	wired:.github/workflows/ci.yml
+compose:verify	wired:package.json
 check:release-docs	unwired:F11 릴리스 체계가 Stage 3 에서 재정의 대기 — 그때 CI 레인에 넣을지 삭제할지 결정 (pivot 메모 §6 Stage 3)
 package:release	unwired:위와 동일 — 웹 ZIP 릴리스 전제라 npm publish 체제 재정의 대상
-test:mutation	unwired:설정 주석이 스스로 regression gate 라 주장하나 CI·훅 미배선. 범위도 runtime-policy·network-policy 2파일뿐이라 money 경로가 밖에 있다. 아키텍처 리뷰 별건 후보
+test:mutation	wired:.github/workflows/ci.yml
 check:f1	unwired:F1 전용 확장 게이트 — 해당 트랙이 Stage 3 컷 대상이라 배선 보류
 check:f2	unwired:위와 동일
 test:watch	unwired:개발 편의용 워치 러너 — 게이트가 아니다
+test:contract	unwired:실 외부 API 호출 — CI 는 provider secret 없이 돈다(SEC-05). 사람이 손으로 켜는 레인이고 자동으로는 안 돈다
+
+# ── 조건부 skip 레인 (검사 5) ────────────────────────────────────────────────────────
+# 3열: <테스트 파일>  wired:<그 조건을 켜는 파일>|unwired:<이유>  <게이트 토큰>
+# wired: 면 토큰이 그 파일에 실제로 나와야 한다 — 선언이 아니라 대조다.
+#
+# 계기 (2026-07-27): 위 원장은 **npm 스크립트**만 열거했다. PG 레인은 스크립트라서 항목과
+# 검사를 받았지만, 어떤 스크립트에도 안 속한 skip 파일은 통째로 사각이었다. 실측으로
+# provider contract 5파일이 한 번도 안 돈 채 초록이었다 — `*_CONTRACT` 를 켜는 곳이
+# 실행 경로 어디에도 없었고(TREASURY_CONTRACT 는 자기 파일 밖 어디에도 없었다),
+# `.env.local` 에 API 키는 있지만 **vitest 는 .env 를 로드하지 않는다**(실증: 테스트
+# 프로세스에서 DART_API_KEY 가 미설정). 즉 3중으로 막혀 있는데 출력은 초록이었다.
+
+tests/persistence/personal-cache.pg.test.ts	wired:compose.yaml	PG_INTEGRATION
+tests/persistence/identity-store.pg.test.ts	wired:compose.yaml	PG_INTEGRATION
+tests/persistence/identity-composition.pg.test.ts	wired:compose.yaml	PG_INTEGRATION
+tests/persistence/erase-atomicity.pg.test.ts	wired:compose.yaml	PG_INTEGRATION
+tests/persistence/paper-journal.pg.test.ts	wired:compose.yaml	PG_INTEGRATION
+tests/persistence/paper-cli.pg.test.ts	wired:compose.yaml	PG_INTEGRATION
+tests/property/money-conservation.property.test.ts	wired:compose.yaml	PG_INTEGRATION
+
+# release 레인은 git 없는 컨테이너에서 줄어든다. git-lane.ts 가 "선언 없으면 throw" 로
+# 조용한 skip 을 막고 있다 — 그래서 wired 의 대상은 그 집행 지점이다.
+tests/release/release-docs.test.ts	wired:tests/release/git-lane.ts	RELEASE_LANE_WITHOUT_GIT
+tests/release/release-manifest.test.ts	wired:tests/release/git-lane.ts	RELEASE_LANE_WITHOUT_GIT
+tests/release/release-zip.test.ts	wired:tests/release/git-lane.ts	RELEASE_LANE_WITHOUT_GIT
+
+# 부채 (2026-07-27 발견). `.dockerignore` 가 .env.example 을 빼므로 컨테이너에서 조용히
+# 사라진다 — 위 3개가 git-lane 으로 고친 것과 같은 결함인데 이 파일만 안 고쳐졌다.
+# 같은 방식(선언 없으면 throw)으로 승격할 것.
+tests/release/release-readiness.test.ts	unwired:.env.example 존재로만 게이팅 — 컨테이너에서 조용히 skip. git-lane 방식으로 승격 대상	.env.example
+
+# provider contract — 실 외부 API 를 때린다. CI 는 provider secret 없이 도는 게 정책(SEC-05)
+# 이라 자동 레인에서 켤 수 없다. **문제는 안 도는 것이 아니라 안 돈다는 사실이 기록되지 않았던
+# 것**이다. 수동 레인은 `npm run test:contract` — 그 스크립트가 .env.local 을 셸로 로드하고
+# 게이트 변수를 켠다. 여기 항목이 unwired 인 것은 정확한 서술이다: 자동으로는 안 돈다.
+tests/kis-market-information.contract.test.ts	unwired:실 KIS :29443 호출 — 수동 레인 npm run test:contract 전용	KIS_CONTRACT
+tests/kis-index-information.contract.test.ts	unwired:위와 동일	KIS_CONTRACT
+tests/dart-filings-information.contract.test.ts	unwired:실 opendart.fss.or.kr 호출 — 위와 동일	DART_CONTRACT
+tests/ecb-fx-information.contract.test.ts	unwired:실 data-api.ecb.europa.eu 호출 — 키는 불필요하나 외부 egress 라 자동 레인 금지	ECB_CONTRACT
+tests/treasury-market-information.contract.test.ts	unwired:실 treasury.gov 호출 — 위와 동일	TREASURY_CONTRACT

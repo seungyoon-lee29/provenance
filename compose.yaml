@@ -166,7 +166,12 @@ services:
     profiles: [verify]
     build: .
     command: ["npm", "run", "check"]
-    environment: *runtime-environment
+    environment:
+      <<: *runtime-environment
+      # 이 이미지는 .dockerignore 로 .git 이 빠져 있어 release 스위트가 돌 수 없다.
+      # 그 축소를 선언으로 남긴다 — 전에는 hasGit() 사본 3개가 조용히 skip 시켜서
+      # 이 레인이 "npm run check 전부 통과" 로 읽혔다 (tests/release/git-lane.ts).
+      RELEASE_LANE_WITHOUT_GIT: "1"
     networks: [runtime]
 
   migration-smoke:

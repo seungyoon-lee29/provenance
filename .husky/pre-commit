@@ -9,6 +9,7 @@ sh scripts/gates/gate-liveness.sh || exit 1
 # seams 2단계는 2026-07-26 제거됐다(런타임 no-op 이었다 — gate-ledger.txt).
 # Next 번들 단계는 의도적으로 여기 없다: Dockerfile 의 이미지 빌드 스텝이 이미 돌리고
 # CI `PR-integration` 이 그걸 모든 PR·push 에서 태운다. 근거는 gate-ledger.txt 를 볼 것.
-# (이 주석에 그 스크립트 이름을 쓰지 않는 것도 의도적이다 — gate-liveness 3b 가 파일 안
-#  문자열 존재로 배선을 판정하므로, 여기 적으면 없는 배선이 있는 것처럼 통과한다.)
+# (전에는 "이 주석에 npm run build 를 쓰면 gate-liveness 가 없는 배선을 있다고 오판한다"
+#  는 규율로 이름을 피해 적었다. 2026-07-27 부터 3b 가 주석 줄을 제외하고 `npm run <이름>`
+#  호출 형태만 보므로 그 규율은 필요 없다 — 기계가 본다.)
 npm run check

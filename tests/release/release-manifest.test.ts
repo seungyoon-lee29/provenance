@@ -4,20 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { classifyReleaseFiles, scanSecrets } from "../../scripts/release/manifest";
 import { buildManifest } from "../../scripts/package-release";
+import { releaseGitLane } from "./git-lane";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 function trackedFiles(): string[] {
   return execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" }).trim().split("\n").filter((line) => line.length > 0);
-}
-
-/** These checks read the git worktree; a container build has no `.git`/git CLI, so skip there. */
-function hasGit(): boolean {
-  try {
-    execFileSync("git", ["rev-parse", "--is-inside-work-tree"], { cwd: ROOT, stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 describe("F11 release allowlist classification", () => {
@@ -58,7 +49,7 @@ describe("F11 release allowlist classification", () => {
   });
 });
 
-describe.skipIf(!hasGit())("F11 release manifest over the real tree", () => {
+describe.skipIf(!releaseGitLane())("F11 release manifest over the real tree", () => {
   it("ships no agent state, env secret, secret store, or vcs metadata", () => {
     const { included, uncategorized } = classifyReleaseFiles(trackedFiles());
     for (const { path } of included) {

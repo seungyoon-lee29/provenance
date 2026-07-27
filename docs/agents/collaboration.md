@@ -115,9 +115,9 @@
 | Tier | 트리거 | 방법 |
 | --- | --- | --- |
 | Low/기계적 | 포맷·이름 변경·문서 | oracle만, 리뷰어 없음 |
-| Medium | 계약 안 기능·일반 리팩터 | oracle + 같은-모델 적대 리뷰 1인. 관점·프레이밍·근거 범위(diff만 / spec+diff / 재현)를 어긋낸다 |
+| Medium | 계약 안 기능·일반 리팩터 | oracle + 적대 리뷰 1인(별도 컨텍스트). 관점·프레이밍·근거 범위(diff만 / spec+diff / 재현)를 어긋낸다. **finding은 `file:line` + 재현 명령이나 실패하는 테스트가 있어야 접수한다** — 없으면 의견으로 분류하고 수정 근거로 쓰지 않는다 |
 | High | 여러 계층 교차·상태/동시성 | 위 + **blind test-authorship**: 코드를 짠 에이전트는 그 acceptance 테스트를 쓰지 않는다. 별도 에이전트가 구현을 안 본 채 Interface Contract/spec만 받고 반증 테스트를 짠다 |
-| 최상위 | `auth`·credential·order·migration·money 산술 경로를 건드리는 diff는 판단 없이 자동 승격 | contain으로 blast radius를 낮춘 뒤 위 방법으로 충분하다. 낮출 수 없으면 **사람 게이트(`ready-for-human`)**를 우선하고(다른-계열 모델은 예산·최고위험일 때 보조), 사람·다른-계열 어느 것도 없으면 통과시키지 말고 티켓을 block 한다 |
+| 최상위 | `auth`·credential·order·migration·money 산술 경로를 건드리는 diff는 판단 없이 자동 승격 | contain으로 blast radius를 낮춘 뒤 위 방법으로 충분하다. 낮출 수 없으면 **사람 게이트(`ready-for-human`)**로 넘기고, 사람이 없으면 통과시키지 말고 티켓을 block 한다. 게이트 자체를 건드리는 diff는 추가로 음성 대조군(`scripts/gates/negative-control.sh`)에서 red 를 실증해야 한다 |
 
 - **Tier 게이트(기계 강제, 2026-07-24)**: 최상위 승격은 선언이 아니라 커밋 훅이 강제한다. `.husky/commit-msg` → `scripts/gates/tier-gate.sh`가 guarded 경로(`paper-trading/`·`db/migrations/`·`platform/persistence/`·`platform/credential-vault/`·`actual-portfolio/calculation/`·`modules/identity/`)를 건드리는 커밋에 `Tier: top (adversarial=…, blind=…, standards=…)` 트레일러를 요구한다. `pending`/`waived:사유`도 통과한다 — 게이트의 목적은 진위 검증이 아니라 **의무를 조용히 지나치지 못하게 하는 것**이다(진위는 리뷰·메인 판단 몫). 도입 계기: T2-b(돈 원장 영속화)가 blind·Standards 축 없이 resolve된 것을 2026-07-24 독립 검증이 발견 — "일회성 검수를 상시 oracle로"라는 이 문서의 원칙이 프로토콜 자신에게 적용되지 않았던 사례. 스치는 커밋의 의도적 우회는 `SKIP_TIER_GATE=1`.
 - **반증 산출물 강제**: 리뷰어는 "괜찮아 보임" 대신 반례(실패 테스트/repro)를 제출하거나 "X·Y·Z 각도로 시도했으나 못 만듦"을 명시한다.

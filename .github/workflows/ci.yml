@@ -37,6 +37,24 @@ jobs:
           sh scripts/gates/content-gates.sh "${BASE}...HEAD"
       - name: gate liveness (선언만 있고 안 도는 게이트 — 훅과 한 소스)
         run: sh scripts/gates/gate-liveness.sh
+      - name: tier gate (money·auth·migration 승격 선언 — commit-msg 훅과 한 소스)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          [ -n "$BASE" ] || BASE="${{ github.event.before }}"
+          # base 를 못 정하면 루트가 아니라 직전 커밋으로 좁힌다. content-gates 는 루트로
+          # 폴백해도 되지만(공백·비밀 스캔은 소급이 옳다) tier 트레일러 형식은 시간에 따라
+          # 바뀌었으므로(2026-07-26 prior-decisions 축 추가) 옛 커밋을 지금 규칙으로
+          # 소급 판정하면 거짓 red 가 난다. 이 게이트가 보는 것은 이번에 들어오는 커밋이다.
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            BASE="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          [ -n "$BASE" ] || exit 0 # 루트 커밋 하나뿐이면 볼 범위가 없다
+          sh scripts/gates/tier-gate.sh --range "${BASE}..HEAD"
+      # 위 게이트들이 "실패할 수 있는지"를 매 실행마다 실증한다. 초록이 정상 상태인 곳에서
+      # 작동하는 게이트와 영원히 통과하는 게이트는 출력이 완전히 동일하다 — 유일한 구분은
+      # 알려진 나쁜 입력에 red 가 나오는지다 (2026-07-27, arch-2 B).
+      - name: 음성 대조군 (게이트가 나쁜 입력에서 실제로 red 가 되는가)
+        run: sh scripts/gates/negative-control.sh
       - name: 전체 검증 게이트 (npm run check — typecheck·lint·test)
         run: npm run check
 
@@ -46,8 +64,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: compose:verify (pr-check·migration-smoke·network-off)
-        run: npm run compose:verify
+      # collaboration.md 가 "compose/PR 통합은 npm run check:pr" 이라 규정한 그 이름을
+      # CI 도 그대로 부른다. 전에는 CI 가 compose:verify 를 직접 불러 check:pr 이
+      # 아무데서도 안 불리는 별칭이었고, 원장은 그것을 "wired" 로 적고 있었다.
+      - name: check:pr (compose pr-check·migration-smoke·network-off)
+        run: npm run check:pr
 
   pr-browser:
     name: PR-browser (Playwright desktop/mobile) [optional]
@@ -64,6 +85,24 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: browser tracer (webServer 자동 기동)
         run: npm run test:browser
+
+  nightly-mutation:
+    name: nightly mutation (테스트 스위트의 음성 대조군)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # continue-on-error 를 붙이지 않는다. 붙이면 이 게이트는 red 를 낼 수 있어도 아무것도
+    # 막지 못하고, 그건 이 저장소가 고치고 있는 결함(통과와 '검사를 못 함'의 미구분)의
+    # 또 다른 형태다. 실측 7분이라 nightly 예산 안에 든다.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: mutation score (money·accounting 경로 — break 임계 회귀 게이트)
+        run: npm run test:mutation
 
   nightly-perf:
     name: nightly performance (§11 p95) [optional]
