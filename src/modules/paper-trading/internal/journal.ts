@@ -3,7 +3,7 @@ import type { InternalPaperAccountReference, PaperOrderReference } from "../../.
 
 import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import type { Executor } from "../../../platform/persistence/pg";
-import { fromMinorUnits, grossMinorOf, isExactMinor, isRepresentableCash, toMinorUnits } from "./contracts";
+import { fromMinorUnits, grossMinorOf, isExactMinor, isRepresentableSeedCash, toMinorUnits } from "./contracts";
 import type { PaperMinorMoney } from "./contracts";
 import type {
   PaperCommandOutcome,
@@ -305,13 +305,7 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       // The running per-currency total is checked on top, mirroring the fold's
       // genesis arm: two seeds in one currency can each be representable and
       // their total not be.
-      const seeded = new Map<string, number>();
-      for (const seed of body.seedCash) {
-        if (!isRepresentableCash(seed)) return "invalid_seed_cash";
-        const total = (seeded.get(seed.currency) ?? 0) + toMinorUnits(seed);
-        if (!isExactMinor(total)) return "invalid_seed_cash";
-        seeded.set(seed.currency, total);
-      }
+      if (!isRepresentableSeedCash(body.seedCash)) return "invalid_seed_cash";
       return undefined;
     }
     case "order_expired": {

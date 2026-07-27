@@ -127,6 +127,36 @@ describe("T8 S1 backtest runner", () => {
     }
   });
 
+  it("라운드 4 회귀: 센트에서 나온 USD seed 를 거절하지 않는다 (scale 100 경로)", async () => {
+    // 이 파일에 USD 케이스가 **0건**이었고 KRW 는 scale 1 이라 `amount * 1 === amount` 로
+    // 우연히 맞았다 — 그래서 집계 검사의 scale-100 경로 전체가 미검증이었다.
+    // 라운드 3 이 술어를 공유 위치로 올릴 때 집계 검사는 옛 형태로 남아, 술어는 통과시키고
+    // 집계가 즉시 거절했다(USD 센트 seed 의 13.3%). 원장 경로는 같은 금액을 받아들였다.
+    const three = bars(10, 10, 10);
+    for (const amount of [10.03, 0.07, 1000.07, 1234.56]) {
+      const outcome = await runBacktest({ runId: "r", seedCash: [{ amount, currency: "USD" }], series: { ...three, currency: "USD" }, strategy: () => [] });
+      expect(outcome.status, `USD ${amount}`).not.toBe("refused");
+    }
+  });
+
+  it("라운드 4 회귀: seed 판정이 배열 순서에 의존하지 않는다", async () => {
+    // 집계 합이 비정수 float 위에서 돌던 동안 같은 multiset 이 순서에 따라 다른 판정을
+    // 받았다. 돈 경계가 인자 순서로 뒤집히면 추론할 수 없다.
+    const three = bars(10, 10, 10);
+    const run = async (amounts: readonly number[]) =>
+      (await runBacktest({
+        runId: "r",
+        seedCash: amounts.map((amount) => ({ amount, currency: "USD" })),
+        series: { ...three, currency: "USD" },
+        strategy: () => [],
+      })).status;
+    for (const amounts of [[0.01, 0.07, 0.07], [0.07, 0.01, 0.07], [1.11, 2.22, 3.33]]) {
+      const forward = await run(amounts);
+      const reversed = await run([...amounts].reverse());
+      expect(reversed, `${amounts.join(",")} 정순 ${forward} vs 역순 ${reversed}`).toBe(forward);
+    }
+  });
+
   it("C1 (adversarial re-gate): refuses same-currency seeds whose SUM crosses the 2^53 ledger ceiling", async () => {
     // Each item is individually representable (isRepresentableCash passes), but the
     // fold sums same-currency seeds into ONE balance — a split past 2^53 drifts

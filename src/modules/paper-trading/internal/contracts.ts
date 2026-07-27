@@ -98,7 +98,7 @@ export function toMinorUnits(money: PaperMoney): number {
  */
 export function isRepresentableCash(money: PaperMoney): boolean {
   const scale = currencyMinorUnitScale(money.currency);
-  const minor = Math.round(money.amount * scale);
+  const minor = toMinorUnits(money);
   // The test is a ROUND TRIP, not `isSafeInteger(amount * scale)`. That was the
   // form this predicate had while it was private to `backtest-runner`, and it
   // rejects ordinary money: `fromMinorUnits(1003, "USD")` is `10.03`, and
@@ -106,13 +106,60 @@ export function isRepresentableCash(money: PaperMoney): boolean {
   // derived from a cent count would have been refused. Found by the money
   // conservation property test the moment the predicate reached this path.
   //
-  // `minor / scale === money.amount` is exact and needs no epsilon: it accepts
-  // exactly those amounts that survive the trip into the integer domain and back.
-  // Measured over 2.2M cent and won values: zero false rejections, while `0.5`
-  // KRW (half a won), `0.005` USD, `-1`, `0`, NaN, ±Infinity and `1e19` are all
-  // still refused. The division is fine here — this is a boundary validator, not
-  // the fold, and `fromMinorUnits` already divides at presentation.
+  // It rounds INTO the integer domain first (`toMinorUnits`) and then checks the
+  // trip back out. Round 3's version of this comment said it "tests the RAW
+  // product, not `toMinorUnits`" and that rounding first "would erase the
+  // sub-unit case" — both false, and adversarial review measured it: over 4.4M
+  // values there is not one input where `Math.round(amount * scale)` differs
+  // from `toMinorUnits(money)`, because the latter is defined as the former.
+  // Sub-unit amounts are refused by the round-trip clause, not by any raw
+  // product: `0.005` USD rounds to 1 minor unit, and `1 / 100` is `0.01`, which
+  // is not `0.005`. Same defect round 3 was written to fix (a false mechanism
+  // inside a true conclusion), reproduced inside the fix.
+  //
+  // `minor / scale === money.amount` is exact and needs no epsilon. It accepts
+  // ONLY amounts that survive the trip — but not every representable minor value
+  // survives it, so the reject direction over-fires at absurd magnitudes: about
+  // 7% of cent counts in [2^51, 2^52) ($22.5T–$45T) are refused even though the
+  // minor value is a safe integer, because `major` can no longer represent every
+  // neighbouring cent there. Fail-closed and far outside the paper sim's range,
+  // so it stays — but do not claim the predicate is exactly the safe-integer set.
+  // (The `2^53 ≈ $90T in cents` figure above IS correct: 2^53 cents is
+  // $90,071,992,547,409.92. Adversarial review round 4 called it 2× high; that
+  // sub-claim was refuted by measurement, the band above is what is real.)
+  // The division is fine here — this is a boundary validator, not the fold, and
+  // `fromMinorUnits` already divides at presentation.
   return money.amount > 0 && isExactMinor(minor) && minor / scale === money.amount;
+}
+
+/**
+ * The whole seed-cash precondition: every item representable AND every
+ * per-currency TOTAL representable. The fold sums same-currency seeds into one
+ * balance, so two individually-safe seeds can still land past the ceiling.
+ *
+ * One definition, two callers — the journal's genesis arm and the backtest
+ * runner. Round 3 claimed to have achieved that by moving `isRepresentableCash`
+ * here, and that claim was false: the aggregate half stayed behind in
+ * `backtest-runner` in the exact broken form round 3 was written to remove
+ * (a raw `amount * scale` running sum under `isSafeInteger`). Adversarial review
+ * round 4 measured the consequence — **13.3% of USD cent seeds were falsely
+ * refused** by the backtest path while the durable ledger accepted the same
+ * amount, and the verdict depended on **array order** because the running sum
+ * was over non-integer floats. Summing in integer minor units removes both:
+ * exact integers are order-independent by induction.
+ *
+ * Naming a consolidation you have not finished is the same defect as naming an
+ * enforcer you have not grepped for. Half a consolidation reads as a whole one.
+ */
+export function isRepresentableSeedCash(seedCash: readonly PaperMoney[]): boolean {
+  const totals = new Map<string, number>();
+  for (const money of seedCash) {
+    if (!isRepresentableCash(money)) return false;
+    const total = (totals.get(money.currency) ?? 0) + toMinorUnits(money);
+    if (!isExactMinor(total)) return false;
+    totals.set(money.currency, total);
+  }
+  return true;
 }
 
 /** Gross proceeds/cost of a fill in integer minor units — aggregate-rounded

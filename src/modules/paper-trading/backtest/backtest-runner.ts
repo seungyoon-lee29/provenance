@@ -2,7 +2,7 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
-import { currencyMinorUnitScale, fromMinorUnits, grossMinorOf, isRepresentableCash } from "../internal/contracts";
+import { currencyMinorUnitScale, fromMinorUnits, grossMinorOf, isRepresentableSeedCash } from "../internal/contracts";
 import type { KrxTaxClass } from "../internal/contracts";
 import { KRX_TAX_POLICY_VERSION, isSupportedTaxDate } from "../internal/krx-transaction-tax";
 import { buildPerformance } from "./performance-report";
@@ -215,20 +215,13 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
   if (config.seedCash.length === 0) return { status: "refused", reason: "no_seed_cash" };
   // Seed cash reaches the money ledger — validate it at this boundary, the
   // journal's account_opened trusts the amounts (codex gate BLOCKER).
-  if (!config.seedCash.every(isRepresentableCash)) return { status: "refused", reason: "invalid_seed_cash" };
-  // Per-item representability is not enough: the fold sums same-currency seeds
-  // into ONE balance, so a split whose per-currency TOTAL crosses the 2^53
-  // ledger ceiling drifts exactly as a single over-ceiling seed would — and that
-  // single seed IS refused above. Close the aggregate path too (adversarial
-  // re-gate 2026-07-25: the twin of the T9 tax-sum drift — individually-safe
-  // integers summing past 2^53). A drifted sum lands ≥ 2^53 ⇒ isSafeInteger false.
-  const seedTotalMinor = new Map<string, number>();
-  for (const money of config.seedCash) {
-    seedTotalMinor.set(money.currency, (seedTotalMinor.get(money.currency) ?? 0) + money.amount * currencyMinorUnitScale(money.currency));
-  }
-  for (const total of seedTotalMinor.values()) {
-    if (!Number.isSafeInteger(total)) return { status: "refused", reason: "invalid_seed_cash" };
-  }
+  // Per-item AND per-currency aggregate, both from the one shared predicate.
+  // The aggregate half used to live here as a raw `amount * scale` running sum
+  // under `isSafeInteger` — it falsely refused 13.3% of USD cent seeds and its
+  // verdict depended on array order, because the sum was over non-integer
+  // floats (adversarial review round 4). The journal's genesis arm calls the
+  // same function, which is what round 3 claimed and did not finish.
+  if (!isRepresentableSeedCash(config.seedCash)) return { status: "refused", reason: "invalid_seed_cash" };
   // A backtest is single-instrument, single-currency (the series currency). Seed
   // cash in any other currency would be held but never valued — the equity mark
   // only sees the series currency, so a mismatched seed silently vanishes from
