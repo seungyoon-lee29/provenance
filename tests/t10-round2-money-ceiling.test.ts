@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { brandReference } from "../src/shared/contracts/brands";
 import { grossMinorOf, isExactMinor } from "../src/modules/paper-trading/internal/contracts";
-import { PaperJournal, validateSystemBody } from "../src/modules/paper-trading/internal/journal";
+import { PaperJournal, foldAccountState, validateSystemBody } from "../src/modules/paper-trading/internal/journal";
 import type {
   PaperAccountState,
   PaperCashState,
+  PaperEntryBody,
+  PaperJournalEntry,
   PaperOrderState,
   PaperPositionState,
 } from "../src/modules/paper-trading/internal/journal";
@@ -77,6 +79,17 @@ function openSellOrder(quantity: number): PaperOrderState {
     filledQuantity: 0,
     fills: [],
   };
+}
+
+/** fold 에 먹일 저널 엔트리. fold 는 검증하지 않으므로 상태를 직접 조립할 수 있다. */
+function entry(revision: number, body: PaperEntryBody): PaperJournalEntry {
+  return {
+    entryReference: brandReference<string, "PaperJournalEntryReference">(`entry:${revision}`),
+    account: brandReference<string, "InternalPaperAccountReference">("paper-account:ws:1") as InternalPaperAccountReference,
+    revision,
+    recordedAt: "2026-07-27T00:00:00.000Z",
+    ...body,
+  } as PaperJournalEntry;
 }
 
 function sellFill(quantity: number, amount: number) {
@@ -247,6 +260,91 @@ describe("fill_applied: 매도 대금이 들어간 뒤의 잔고가 정확해야
     });
     // 매도였다면 위 케이스처럼 invalid_fill 이었을 상태다. 매수는 이 가드를 안 지난다.
     expect(validateSystemBody(s, sellFill(1, 1))).toBe(undefined);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3b) 라운드 3 회귀 — 적대 리뷰가 재현한 것들 (2026-07-27)
+//     이 절의 케이스는 전부 라운드 2 구현에서 **초록이었다**. 그게 이 절의 존재 이유다.
+// ---------------------------------------------------------------------------
+
+describe("라운드 3 회귀: 적대 리뷰가 재현한 결함", () => {
+  it("#1 매도 대금이 fold 에 정확히 접힌다 — 세 항 결합이 현금을 소멸시키지 않는다", () => {
+    // 라운드 2 는 가드와 fold 가 **둘 다** `balance + gross - tax` 를 좌→우로 계산했다.
+    // `balance + gross` 가 표현 불가로 굴러간 뒤 빼면 안전영역으로 되돌아오므로
+    // `isExactMinor` 는 true 를 주고 fold 는 틀린 값을 저장한다.
+    //
+    // 가드만 보는 테스트는 이것을 못 잡는다(라운드 2 에서도 통과가 정답이다).
+    // 잡는 곳은 fold 다 — 그래서 여기서는 `foldAccountState` 의 저장값을 단언한다.
+    expect(Number.isSafeInteger((CEILING + 2) - 2)).toBe(true); // 전제: 굴러도 safe 로 보인다
+    expect((CEILING + 2) - 2).toBe(CEILING - 1); // 전제: 그런데 1 이 사라진다
+    expect(CEILING + (2 - 2)).toBe(CEILING); // net-first 는 정확하다
+
+    const entries = [
+      entry(1, { kind: "account_opened", seedCash: [{ amount: CEILING, currency: "KRW" }] }),
+      entry(2, {
+        kind: "order_submitted",
+        order: ORDER,
+        payload: { ...openSellOrder(2).payload, limitPrice: { amount: 1, currency: "KRW" } },
+        acceptedAt: "2026-07-27T00:00:00.000Z",
+        reservation: { kind: "quantity" },
+      }),
+      entry(3, {
+        kind: "fill_applied",
+        fill: {
+          ...sellFill(2, 1).fill,
+          price: { amount: 1, currency: "KRW" },
+          costs: { sellTransactionTaxMinor: 2, taxPolicyVersion: "krx-v1" },
+        },
+      }),
+    ];
+    const folded = foldAccountState(entries);
+    // gross 2 − 세금 2 = 0 이므로 잔고는 seed 그대로여야 한다. 라운드 2 는 CEILING-1 을 저장했다.
+    expect(folded.cash.get("KRW")?.balance).toBe(CEILING);
+
+    // 그리고 가드는 이것을 거절하지 않는다 — 정확한 결과가 표현 가능하므로 과잉 거절도 결함이다.
+    const s = state({
+      orders: { [String(ORDER)]: { ...openSellOrder(2), payload: { ...openSellOrder(2).payload, limitPrice: { amount: 1, currency: "KRW" } } } },
+      cash: { KRW: { balance: CEILING, reserved: 0 } },
+      positions: { [String(AAPL)]: { quantity: 10, reserved: 0, costBasis: { minorUnits: 10, currency: "KRW" } } },
+    });
+    const guarded = {
+      kind: "fill_applied" as const,
+      fill: { ...sellFill(2, 1).fill, price: { amount: 1, currency: "KRW" }, costs: { sellTransactionTaxMinor: 2, taxPolicyVersion: "krx-v1" } },
+    };
+    expect(validateSystemBody(s, guarded)).toBe(undefined);
+  });
+
+  it("#4 genesis 가 음수·단위미만 seed 를 거절한다 — 인용한 선례와 같은 강도로", () => {
+    for (const seed of [
+      { amount: -1_000_000, currency: "USD" }, // 라운드 2: ACCEPTED, 잔고 -100000000
+      { amount: 0.005, currency: "USD" }, // 라운드 2: ACCEPTED, 1 로 반올림돼 들어옴
+      { amount: 0.5, currency: "KRW" }, // 반 원
+      { amount: 0, currency: "USD" },
+    ]) {
+      expect(validateSystemBody(state(), { kind: "account_opened", seedCash: [seed] }), JSON.stringify(seed)).toBe(
+        "invalid_seed_cash",
+      );
+    }
+  });
+
+  it("#4 그러면서 센트에서 나온 평범한 seed 는 통과한다 (과잉 거절 회귀)", () => {
+    // `fromMinorUnits(1003,"USD")` = 10.03 이고 `10.03*100` 은 1002.9999999999999 다.
+    // 강한 형태(`isSafeInteger(amount*scale)`)를 그대로 쓰면 이게 거절된다 — 돈 보존
+    // property 테스트가 즉시 잡았다. 왕복 술어는 통과시킨다.
+    for (const amount of [10.03, 0.01, 1234.56]) {
+      expect(validateSystemBody(state(), { kind: "account_opened", seedCash: [{ amount, currency: "USD" }] }), String(amount)).toBe(
+        undefined,
+      );
+    }
+  });
+
+  it("#7 ±Infinity 는 NaN 이 아니라 안전정수 검사에서 걸린다 (기전 고정)", () => {
+    expect(Math.round(Number.POSITIVE_INFINITY * 100)).toBe(Number.POSITIVE_INFINITY);
+    expect(Number.isNaN(Math.round(Number.POSITIVE_INFINITY * 100))).toBe(false);
+    expect(
+      validateSystemBody(state(), { kind: "account_opened", seedCash: [{ amount: Number.POSITIVE_INFINITY, currency: "USD" }] }),
+    ).toBe("invalid_seed_cash");
   });
 });
 

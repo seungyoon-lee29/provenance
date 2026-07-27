@@ -3,7 +3,7 @@ import type { InternalPaperAccountReference, PaperOrderReference } from "../../.
 
 import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import type { Executor } from "../../../platform/persistence/pg";
-import { fromMinorUnits, grossMinorOf, isExactMinor, toMinorUnits } from "./contracts";
+import { fromMinorUnits, grossMinorOf, isExactMinor, isRepresentableCash, toMinorUnits } from "./contracts";
 import type { PaperMinorMoney } from "./contracts";
 import type {
   PaperCommandOutcome,
@@ -279,19 +279,35 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
     case "cancellation_resolved":
       return "command_only";
     case "account_opened": {
-      // Genesis happens exactly once per account.
+      // Genesis happens at most once per account THAT HOLDS ANYTHING. An empty
+      // `seedCash` leaves both maps empty, so a second `account_opened` under a
+      // different dedupe key still passes here and mints cash — reproduced by
+      // adversarial review, 2026-07-27. Not closed in round 3: the fix needs a
+      // genesis marker in the folded state (`#owners` knows, but this validator
+      // is deliberately a pure function of the fold). → open-findings OF-8.
       if (state.cash.size > 0 || state.orders.size > 0) return "already_opened";
       // Genesis is where the FIRST number enters the exact-integer domain, so it
-      // is where the domain's precondition has to be met. `backtest-runner.ts:243`
-      // refuses an unsafe seed on its own path; this path — the durable one —
-      // never did. The comment below at the fill guard claimed seed cash was
-      // "already enforced"; that was false, the check lived only in the other
-      // module (found in round 2, 2026-07-27, by grepping for the enforcement
-      // the comment asserted). Summing per currency mirrors the fold (:777-779):
-      // two seeds in one currency can each be safe and their total not be.
-      // A non-finite amount rounds to NaN and fails the same check.
+      // is where the domain's precondition has to be met. This path — the durable
+      // one — did not check at all until round 2; the fill guard's comment claimed
+      // seed cash was "already enforced" and that was false, the check lived only
+      // in `backtest-runner`'s own path.
+      //
+      // Round 2 then imported only HALF of it, and adversarial review reproduced
+      // the rest: a −$1,000,000 seed was accepted and folded to a −100000000
+      // balance, and `0.005` rounded IN as 1. So the per-seed predicate is now
+      // the shared `isRepresentableCash` — one definition, two callers — rather
+      // than a second, weaker re-derivation. It rejects negative, sub-unit and
+      // non-finite amounts. (±Infinity is refused because `Infinity * scale` is
+      // not a safe integer; it does NOT become NaN, which is what round 2's
+      // comment claimed. Mechanism matters: a false mechanism in a true
+      // conclusion is how the next reader builds on sand.)
+      //
+      // The running per-currency total is checked on top, mirroring the fold's
+      // genesis arm: two seeds in one currency can each be representable and
+      // their total not be.
       const seeded = new Map<string, number>();
       for (const seed of body.seedCash) {
+        if (!isRepresentableCash(seed)) return "invalid_seed_cash";
         const total = (seeded.get(seed.currency) ?? 0) + toMinorUnits(seed);
         if (!isExactMinor(total)) return "invalid_seed_cash";
         seeded.set(seed.currency, total);
@@ -342,7 +358,7 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       // the dividend branch did not — S4b cross-currency parity).
       const position = state.positions.get(String(body.instrument));
       if (position !== undefined && position.costBasis.currency !== body.perShare.currency) return "invalid_adjustment";
-      // Both the credit the fold will compute (:913) and the balance it lands in
+      // Both the credit the fold will compute (its `dividend_applied` arm) and the balance it lands in
       // must stay exact. Guarding only the product is not enough and guarding
       // only the total is not either — an inexact product is a fabricated number
       // whether or not the sum it joins happens to be representable. Reproduced
@@ -397,10 +413,12 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       // The ledger's 2^53 ceiling is DOCUMENTED (stage2c-ledger-hardening.md:74,93)
       // but was enforced on NOTHING that reaches this journal — the earlier version
       // of this comment said "already enforced on seed cash and on the tax sum",
-      // and that was false: the seed check lived in `backtest-runner.ts:243`, a
-      // different module on a different path. Round 2 (2026-07-27) grepped for the
-      // enforcement this comment asserted and did not find it; `account_opened`
-      // above now carries it. Do not restore the claim without the grep.
+      // and that was false: the seed check lived in `backtest-runner`'s own seed
+      // validation — a different module on a different path. Round 2 (2026-07-27)
+      // grepped for the enforcement this comment asserted and did not find it;
+      // `account_opened` above now carries it, and round 3 moved the predicate
+      // itself into `contracts` so there is one definition rather than two.
+      // Do not restore the claim without the grep.
       // Past the ceiling the rounded product is a NEIGHBOURING integer, so "cash
       // conservation is exact, no epsilon" quietly stops holding. Enforced here
       // because this boundary already owns a refusal channel; the arithmetic
@@ -413,17 +431,35 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
         if (tax > grossMinor) return "invalid_fill";
       }
       if (order.payload.side === "sell") {
-        // An exact product can still land in an inexact BALANCE (:842). That is
-        // not cosmetic: once the total passes 2^53 a later 1-unit credit vanishes
+        // An exact product can still land in an inexact BALANCE. That is not
+        // cosmetic: once the total passes 2^53 a later 1-unit credit vanishes
         // into an unchanged balance, and `balance - reserved` starts rounding —
         // which is how an affordability check approves more than the account
         // holds. Both reproduced in round 2 (balance 2^54, reserved 1 reads as
         // …984 available where …983 is exact, and the …984 request is approved).
         // Buys need no such guard: the affordability check bounds the debit by
         // the balance, so the result stays inside [0, balance].
+        //
+        // The parentheses are the fix, not decoration. Round 2 wrote
+        // `balance + gross - tax`, which associates left to right: `balance +
+        // gross` can round through an unrepresentable intermediate and the
+        // subtraction can land back INSIDE the safe range, so `isExactMinor`
+        // returned true for a number that was not the sum — and the fold, using
+        // the same association, stored the drifted one. Adversarial review
+        // reproduced it (2026-07-27: gross 2, tax 2, balance 2^53−1 → accepted,
+        // no refusal, 1 minor unit of cash silently destroyed).
+        //
+        // Netting first removes the intermediate instead of merely rejecting it:
+        // `gross - tax` is bounded by gross (0 ≤ tax ≤ gross is enforced above),
+        // so it is always representable, and one addition of two safe integers is
+        // exact whenever the result is in range. Rejecting the intermediate would
+        // also have been sound but refuses honest sells whose true balance IS
+        // representable — a guard should not buy soundness with false refusals.
+        // The fold's sell arm carries the identical association; the two must
+        // stay in step, which is why the same parentheses appear there.
         const taxMinor = fill.costs?.sellTransactionTaxMinor ?? 0;
         const balanceMinor = state.cash.get(fill.price.currency)?.balance ?? 0;
-        if (!isExactMinor(balanceMinor + grossMinor - taxMinor)) return "invalid_fill";
+        if (!isExactMinor(balanceMinor + (grossMinor - taxMinor))) return "invalid_fill";
       }
       // A fill in a different currency than the instrument's existing basis
       // would mix units in the fold — relief and realized P&L subtract across
@@ -888,7 +924,16 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           // taxed sale — the money-conservation property accounts for it as a
           // separate leg. Absent costs ⇒ zero (untaxed / buy-side / exempt).
           const taxMinor = entry.fill.costs?.sellTransactionTaxMinor ?? 0;
-          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + grossMinor - taxMinor);
+          // NET first, on purpose. `(balance + gross) - tax` associates left to
+          // right and can round through an unrepresentable intermediate even when
+          // the true result is representable — the drift adversarial review
+          // reproduced (2026-07-27: gross 2, tax 2, balance 2^53−1 lost 1 unit).
+          // `gross - tax` is bounded by gross (the fill validator enforces
+          // 0 ≤ tax ≤ gross), so it is always representable, and one addition of
+          // two safe integers is exact whenever its result is in range — which is
+          // exactly what the validator checks. Inside the safe domain both
+          // associations agree, so no stored ledger is reinterpreted.
+          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + (grossMinor - taxMinor));
           // Average-cost basis relief (simulation-v1), rounded to the minor unit
           // in BigInt: basis·quantity can exceed 2^53 at large (but ledger-
           // representable) scale, where a float product/round drifts and a full

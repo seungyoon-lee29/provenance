@@ -89,6 +89,82 @@
 
 ---
 
+## OF-6. 예약(reserved)이 잔고에 묶여 있지 않다 — 분할이 어포더빌리티를 우회한다
+
+- **출처**: 라운드 2 적대 리뷰 finding #2 (High). 메인이 재현했다.
+- **재현**: `probe-reservation.ts` — seed $1000, 1주/1센트 시장가 매수 2건, 2:1 분할 53회.
+  전 엔트리가 `validateSystemBody` 를 통과한다.
+  ```
+  any refusal from validateSystemBody: NONE — every entry accepted
+  balance(minor)      = 100000
+  folded cash.reserved= 9007199254740992   exact sum = 9007199254740993n
+  reserved is EXACT?  = false
+  reserved > balance? = true
+  availableMinor as coded = 100000 / exact 99999n / fail-open by 1n
+  ```
+  1회로도 움직인다: `reserved before split = 2` → 3:1 분할 ACCEPTED → `reserved after = 3`.
+- **기전**: 라운드 2 가 예약 가드를 생략한 근거는 "submit 의 어포더빌리티가
+  `required ≤ balance − reserved` 를 강제하므로 잔고를 막으면 예약이 따라 막힌다" 였다.
+  **`corporate_action_applied` 가 살아있는 예약을 submit 이후에 다시 쓰고 어포더빌리티를
+  재실행하지 않는다.** `splitPrice` 는 올림이라 `newQty × newPrice > oldQty × oldPrice` 로
+  단조 증가하고, `numerator` 에 상한이 없으며, sub-minor 거부는 `payload.limitPrice` 만
+  덮어 시장가 주문은 무제한이다.
+- **즉 라운드 2 의 명시적 근거가 거짓이다.** 코드가 아니라 논증이 틀렸으므로 주석·커밋
+  메시지도 함께 고쳐야 한다.
+- **다음**: `corporate_action_applied` 가 예약을 다시 쓸 때 (a) 새 예약이 안전정수인지
+  (b) `reserved ≤ balance` 가 유지되는지 재검증. 분할 자체를 거부할지 예약을 재계산할지는
+  설계 판단이다 — 분할은 시장 사실이므로 거부가 옳은지부터 물어야 한다.
+
+---
+
+## OF-7. fold 의 정수 누산기 3개 중 **원가(costBasis)** 가 무가드
+
+- **출처**: 라운드 2 적대 리뷰 finding #3 (Med). 메인이 재현했다.
+- **재현**: `probe-basis.ts`
+  ```
+  refusals from validateSystemBody: NONE — every entry accepted
+  stored costBasis.minorUnits = 13500000000000000   exact = 13500000000000001n
+  isSafeInteger(costBasis) = false   drift = -1n
+  cash balance(minor) = 4499999999999999 safe? true   ← 현금 불변식은 내내 성립했다
+  ```
+- **기전**: fold 자신의 헤더가 "cash, cost basis and reservations" 셋을 정수 누산기로
+  선언하는데 라운드 2 는 **현금만** 가드했다. `costBasis.minorUnits + grossMinor` 에 상한이
+  없고, 배당이 원가를 건드리지 않고 잔고만 채워주므로 매수→배당→매수로 원가만 천장을 넘긴다.
+  드리프트한 원가는 BigInt relief 와 `realizedSales` P&L 로 흘러간다.
+- **이것이 라운드 2 불변식 서술의 진짜 결함이다**: "현금 총액"으로 좁힌 불변식은 참이면서도
+  원장의 정확성을 보장하지 못한다. 불변식을 누산기 셋 전체로 다시 써야 한다.
+
+---
+
+## OF-8. `seedCash` 가 비면 genesis 가 두 번 된다
+
+- **출처**: 라운드 2 적대 리뷰 finding #6 (Low). 메인이 재현했다.
+- **재현**: `probe-misc.ts`
+  ```
+  (A) state after empty genesis: cash.size/orders.size = 0 0
+  (A) validateSystemBody(second account_opened, seed $1M) = ACCEPTED
+  (A) folded balance after 2nd genesis = 100000000
+  ```
+- **기전**: `// Genesis happens exactly once per account.` 가 `cash.size > 0 || orders.size > 0`
+  로 구현돼 있다. 빈 seed 는 둘 다 0 으로 남기므로 다른 dedupe 키의 두 번째 genesis 가 통과해
+  현금을 찍어낸다. 빈 seed 는 도달 가능한 형태다(`src/operations/catalog.ts` 의
+  `paper.account` 가 `seedCash: []` 로 서비스를 만든다).
+- **라운드 3 에서 안 닫은 이유**: `#owners` 는 이미 알고 있지만 `validateSystemBody` 는
+  의도적으로 **fold 의 순수 함수**다. genesis 마커를 접힌 상태에 넣는 것은 상태 shape 변경이라
+  별도 tier 다. 주석은 사실대로 좁혀 뒀다.
+
+---
+
+## OF-9. 모르는 통화가 조용히 scale 100 을 받는다
+
+- **출처**: 라운드 2 적대 리뷰 finding #4 의 부수 실측
+- **재현**: `[{"amount":1000,"currency":"XYZ"}]` → ACCEPTED, 잔고 100000
+- **상태**: `currencyMinorUnitScale` 의 문서화된 ponytail 범위("두 통화가 제품 범위, 세 번째가
+  오면 표")와 일치하므로 **결함이 아니라 알려진 범위**다. 다만 genesis 가 통화를
+  검증하지 않는다는 사실은 여기 적어 둔다 — 세 번째 통화가 들어오는 날 이 줄이 근거다.
+
+---
+
 ## OF-4. `main...origin/main [ahead N]` — push 안 된 커밋은 CI 를 안 거쳤다
 
 - **출처**: stage-3

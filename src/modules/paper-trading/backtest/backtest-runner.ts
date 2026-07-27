@@ -2,7 +2,7 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
-import { currencyMinorUnitScale, fromMinorUnits, grossMinorOf } from "../internal/contracts";
+import { currencyMinorUnitScale, fromMinorUnits, grossMinorOf, isRepresentableCash } from "../internal/contracts";
 import type { KrxTaxClass } from "../internal/contracts";
 import { KRX_TAX_POLICY_VERSION, isSupportedTaxDate } from "../internal/krx-transaction-tax";
 import { buildPerformance } from "./performance-report";
@@ -160,19 +160,6 @@ export type BacktestOutcome =
         | "invalid_bar_price"
         | "seed_currency_mismatch";
     }>;
-
-/** True when `amount` is a positive whole number of the currency's minor units
- * within the SAFE-integer range — the only seed the integer ledger can hold
- * without silent rounding (codex gates: -1 / NaN / Infinity / sub-unit seeds
- * folded into broken balances; a 1e19 seed passes isInteger but not
- * isSafeInteger, and past 2^53 the fold's arithmetic silently drifts — the
- * ledger's documented ceiling, enforced here at the boundary). */
-function isRepresentableCash(money: PaperMoney): boolean {
-  return (
-    money.amount > 0
-    && Number.isSafeInteger(money.amount * currencyMinorUnitScale(money.currency))
-  );
-}
 
 /** The status string a refused prepare/change outcome contributes to the
  * report — the typed `reason` when refused, else the raw status. */

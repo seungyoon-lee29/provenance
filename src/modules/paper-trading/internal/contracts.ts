@@ -49,9 +49,16 @@ export function minorUnitsOf(majorAmount: number, currency: string): number {
   // the dividend credit and the resulting cash balance. A documented limit
   // nothing checks is a comment, not a limit — which is what it was until
   // round 2: the round-1 version of this line said seed cash "already" enforced
-  // the ceiling, and no such check existed on this path (it was in
-  // `backtest-runner.ts:243`, another module). Naming an enforcer you have not
-  // grepped for is the same defect one level up.
+  // the ceiling, and no such check existed on this path (it lived in
+  // `backtest-runner`'s own seed validation, another module — round 3 moved the
+  // predicate here as `isRepresentableCash` so there is one). Naming an enforcer
+  // you have not grepped for is the same defect one level up.
+  //
+  // Cite by SYMBOL, never by line. Round 2 wrote three `:NNN` references into
+  // these files and adversarial review found all three off by exactly 49 —
+  // pre-edit numbering, invalidated by that same commit's own insertions. This
+  // repo had already been bitten once (`e7d2b41`). Line numbers drift by
+  // construction; a symbol name is checkable by grep and survives editing.
   return Math.round(majorAmount * currencyMinorUnitScale(currency));
 }
 
@@ -69,6 +76,43 @@ export function isExactMinor(minorUnits: number): boolean {
 
 export function toMinorUnits(money: PaperMoney): number {
   return minorUnitsOf(money.amount, money.currency);
+}
+
+/**
+ * True when `money` is a POSITIVE whole number of the currency's minor units
+ * inside the safe-integer range — the only cash the integer ledger can take in
+ * without silent rounding. Three rejections in one predicate: `-1` (a negative
+ * balance voids the "both operands non-negative ⇒ the fold's subtraction is
+ * exact" premise the whole ceiling argument rests on), `0.005` (sub-unit — it
+ * would round INTO the ledger as 1 and fabricate money), and NaN/±Infinity.
+ *
+ * Note it tests the RAW product, not `toMinorUnits`: rounding first would erase
+ * the sub-unit case, which is the one a reader is most likely to think is
+ * harmless.
+ *
+ * It lived as a private function in `backtest-runner.ts` until 2026-07-27, and
+ * that is precisely why round 2's genesis guard was weaker than the precedent
+ * its own comment cited — the durable path could not reach it, so it re-derived
+ * half of it. Adversarial review reproduced the gap: a −$1,000,000 seed was
+ * ACCEPTED and folded to a balance of −100000000. One definition, two callers.
+ */
+export function isRepresentableCash(money: PaperMoney): boolean {
+  const scale = currencyMinorUnitScale(money.currency);
+  const minor = Math.round(money.amount * scale);
+  // The test is a ROUND TRIP, not `isSafeInteger(amount * scale)`. That was the
+  // form this predicate had while it was private to `backtest-runner`, and it
+  // rejects ordinary money: `fromMinorUnits(1003, "USD")` is `10.03`, and
+  // `10.03 * 100` is `1002.9999999999999` in binary floating point. Every seed
+  // derived from a cent count would have been refused. Found by the money
+  // conservation property test the moment the predicate reached this path.
+  //
+  // `minor / scale === money.amount` is exact and needs no epsilon: it accepts
+  // exactly those amounts that survive the trip into the integer domain and back.
+  // Measured over 2.2M cent and won values: zero false rejections, while `0.5`
+  // KRW (half a won), `0.005` USD, `-1`, `0`, NaN, ±Infinity and `1e19` are all
+  // still refused. The division is fine here — this is a boundary validator, not
+  // the fold, and `fromMinorUnits` already divides at presentation.
+  return money.amount > 0 && isExactMinor(minor) && minor / scale === money.amount;
 }
 
 /** Gross proceeds/cost of a fill in integer minor units — aggregate-rounded
