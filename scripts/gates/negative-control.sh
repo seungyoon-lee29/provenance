@@ -258,7 +258,8 @@ expect_green "tier-gate 축 값 전부 규칙 안 (양성 대조군)" tier_gate 
 FIXTURE=tests/fixtures/lint-negative-control.fixture.ts
 LINT_OUT=$( (cd "$ROOT" && npx eslint --no-ignore "$FIXTURE" 2>&1) || true )
 for rule in require-array-sort-compare restrict-plus-operands no-base-to-string \
-            switch-exhaustiveness-check no-floating-promises no-misused-promises await-thenable; do
+            switch-exhaustiveness-check no-floating-promises no-misused-promises await-thenable \
+            no-unused-vars; do
   if printf '%s' "$LINT_OUT" | grep -qF "@typescript-eslint/$rule"; then
     printf 'ok    eslint %s — 픽스처에서 걸린다\n' "$rule"
     PASSED=$((PASSED + 1))

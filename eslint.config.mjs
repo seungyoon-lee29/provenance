@@ -68,6 +68,21 @@ export default defineConfig([
       "@typescript-eslint/no-floating-promises": "error",
       "@typescript-eslint/no-misused-promises": "error",
       "@typescript-eslint/await-thenable": "error",
+
+      // ── 지워진 코드가 남긴 흔적 ────────────────────────────────────────
+      // 2026-07-27 (라운드 5): 집계 검사를 공유 함수로 옮기면서 그 검사의 유일한
+      // 사용처였던 `currencyMinorUnitScale` import 가 죽은 채 남았고, `npm run check`
+      // 가 초록이었다 — 이 층에 unused 계열 규칙이 없었고 tsconfig 에도
+      // `noUnusedLocals` 가 없었다. 즉 "통합했다"는 커밋에서 통합의 흔적이 남았는지를
+      // 아무도 안 봤다. 코드를 지우는 변경은 이 저장소에서 자주 있으므로 그 형태를
+      // 게이트가 본다. `_` 접두는 의도적 미사용의 표시로 남긴다.
+      // 이 블록(모든 TS)이지 src 전용 블록이 아니다 — 처음 src 쪽에 넣었더니 tests 의
+      // 음성 대조군 픽스처에 안 걸렸고, 대조군이 그 자리에서 red 를 냈다.
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrors: "none" },
+      ],
+
     },
   },
   {

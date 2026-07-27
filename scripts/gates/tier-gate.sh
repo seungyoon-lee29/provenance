@@ -132,6 +132,48 @@ if [ "${1:-}" = "--range" ]; then
     exit 1
   fi
   RC=0
+
+  # ── `Resolves-Tier:` — 뒤 커밋이 앞 커밋의 pending 을 해소했다는 선언 (OF-10) ──────
+  # 계기 (2026-07-27, 두 번 연속): 축 값은 **그 커밋에 존재하는 경로**여야 하는데(OF-2 가
+  # 넣은 규칙, 옳다), 적대 리뷰·blind 산출물은 원래 변경보다 **뒤 커밋**에서 생긴다.
+  # 앞 커밋이 뒤 커밋의 파일을 가리킬 방법이 없어서 `pending` 이 남고, 두 커밋이 함께
+  # 들어오는 PR 범위 전체가 red 였다 — 범위로 보면 해소됐는데 커밋으로 보면 미해소다.
+  # 처음엔 `waived:뒤에서 했다` 로 덧칠했는데 그러면 `waived:` 가 "안 함"과 "뒤에서 함"
+  # 두 뜻을 지고, 그건 pending 2층으로 닫으려던 구멍("나중이 없으면 그냥 안 한 것")을
+  # 다시 여는 것이다. 그래서 별도 문법으로 갈랐다:
+  #
+  #   Resolves-Tier: <해소되는 커밋> (<축>=<이 커밋에 실재하는 경로>)
+  #
+  # 검증되는 것 셋: ① 대상 커밋이 **이 범위 안**에 있다(범위 밖이면 확인할 수 없으므로
+  # 거절) ② 경로가 **선언한 커밋에** 실재한다 ③ 축 이름이 넷 중 하나다.
+  # 즉 "나중에 함"은 여전히 못 쓴다 — 이미 한 것만 적을 수 있다.
+  RESOLVED="$(mktemp)"
+  trap 'rm -f "$RESOLVED"' EXIT INT TERM
+  for sha in $SHAS; do
+    git log -1 --format=%B "$sha" \
+      | grep -E '^Resolves-Tier: [0-9a-f]{7,40} \((adversarial|blind|standards|prior-decisions)=[^)]+\)[[:space:]]*$' \
+      | while IFS= read -r line; do
+          target=$(printf '%s' "$line" | sed -n 's/^Resolves-Tier: \([0-9a-f]\{7,40\}\) .*$/\1/p')
+          pair=$(printf '%s' "$line" | sed -n 's/^Resolves-Tier: [0-9a-f]\{7,40\} (\(.*\))[[:space:]]*$/\1/p')
+          axis=${pair%%=*}
+          path=${pair#*=}
+          if ! printf '%s\n' $SHAS | grep -q "^$(git rev-parse "$target" 2>/dev/null || echo __none__)$"; then
+            echo "BAD $sha $target $axis 대상 커밋이 이 범위 안에 없다 — 범위 밖의 해소는 확인할 수 없다" >> "$RESOLVED"
+            continue
+          fi
+          if ! git cat-file -e "$sha:${path%%#*}" 2>/dev/null; then
+            echo "BAD $sha $target $axis 선언한 경로가 이 커밋에 없다: $path" >> "$RESOLVED"
+            continue
+          fi
+          echo "OK $(git rev-parse "$target") $axis $path" >> "$RESOLVED"
+        done
+  done
+  if grep -q '^BAD ' "$RESOLVED" 2>/dev/null; then
+    echo "tier-gate: Resolves-Tier 선언이 검증되지 않는다:" >&2
+    grep '^BAD ' "$RESOLVED" | sed 's/^BAD /  - /' >&2
+    RC=1
+  fi
+
   for sha in $SHAS; do
     # 머지 커밋은 -m 없이는 빈 diff 라 자연히 건너뛴다 (도입 변경이 없다).
     touched=$(git diff-tree --no-commit-id --name-only -r "$sha" | grep -E "$GUARDED" || true)
@@ -145,8 +187,19 @@ if [ "${1:-}" = "--range" ]; then
       # 로컬 커밋에서는 계속 허용한다: pending 의 원래 목적(의무 인지를 기록)은 옳고,
       # 작업 중에 축이 아직 안 끝나는 것은 정상이다. 강제하는 시점은 PR 범위다.
       # `waived:사유` 는 통과시킨다 — 사유가 붙은 의도적 면제는 미룸이 아니다.
-      unresolved=$(git log -1 --format=%B "$sha" \
-        | grep -oE '(adversarial|blind|standards|prior-decisions)=pending' || true)
+      unresolved=""
+      for axis in $(git log -1 --format=%B "$sha" \
+        | grep -oE '(adversarial|blind|standards|prior-decisions)=pending' \
+        | sed 's/=pending$//'); do
+        if grep -q "^OK $sha $axis " "$RESOLVED" 2>/dev/null; then
+          where=$(grep -m1 "^OK $sha $axis " "$RESOLVED" | awk '{print $4}')
+          echo "tier-gate: $sha 의 $axis=pending 은 뒤 커밋이 해소했다 ($where)"
+          continue
+        fi
+        unresolved="$unresolved$axis=pending
+"
+      done
+      unresolved=$(printf '%s' "$unresolved" | sed '/^$/d')
       if [ -n "$unresolved" ]; then
         echo "tier-gate: $sha 의 Tier 트레일러에 미해소 pending 이 남아 있다:" >&2
         printf '%s\n' "$unresolved" | sed 's/^/  - /' >&2

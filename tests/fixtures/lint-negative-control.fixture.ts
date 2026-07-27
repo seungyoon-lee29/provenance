@@ -53,3 +53,13 @@ export function passesAsyncWhereVoidExpected(items: readonly number[]): void {
     await Promise.resolve(item);
   });
 }
+
+/** no-unused-vars — 지워진 코드가 남긴 죽은 import·지역 심볼.
+ * 2026-07-27 라운드 5 가 실물로 잡았다: 집계 검사를 공유 함수로 옮기면서 그 검사의
+ * 유일한 사용처였던 import 가 남았고 `npm run check` 는 초록이었다. */
+import { isExactMinor } from "../../src/modules/paper-trading/internal/contracts";
+
+export function leavesDeadLocals(value: number): number {
+  const neverRead = value * 2;
+  return value;
+}

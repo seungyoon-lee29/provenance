@@ -294,9 +294,15 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       //
       // Round 2 then imported only HALF of it, and adversarial review reproduced
       // the rest: a −$1,000,000 seed was accepted and folded to a −100000000
-      // balance, and `0.005` rounded IN as 1. So the per-seed predicate is now
-      // the shared `isRepresentableCash` — one definition, two callers — rather
-      // than a second, weaker re-derivation. It rejects negative, sub-unit and
+      // balance, and `0.005` rounded IN as 1. Round 4 then found that the
+      // consolidation was half done and finished it: the whole precondition —
+      // per item AND per-currency total — is `isRepresentableSeedCash`, and this
+      // arm and `backtest-runner` are its two callers. (Round 4's version of this
+      // comment still said "the shared `isRepresentableCash` — one definition,
+      // two callers"; after round 4 that symbol has exactly ONE caller and it is
+      // not this one. Adversarial review round 5 grepped it. A stale comment in
+      // the commit that fixed stale comments — the third time in this file.)
+      // It rejects negative, sub-unit and
       // non-finite amounts. (±Infinity is refused because `Infinity * scale` is
       // not a safe integer; it does NOT become NaN, which is what round 2's
       // comment claimed. Mechanism matters: a false mechanism in a true

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { brandReference } from "../src/shared/contracts/brands";
-import { grossMinorOf, isExactMinor } from "../src/modules/paper-trading/internal/contracts";
+import { grossMinorOf, isExactMinor, isRepresentableSeedCash } from "../src/modules/paper-trading/internal/contracts";
+import { runBacktest } from "../src/modules/paper-trading/backtest/backtest-runner";
 import { PaperJournal, foldAccountState, validateSystemBody } from "../src/modules/paper-trading/internal/journal";
 import type {
   PaperAccountState,
@@ -345,6 +346,45 @@ describe("라운드 3 회귀: 적대 리뷰가 재현한 결함", () => {
     expect(
       validateSystemBody(state(), { kind: "account_opened", seedCash: [{ amount: Number.POSITIVE_INFINITY, currency: "USD" }] }),
     ).toBe("invalid_seed_cash");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3c) 라운드 5 회귀 — 통합된 술어의 빈 배열 계약
+//     두 호출자가 기대가 다르다. 그 차이를 한 함수가 지고 있으므로 여기서 고정한다.
+// ---------------------------------------------------------------------------
+
+describe("라운드 5 회귀: 빈 seedCash 는 술어 수준에서 수용된다", () => {
+  it("`isRepresentableSeedCash([])` 는 true — 검사할 금액이 없으면 위반도 없다", () => {
+    // 라운드 4 가 항목 검사와 집계 검사를 한 함수로 합쳤는데, 그 함수의 `[]` 동작을
+    // 고정하는 테스트가 **0건**이었다. 실측(라운드 5): `[]` 를 거절하도록 바꾸는 뮤턴트가
+    // money 스위트 73 케이스를 전부 통과했다.
+    //
+    // 여기서 true 를 고정하는 이유는 **두 호출자가 기대가 다르기** 때문이다.
+    // backtest 는 빈 seed 를 별도 이유(`no_seed_cash`)로 앞에서 막으므로 이 술어가
+    // 그것을 대신 거절하면 진단이 뭉개진다. 원장 읽기 경로는 `seedCash: []` 로 서비스를
+    // 만들고 genesis 를 하지 않으므로 여기서 거절되면 안 된다.
+    // (`[]` 로 실제 genesis 가 가능한 것은 별개의 결함이며 open-findings OF-8 이다.)
+    expect(isRepresentableSeedCash([])).toBe(true);
+    expect(validateSystemBody(state(), { kind: "account_opened", seedCash: [] })).toBe(undefined);
+  });
+
+  it("backtest 는 빈 seed 를 이 술어가 아니라 자기 이유로 거절한다 (진단이 뭉개지지 않는다)", async () => {
+    const outcome = await runBacktest({
+      runId: "r",
+      seedCash: [],
+      series: {
+        instrument: "instr:X",
+        venue: "V",
+        currency: "USD",
+        bars: [
+          { periodStart: "2026-01-01T00:00:00.000Z", close: 10, volume: 100, complete: true },
+          { periodStart: "2026-01-02T00:00:00.000Z", close: 10, volume: 100, complete: true },
+        ],
+      },
+      strategy: () => [],
+    });
+    expect(outcome).toEqual({ status: "refused", reason: "no_seed_cash" });
   });
 });
 

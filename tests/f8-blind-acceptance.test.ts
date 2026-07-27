@@ -165,16 +165,6 @@ const BUY_AAPL: PaperOrderPayload = {
   timeInForce: "GTC",
 };
 
-const SELL_AAPL: PaperOrderPayload = {
-  instrument: INSTR_AAPL,
-  venue: VENUE,
-  session: "regular",
-  side: "sell",
-  orderType: "market",
-  quantity: 5,
-  timeInForce: "GTC",
-};
-
 /** Prepare + submit helper returning the applied order reference */
 async function prepareAndSubmit(
   service: PaperTradingService,
@@ -239,7 +229,7 @@ describe("SEC-01: stale auth epoch is denied with zero side effects", () => {
     const service = mkService();
     // First prepare and submit with valid epoch
     const viewer = mkViewer();
-    const { result: r1, intent } = await prepareAndSubmit(service, BUY_AAPL, viewer);
+    const { result: r1 } = await prepareAndSubmit(service, BUY_AAPL, viewer);
     expect(r1.status).toBe("applied");
 
     // Now epoch advances — viewer still carries old epoch
@@ -323,7 +313,7 @@ describe("Idempotency trio (spec §9)", () => {
   it("same key + different payload → conflict, side effects 0", async () => {
     const service = mkService();
     const viewer = mkViewer();
-    const { result: r1, key } = await prepareAndSubmit(service, BUY_AAPL, viewer, "idem-key-conflict");
+    const { result: r1 } = await prepareAndSubmit(service, BUY_AAPL, viewer, "idem-key-conflict");
     expect(r1.status).toBe("applied");
 
     const differentPayload: PaperOrderPayload = { ...BUY_AAPL, quantity: 999 };

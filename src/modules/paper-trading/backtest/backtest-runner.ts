@@ -2,7 +2,7 @@ import { brandReference } from "../../../shared/contracts/brands";
 import type { PaperOrderReference } from "../../../shared/contracts/brands";
 import type { WorkspaceViewerContext } from "@/shared/contracts/viewer-context";
 
-import { currencyMinorUnitScale, fromMinorUnits, grossMinorOf, isRepresentableSeedCash } from "../internal/contracts";
+import { fromMinorUnits, grossMinorOf, isRepresentableSeedCash } from "../internal/contracts";
 import type { KrxTaxClass } from "../internal/contracts";
 import { KRX_TAX_POLICY_VERSION, isSupportedTaxDate } from "../internal/krx-transaction-tax";
 import { buildPerformance } from "./performance-report";
