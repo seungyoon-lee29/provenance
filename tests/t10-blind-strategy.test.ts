@@ -199,7 +199,11 @@ describe("S1 published schema vs. what the engine accepts", () => {
       expect(status, `${strategy} ${JSON.stringify(params)} should be rejected`).toBe(1);
       expect(envelope.error?.code).toBe("usage");
     }
-  });
+    // 위반 9건 × CLI 자식 프로세스 1개. 호스트에선 여유롭지만 compose 레인에서는
+    // 기본 5s 를 넘겼다. 느린 것이지 매달린 것이 아니다.
+    // 실측: 이 파일 전체가 로컬 컨테이너 12.6s, GitHub 러너 47.4s. 러너가 3.8배 느리므로
+    // 로컬 여유를 그대로 믿지 않고 러너 실측의 2.5배로 잡는다.
+  }, 120_000);
 
   it("accepts the extremes the schema advertises as legal, and does not hang on them", () => {
     // cashFraction === 1 is the published maximum.

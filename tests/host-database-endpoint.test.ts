@@ -32,15 +32,48 @@ function composeHostEndpoint(): Readonly<{ host: string; port: string }> {
   return { host: published.groups.host!, port: published.groups.port! };
 }
 
+/**
+ * `.dockerignore` excludes `.env*` — deliberately, and the glob is wide on
+ * purpose: `.env.example` names 36 credential variables (`KIS_APP_SECRET`,
+ * `GOOGLE_IDENTITY_CLIENT_SECRET`, …) and that pattern is what keeps the whole
+ * family out of a runtime image. Poking a hole in it to satisfy a test would
+ * trade a security floor for convenience.
+ *
+ * So the container lane genuinely cannot read the file, and the reduction is
+ * DECLARED rather than skipped in silence — the same contract `.git` already
+ * has (`RELEASE_LANE_WITHOUT_GIT`, tests/release/git-lane.ts). Anywhere else a
+ * missing `.env.example` is a broken checkout and this throws.
+ *
+ * Nothing is lost: the host lane (`npm run check`) reads the real file, and the
+ * compose↔default half of the agreement still runs in both lanes.
+ */
+function envExampleDatabaseUrl(): string | undefined {
+  let raw: string;
+  try {
+    raw = readFileSync(resolve(ROOT, ".env.example"), "utf8");
+  } catch {
+    if (process.env.CONFIG_LANE_WITHOUT_ENV_EXAMPLE === "1") return undefined;
+    throw new Error(
+      "this check reads .env.example and this environment has none. If that is "
+      + "expected — e.g. an image built with .env* excluded — declare it with "
+      + "CONFIG_LANE_WITHOUT_ENV_EXAMPLE=1 so the reduced coverage is visible, "
+      + "instead of skipping silently.",
+    );
+  }
+  const example = /^DATABASE_URL=(?<url>.+)$/mu.exec(raw);
+  if (example?.groups === undefined) throw new Error(".env.example declares no DATABASE_URL");
+  return example.groups.url!.trim();
+}
+
 describe("host database endpoint", () => {
   it("compose, the CLI default and .env.example name the same host and port", () => {
     const compose = composeHostEndpoint();
     const fromDefault = new URL(DEFAULT_DATABASE_URL);
     expect({ host: fromDefault.hostname, port: fromDefault.port }).toEqual(compose);
 
-    const example = /^DATABASE_URL=(?<url>.+)$/mu.exec(readFileSync(resolve(ROOT, ".env.example"), "utf8"));
-    if (example?.groups === undefined) throw new Error(".env.example declares no DATABASE_URL");
-    const fromExample = new URL(example.groups.url!.trim());
+    const declared = envExampleDatabaseUrl();
+    if (declared === undefined) return; // 선언된 축소 — 위 두 선언의 일치는 이미 확인했다.
+    const fromExample = new URL(declared);
     expect({ host: fromExample.hostname, port: fromExample.port }).toEqual(compose);
   });
 

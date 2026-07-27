@@ -126,6 +126,15 @@ tests/release/release-docs.test.ts	wired:tests/release/git-lane.ts	RELEASE_LANE_
 tests/release/release-manifest.test.ts	wired:tests/release/git-lane.ts	RELEASE_LANE_WITHOUT_GIT
 tests/release/release-zip.test.ts	wired:tests/release/git-lane.ts	RELEASE_LANE_WITHOUT_GIT
 
+# 같은 선언을 소비하는 음성 대조군. releaseGitLane 의 "git 이 있으면 true" 케이스는
+# 전제가 "git 이 있으면" 이라 .git 없는 레인에서 성립하지 않는다 — 그 레인이 이미
+# 선언해 둔 것을 존중한다. 나머지 10건(선언 없으면 throw / 선언되면 false)은 그대로 돈다.
+tests/gate-negative-control.test.ts	wired:compose.yaml	RELEASE_LANE_WITHOUT_GIT
+
+# .env.example 부재도 같은 방식으로 승격했다 (2026-07-27). 이 파일은 skipIf 가 아니라
+# 조기 return 으로 줄어들어 검사 5 의 정규식에 안 걸린다 — 게이트가 못 보므로 자진 선언한다.
+tests/host-database-endpoint.test.ts	wired:compose.yaml	CONFIG_LANE_WITHOUT_ENV_EXAMPLE
+
 # 부채 (2026-07-27 발견). `.dockerignore` 가 .env.example 을 빼므로 컨테이너에서 조용히
 # 사라진다 — 위 3개가 git-lane 으로 고친 것과 같은 결함인데 이 파일만 안 고쳐졌다.
 # 같은 방식(선언 없으면 throw)으로 승격할 것.

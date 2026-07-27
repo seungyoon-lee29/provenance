@@ -172,6 +172,10 @@ services:
       # 그 축소를 선언으로 남긴다 — 전에는 hasGit() 사본 3개가 조용히 skip 시켜서
       # 이 레인이 "npm run check 전부 통과" 로 읽혔다 (tests/release/git-lane.ts).
       RELEASE_LANE_WITHOUT_GIT: "1"
+      # 같은 이유의 둘째 축소. `.dockerignore` 의 `.env.*` 는 credential 변수 36개를
+      # 이미지에서 막는 보안 하한이라 뚫지 않는다 — .env.example 을 읽는 정합성 검사는
+      # 호스트 레인이 돌고, 이 레인은 축소를 선언한다 (tests/host-database-endpoint.test.ts).
+      CONFIG_LANE_WITHOUT_ENV_EXAMPLE: "1"
     networks: [runtime]
 
   migration-smoke:

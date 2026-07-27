@@ -67,7 +67,11 @@ describe("releaseGitLane — 커버리지 축소는 선언돼야 하고 조용�
     }
   };
 
-  it("git 이 있으면 릴리스 스위트를 돌린다", () => {
+  // 이 케이스의 전제는 이름 그대로 "git 이 있으면" 이다. `.git` 이 빠진 이미지에서
+  // 도는 레인(compose pr-check)은 그 전제를 만족하지 않고, 자기 부재를 이미
+  // RELEASE_LANE_WITHOUT_GIT 로 선언해 둔다 — 그 선언을 여기서도 존중한다.
+  // 조용한 skip 이 아니다: 선언이 없는데 git 도 없으면 아래 두 케이스가 시끄럽게 잡는다.
+  it.skipIf(process.env.RELEASE_LANE_WITHOUT_GIT === "1")("git 이 있으면 릴리스 스위트를 돌린다", () => {
     expect(releaseGitLane()).toBe(true);
   });
 
