@@ -29,21 +29,39 @@
 
 ---
 
-## OF-2. 트레일러 축 값이 검증되지 않는다
+## OF-2. 트레일러 축 값이 검증되지 않는다 — **닫힘 (2026-07-27)**
 
-- **출처**: stage-3 자기 신고 (`progress/stage-3.md`)
-- **재현**: `Tier: top (adversarial=x, blind=x, standards=x, prior-decisions=x)` → rc=0. 빈 값도 rc=0.
-- **영향**: stage-3 이 넣은 pending 검사가 한 글자로 우회된다.
-- **같은 병의 두 번째 얼굴 (2026-07-27 실측)**: pending 검사는 `grep -oE '(축)=pending'`
-  즉 **리터럴 매칭**이라 축 값에 뭐라도 앞에 붙이면 안 걸린다. 실측:
-  `adversarial=progress/stage-1.md (라운드 1) / pending (라운드 2)` → rc=0.
-  숨길 의도 없이 "둘 다 적자"고 쓴 형태가 게이트를 통과했다 — 악의 없는 서술이
-  우회가 되는 것이 이 결함의 성질이다. 축을 `pending` 하나로 낮춰 커밋을 고쳤다.
-- **다음**: 축 값을 ① 실재 경로 ② `waived:<비공백 사유>` ③ `pending` ④ `none-found`
-  (prior-decisions 전용) 넷 중 **하나만** 오도록 제한(전체 anchor). 그 하나가 garbage·
-  빈값·pending 우회·허위 위치를 동시에 닫는다.
+- **출처**: stage-3 자기 신고 + 이 세션의 실측 2건
+- **무엇이었나**: 형식 정규식이 축의 **존재**만 봤다. 값은 무엇이든 통과했다.
+  - `Tier: top (adversarial=x, blind=x, standards=x, prior-decisions=x)` → rc=0. 빈 값도 rc=0.
+  - pending 검사가 `축=pending` **리터럴 매칭**이라, 라운드별 상태를 정직하게 둘 다 적은
+    `adversarial=<경로> (라운드 1) / pending (라운드 2)` 가 통과했다. 숨길 의도 없이 쓴
+    서술이 우회가 됐다 — 이 결함은 악의를 전제하지 않는다는 것이 핵심이다.
+- **어떻게 닫았나**: 축 값을 넷 중 **하나로만** 제한하고 행 끝까지 anchor 한다.
+  ① 실재하는 경로 (`#앵커`·`:줄` 접미 허용, 축 하나에 경로 하나)
+  ② `pending` ③ `waived:<비공백 사유>` ④ `none-found` (prior-decisions 전용)
+  경로는 **실재까지** 본다 — 없는 파일을 적는 것은 pending 을 감춘 것과 같고, 그 형태가
+  이 저장소에 실제로 있었다(`progress/stage2-persistence.md` — 루트 기준이 아니라 어디에도 없다).
+- **판별력**: `negative-control.sh` 에 7케이스(garbage·빈값·없는 경로·공백 waived·
+  none-found 오용·서술 섞임 + 양성 대조군). 38 ok / 0 fail.
+- **알려진 천장**: 파일이 존재하는지만 본다. 그 파일에 실제로 그 축의 기록이 있는지는
+  사람·리뷰 몫이다. 그리고 2026-07-27 이전 커밋은 이 규칙 이전에 쓰인 트레일러라
+  소급 판정하지 않는다(`AXIS_CUTOFF`).
+- **이 게이트가 스스로 잡은 것 (넣자마자, 2026-07-27)**:
+  1. 게이트가 슬래시를 요구해 루트 파일(`eslint.config.mjs`)에 **거짓 red** — 게이트를 고쳤다.
+  2. `file:line` 접미를 경로로 못 읽음 — 게이트를 고쳤다.
+  3. `fba3642` 의 `adversarial=tests/a+tests/b` — **옳은 red 다.** 축 하나에 위치 하나여야
+     기계가 따라갈 수 있다. → 아래 미결 참조.
 
----
+### OF-2 에서 파생된 미결 — 커밋 메시지 2건 (히스토리 재작성 필요)
+
+`--range` 가 지금 red 인 커밋 둘. 에이전트 2건(라운드 2 적대 리뷰·blind 저자)이 도는 중이고
+그 결과가 나오면 `c33909f` 의 pending 축도 어차피 고쳐야 하므로, **재작성은 한 번에** 한다.
+
+| 커밋 | 축 | 고칠 값 |
+| --- | --- | --- |
+| `fba3642` | `adversarial=tests/t10-blind-mcp.test.ts+tests/t10-blind-strategy.test.ts` | 경로 하나로 — `tests/t10-blind-mcp.test.ts` (strategy 쪽은 `blind=` 축이 이미 가리킨다) |
+| `c33909f` | `adversarial=pending`, `blind=pending` | 에이전트 결과의 기록 위치로 |
 
 ## OF-3. fold 의 현금 잔고 "합" 은 2^53 미집행 — **닫힘 (2026-07-27, 라운드 2)**
 

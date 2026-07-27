@@ -145,6 +145,11 @@ stage() { # stage <파일> — 내용은 stdin
   git -C "$REPO" add -- "$1"
 }
 
+# 축 값 검증(OF-2)이 경로의 **실재**를 보므로, 트레일러가 가리킬 파일을 먼저 만든다.
+printf '# 기록\n' | stage progress/x.md
+printf '// 기록\n' | stage tests/x.test.ts
+git -C "$REPO" commit -q -m "axis targets"
+
 printf 'trailing space here \n' | stage dirty.txt
 expect_red "content-gates whitespace" "trailing whitespace" content_gates --cached
 git -C "$REPO" rm -q --cached dirty.txt
@@ -212,6 +217,40 @@ Tier: top (adversarial=x, blind=x, standards=waived:픽스처, prior-decisions=n
 printf '# not a guarded path\n' | stage README.md
 git -C "$REPO" commit -q -m "docs only"
 expect_green "tier-gate guarded 경로 무관 커밋 (양성 대조군)" tier_gate --range HEAD^..HEAD
+
+# ── tier-gate 축 값 검증 (OF-2, 2026-07-27) ──────────────────────────────────
+# 형식 정규식은 축의 존재만 봤고 값은 무엇이든 받았다. 실측 두 건이 계기다:
+# `standards=x` 한 글자로 pending 검사가 우회됐고, 라운드별 상태를 정직하게 둘 다 적은
+# `adversarial=<경로> (라운드 1) / pending (라운드 2)` 도 통과했다.
+axis_commit() { # axis_commit <라벨접미> <트레일러 내용>
+  printf 'export const a%s = 1;\n' "$1" | stage "src/modules/paper-trading/internal/axis$1.ts"
+  git -C "$REPO" commit -q -m "touch money path
+
+Tier: top ($2)"
+}
+
+axis_commit garbage "adversarial=x, blind=x, standards=x, prior-decisions=x"
+expect_red "tier-gate 축 값이 garbage" "축 값이 규칙 밖이다" tier_gate --range HEAD^..HEAD
+
+axis_commit empty "adversarial=, blind=pending, standards=pending, prior-decisions=none-found"
+expect_red "tier-gate 축 값이 빈 문자열" "축 값이 규칙 밖이다" tier_gate --range HEAD^..HEAD
+
+axis_commit nofile "adversarial=nosuch/never.md, blind=pending, standards=pending, prior-decisions=none-found"
+expect_red "tier-gate 축이 없는 경로를 가리킴" "그 경로가 없다" tier_gate --range HEAD^..HEAD
+
+axis_commit blankwaive "adversarial=waived: , blind=pending, standards=pending, prior-decisions=none-found"
+expect_red "tier-gate waived 사유가 공백뿐" "사유가 없다" tier_gate --range HEAD^..HEAD
+
+axis_commit nonefound "adversarial=none-found, blind=pending, standards=pending, prior-decisions=none-found"
+expect_red "tier-gate none-found 를 prior-decisions 밖에서" "prior-decisions 전용" tier_gate --range HEAD^..HEAD
+
+# 우회의 실물 — 라운드별 상태를 둘 다 적은 형태. pending 리터럴 매칭은 이걸 못 잡았다.
+axis_commit roundsplit "adversarial=progress/x.md (라운드 1) / pending (라운드 2), blind=pending, standards=pending, prior-decisions=none-found"
+expect_red "tier-gate 축 값에 서술이 섞임 (pending 우회 실물)" "축 값이 규칙 밖이다" tier_gate --range HEAD^..HEAD
+
+# 양성 대조군 — 넷 다 규칙 안이면 통과한다. 무엇에나 red 를 내면 여기서 잡힌다.
+axis_commit ok "adversarial=progress/x.md, blind=tests/x.test.ts#C1, standards=waived:설정 변경뿐, prior-decisions=none-found"
+expect_green "tier-gate 축 값 전부 규칙 안 (양성 대조군)" tier_gate --range HEAD^..HEAD
 
 # ── 린트 (정적 층) ───────────────────────────────────────────────────────────
 # 켠 타입 인지 규칙 중 넷은 저장소 전체에서 발견 0건이다. 안 도는 규칙과 잡을 게 없는

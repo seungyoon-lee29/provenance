@@ -32,6 +32,83 @@ GUARDED='^src/modules/paper-trading/|^db/migrations/|^src/platform/persistence/|
 # 주장이 거짓이었다 (codex 적대 리뷰 #8). 최소 한 글자의 비공백을 요구하고 행 끝까지 anchor 한다.
 TRAILER='^Tier: (top \(.*adversarial=.*blind=.*standards=.*prior-decisions=.*\)|skip \([[:space:]]*[^[:space:])][^)]*\))[[:space:]]*$'
 
+# ── 축 값 검증 (2026-07-27, OF-2) ────────────────────────────────────────────
+# 위 정규식은 축의 **존재**만 본다. 값은 무엇이든 받았다. 실측 두 건:
+#   · `Tier: top (adversarial=x, blind=x, standards=x, prior-decisions=x)` → rc=0. 빈 값도 rc=0.
+#   · pending 검사가 `축=pending` 리터럴 매칭이라, 라운드별 상태를 정직하게 둘 다 적은
+#     `adversarial=<경로> (라운드 1) / pending (라운드 2)` 가 통과했다. 숨길 의도 없이
+#     쓴 서술이 우회가 된 것이다 — 이 결함은 악의를 전제하지 않는다.
+# 그래서 각 축 값을 **넷 중 하나로만** 제한하고 행 끝까지 anchor 한다:
+#   ① 실재하는 경로 (`#앵커` 접미는 허용) ② `pending` ③ `waived:<비공백 사유>`
+#   ④ `none-found` (prior-decisions 전용)
+# 경로의 **실재**까지 보는 이유: 존재하지 않는 파일을 적는 것은 pending 을 감춘 것과
+# 같고, 그 형태가 이 저장소에서 실제로 나왔다(`progress/stage2-persistence.md` — 루트
+# 기준 경로가 아니어서 어디에도 없다). 이 게이트는 진위를 검증하지 않지만, 가리키는
+# 곳이 있는지는 검증할 수 있다.
+#
+# 알려진 천장: 파일이 존재하는지만 본다. 그 파일에 실제로 그 축의 기록이 있는지는
+# 사람·리뷰 몫이다. 그리고 2026-07-27 이전 커밋의 트레일러는 이 규칙 이전에 쓰인
+# 것이라 소급 판정하면 거짓 red 다 — `--range` 는 그 컷 이후만 대상으로 삼아야 한다.
+AXIS_CUTOFF='2026-07-27'
+
+# axis_bad <축 이름> <값> <경로 존재 확인자> — 나쁘면 사유를 stdout 에 적고 0 을 반환한다.
+axis_bad() {
+  _name=$1
+  _value=$2
+  _exists=$3
+  case "$_value" in
+    "") echo "$_name= 가 비어 있다" ; return 0 ;;
+    pending) return 1 ;;
+    none-found)
+      [ "$_name" = "prior-decisions" ] && return 1
+      echo "$_name=none-found — none-found 는 prior-decisions 전용이다"
+      return 0 ;;
+    waived:*)
+      # 사유는 공백만으로 채울 수 없다 (codex #8 과 같은 병).
+      case "${_value#waived:}" in
+        *[![:space:]]*) return 1 ;;
+        *) echo "$_name=waived: 에 사유가 없다" ; return 0 ;;
+      esac ;;
+    *)
+      # 경로로 해석한다. 이 저장소는 기록을 `파일#앵커` 와 `파일:줄` 두 형태로 가리키므로
+      # 둘 다 떼고 본다. 루트 파일(`eslint.config.mjs`)도 정당한 경로다 — 슬래시를
+      # 요구했다가 이 게이트를 처음 돌린 자리에서 바로 거짓 red 를 냈다(2026-07-27).
+      # 값 하나에 경로 하나다. 여러 기록을 `a+b` 로 이어 붙이면 경로가 아니므로 red 다 —
+      # 그것도 실측으로 걸렸고, 옳은 red 였다(축 하나에 위치 하나여야 기계가 따라간다).
+      _path=${_value%%#*}
+      _path=$(printf '%s' "$_path" | sed 's/:[0-9]\{1,\}\(-[0-9]\{1,\}\)\{0,1\}$//')
+      if "$_exists" "$_path"; then return 1; fi
+      echo "$_name=$_value — 그 경로가 없다"
+      return 0 ;;
+  esac
+}
+
+# 축을 뽑는다. 순서는 트레일러 형식이 고정한다(adversarial→blind→standards→prior-decisions).
+axis_values() {
+  printf '%s' "$1" | sed -n 's/^Tier: top (\(.*\))[[:space:]]*$/\1/p'
+}
+
+# check_axes <트레일러 줄> <경로 존재 확인자> — 나쁜 축을 stdout 에 한 줄씩, 있으면 rc=1
+check_axes() {
+  _inner=$(axis_values "$1")
+  [ -z "$_inner" ] && return 0   # `Tier: skip (…)` 은 축이 없다
+  _exists=$2
+  _rc=0
+  for _axis in adversarial blind standards prior-decisions; do
+    case "$_axis" in
+      adversarial) _v=$(printf '%s' "$_inner" | sed -n 's/^adversarial=\(.*\), blind=.*$/\1/p') ;;
+      blind) _v=$(printf '%s' "$_inner" | sed -n 's/^.*, blind=\(.*\), standards=.*$/\1/p') ;;
+      standards) _v=$(printf '%s' "$_inner" | sed -n 's/^.*, standards=\(.*\), prior-decisions=.*$/\1/p') ;;
+      prior-decisions) _v=$(printf '%s' "$_inner" | sed -n 's/^.*, prior-decisions=\(.*\)$/\1/p') ;;
+    esac
+    if _why=$(axis_bad "$_axis" "$_v" "$_exists"); then
+      echo "$_why"
+      _rc=1
+    fi
+  done
+  return "$_rc"
+}
+
 # ── CI 대응물 (2026-07-27, arch-2 B) ──────────────────────────────────────────
 # 이 게이트는 commit-msg 훅에만 있었다. 훅은 로컬 산물이라 `--no-verify`, `prepare` 를
 # 안 돈 클론, 웹 UI 커밋, 훅을 안 거치는 도구로 만든 커밋은 전부 무검사로 들어온다.
@@ -76,6 +153,21 @@ if [ "${1:-}" = "--range" ]; then
         echo "  → 축을 실제로 돌리고 기록 위치로 바꾸거나, 안 할 거면 waived:<사유> 로 적어라." >&2
         RC=1
       fi
+      # 축 값 검증 (OF-2). pending 검사가 리터럴 매칭이라 값에 뭐가 붙으면 새는데,
+      # 여기서 값 자체를 넷 중 하나로 못 박으면 그 우회가 같이 닫힌다.
+      # 컷 이전 커밋은 이 규칙 이전에 쓰인 트레일러라 소급 판정하지 않는다.
+      committed_on=$(git log -1 --format=%cs "$sha")
+      if [ "$committed_on" \> "$AXIS_CUTOFF" ] || [ "$committed_on" = "$AXIS_CUTOFF" ]; then
+        AXIS_SHA=$sha
+        sha_has_path() { git cat-file -e "$AXIS_SHA:$1" 2>/dev/null; }
+        trailer_line=$(git log -1 --format=%B "$sha" | grep -E "$TRAILER" | head -1)
+        if bad=$(check_axes "$trailer_line" sha_has_path); [ -n "$bad" ]; then
+          echo "tier-gate: $sha 의 Tier 트레일러 축 값이 규칙 밖이다:" >&2
+          printf '%s\n' "$bad" | sed 's/^/  - /' >&2
+          echo "  → 축 값은 넷 중 하나다: 실재 경로 / pending / waived:<사유> / none-found(prior-decisions 전용)" >&2
+          RC=1
+        fi
+      fi
       continue
     fi
     echo "tier-gate: $sha 가 최상위 tier 승격 경로를 건드리는데 Tier 트레일러가 없다:" >&2
@@ -98,6 +190,20 @@ TOUCHED=$(git diff --cached --name-only | grep -E "$GUARDED" || true)
 [ -z "$TOUCHED" ] && exit 0
 
 if grep -qE "$TRAILER" "$MSG_FILE"; then
+  # 형식은 맞다. 축 값도 규칙 안인지 본다 (OF-2) — `pending` 은 여기서는 정상이다.
+  worktree_has_path() { [ -e "$1" ]; }
+  trailer_line=$(grep -E "$TRAILER" "$MSG_FILE" | head -1)
+  if bad=$(check_axes "$trailer_line" worktree_has_path); [ -n "$bad" ]; then
+    echo "tier-gate: Tier 트레일러 축 값이 규칙 밖이다:" >&2
+    printf '%s\n' "$bad" | sed 's/^/  - /' >&2
+    echo "" >&2
+    echo "축 값은 넷 중 하나다:" >&2
+    echo "  · 실재하는 경로 (예: .scratch/x/progress/stage-1.md, '#앵커' 접미 허용)" >&2
+    echo "  · pending — 아직 안 돌렸다. 로컬은 통과, PR 범위(--range)에서 red." >&2
+    echo "  · waived:<사유> — 안 할 것이고 사유가 있다. 사유는 공백만으로 채울 수 없다." >&2
+    echo "  · none-found — prior-decisions 전용. 조회했으나 걸리는 선행 결정이 없었다." >&2
+    exit 1
+  fi
   exit 0
 fi
 
