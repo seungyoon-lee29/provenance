@@ -86,7 +86,7 @@
 
 - `.env.local`, `.env`, `.secrets/`, Provider Credential, broker account 식별자와 action token 원문은 읽기·출력·복사 범위를 최소화하고 Git에 stage하지 않는다. 상태 확인은 가능한 한 assignment 이름, configured 여부와 redacted fingerprint만 사용한다.
 - 메인 에이전트는 commit 전에 staged file allowlist, `git diff --cached --check`, secret pattern scan과 `.env.local`/`.secrets` 미추적 상태를 확인한다.
-- **초록 배지가 무엇에 붙었는지 확인한다 (2026-07-27).** `npm run check`는 **워크트리**를 본다. 이 문서가 요구하는 allowlist stage는 정의상 부분 stage이므로, 초록이 커밋될 트리에 대한 진술이 아닌 경우가 상시로 생긴다. 실측 계기: dirty 워크트리 62파일을 3커밋으로 쪼갤 때 두 커밋이 단독 트리에서 각각 typecheck·lint red였는데 훅은 두 번 다 초록이었다. `scripts/gates/staged-tree-check.sh`가 인덱스≠워크트리일 때만 스테이지된 트리를 따로 검사해 이것을 기계화한다 — 규율이 아니라 게이트다. **알려진 천장**: 훅은 로컬 산물이라 `--no-verify`·훅 미설치 클론은 여전히 빠져나간다. tier-gate가 받은 CI 대응물이 이 게이트엔 아직 없다 (open-findings OF-5).
+- **초록 배지가 무엇에 붙었는지 확인한다 (2026-07-27).** `npm run check`는 **워크트리**를 본다. 이 문서가 요구하는 allowlist stage는 정의상 부분 stage이므로, 초록이 커밋될 트리에 대한 진술이 아닌 경우가 상시로 생긴다. 실측 계기: dirty 워크트리 62파일을 3커밋으로 쪼갤 때 두 커밋이 단독 트리에서 각각 typecheck·lint red였는데 훅은 두 번 다 초록이었다. `scripts/gates/staged-tree-check.sh`가 인덱스≠워크트리일 때만 스테이지된 트리를 따로 검사해 이것을 기계화한다 — 규율이 아니라 게이트다. CI 대응물도 있다 — `--range`가 들어오는 각 커밋의 트리를 따로 세운다. **"브랜치 끝이 초록"과 "모든 커밋이 초록"은 다르고, bisect·revert는 후자를 가정한다.**
 - 일반 PR과 로컬 기본 실행은 실제 provider secret과 외부 egress 없이 scripted adapter를 사용한다. 실제 provider/browser/email smoke는 문서화된 opt-in contract flag와 allowlisted endpoint가 있을 때만 실행한다.
 - broker order mutation은 별도 opt-in flag, Paper 환경, 고정 최대 수량/금액과 cleanup 절차가 모두 있을 때만 허용한다. Live Trading route는 별도 사용자 승인과 새 ADR 전까지 존재하거나 호출되어서는 안 된다.
 - 외부 메시지 발송, 운영 배포, 실제 주문, 과금이 가능한 API와 제3자 상태 변경은 사용자가 둔 범위와 명시적 실행 gate를 넘어 추론으로 승인하지 않는다.
@@ -121,6 +121,7 @@
 | 최상위 | `auth`·credential·order·migration·money 산술 경로를 건드리는 diff는 판단 없이 자동 승격 | contain으로 blast radius를 낮춘 뒤 위 방법으로 충분하다. 낮출 수 없으면 **사람 게이트(`ready-for-human`)**로 넘기고, 사람이 없으면 통과시키지 말고 티켓을 block 한다. 게이트 자체를 건드리는 diff는 추가로 음성 대조군(`scripts/gates/negative-control.sh`)에서 red 를 실증해야 한다 |
 
 - **Tier 게이트(기계 강제, 2026-07-24)**: 최상위 승격은 선언이 아니라 커밋 훅이 강제한다. `.husky/commit-msg` → `scripts/gates/tier-gate.sh`가 guarded 경로(`paper-trading/`·`db/migrations/`·`platform/persistence/`·`platform/credential-vault/`·`actual-portfolio/calculation/`·`modules/identity/`)를 건드리는 커밋에 `Tier: top (adversarial=…, blind=…, standards=…)` 트레일러를 요구한다. `pending`/`waived:사유`도 통과한다 — 게이트의 목적은 진위 검증이 아니라 **의무를 조용히 지나치지 못하게 하는 것**이다(진위는 리뷰·메인 판단 몫). 도입 계기: T2-b(돈 원장 영속화)가 blind·Standards 축 없이 resolve된 것을 2026-07-24 독립 검증이 발견 — "일회성 검수를 상시 oracle로"라는 이 문서의 원칙이 프로토콜 자신에게 적용되지 않았던 사례. 스치는 커밋의 의도적 우회는 `SKIP_TIER_GATE=1`.
+- **뒤 커밋의 해소는 `Resolves-Tier:` 로 적는다 (2026-07-27)**: 적대 리뷰·blind 산출물은 원래 변경보다 뒤 커밋에서 생기는 것이 정상이다. 앞 커밋의 트레일러를 고치면 히스토리 재작성이 되고, `waived:`로 덮으면 그 값이 "안 함"과 "뒤에서 함" 두 뜻을 지게 되어 pending 2층이 무의미해진다. 뒤 커밋에 `Resolves-Tier: <앞 커밋> (<축>=<경로>)`를 넣으면 `--range`가 그 축을 상쇄한다. 대상이 범위 밖이거나 경로가 없으면 red — **이미 한 것만 적을 수 있다.**
 - **반증 산출물 강제**: 리뷰어는 "괜찮아 보임" 대신 반례(실패 테스트/repro)를 제출하거나 "X·Y·Z 각도로 시도했으나 못 만듦"을 명시한다.
 - **spec 대조**: 티켓 contract가 아니라 source-of-truth `.scratch/<feature>/spec.md`/PRD에 직접 대조해 "옳은 걸 만들었나"를 확인한다. 불변식 목록·flag 기본값·ADR은 매 diff가 아니라 확정 시 1회 사람이 검증한다.
 - **믿기 전 측정**: property/테스트가 실제로 결함을 잡는지 mutation testing으로 사전 점검하고, 게이트를 빠져나간 결함은 "어느 tier가 왜 놓쳤나"를 기록해 tier 배정을 보정한다.

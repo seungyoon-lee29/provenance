@@ -218,6 +218,56 @@ printf '# not a guarded path\n' | stage README.md
 git -C "$REPO" commit -q -m "docs only"
 expect_green "tier-gate guarded 경로 무관 커밋 (양성 대조군)" tier_gate --range HEAD^..HEAD
 
+# ── Resolves-Tier (OF-10, 2026-07-27) ────────────────────────────────────────
+# 뒤 커밋이 앞 커밋의 pending 을 해소했다는 선언. 검증되지 않는 선언이 통과하면 이것은
+# `waived:나중에 함` 을 문법만 바꿔 되살린 것이 되므로, 세 방향 전부 red 를 실증한다.
+resolves_setup() { # resolves_setup <해소 선언 본문>
+  printf 'export const rt%s = 1;\n' "$1" | stage "src/modules/paper-trading/internal/rt-$2.ts"
+  git -C "$REPO" commit -q -m "touch money path
+
+Tier: top (adversarial=pending, blind=pending, standards=pending, prior-decisions=none-found)"
+  printf '# 해소 기록\n' | stage "progress/rt-$2.md"
+  git -C "$REPO" commit -q -m "resolve the axes
+
+$1"
+}
+
+# ① 대상 커밋이 범위 밖 — 확인할 수 없는 해소는 거절해야 한다
+resolves_setup "Resolves-Tier: $(git -C "$REPO" rev-parse HEAD) (adversarial=progress/x.md)" outside
+expect_red "Resolves-Tier 대상이 범위 밖" "범위 안에 없다" tier_gate --range HEAD^..HEAD
+
+# ② 선언한 경로가 그 커밋에 없음 — 가리키는 곳이 없는 해소
+TARGET=$(git -C "$REPO" rev-parse HEAD)
+printf 'export const rt3 = 1;\n' | stage src/modules/paper-trading/internal/rt-nopath.ts
+git -C "$REPO" commit -q -m "touch money path
+
+Tier: top (adversarial=pending, blind=pending, standards=pending, prior-decisions=none-found)"
+TARGET=$(git -C "$REPO" rev-parse HEAD)
+printf '# x\n' | stage progress/rt-nopath.md
+git -C "$REPO" commit -q -m "resolve with a path that does not exist
+
+Resolves-Tier: $TARGET (adversarial=progress/never-existed.md)"
+expect_red "Resolves-Tier 경로가 없음" "이 커밋에 없다" tier_gate --range HEAD~2..HEAD
+
+# ③ 정상 해소 — 대상이 범위 안이고 경로가 실재하면 pending 이 상쇄된다 (양성 대조군)
+printf 'export const rt4 = 1;\n' | stage src/modules/paper-trading/internal/rt-ok.ts
+git -C "$REPO" commit -q -m "touch money path
+
+Tier: top (adversarial=pending, blind=waived:픽스처, standards=waived:픽스처, prior-decisions=none-found)"
+TARGET=$(git -C "$REPO" rev-parse HEAD)
+printf '# 실제 기록\n' | stage progress/rt-ok.md
+git -C "$REPO" commit -q -m "resolve it for real
+
+Resolves-Tier: $TARGET (adversarial=progress/rt-ok.md)"
+expect_green "Resolves-Tier 정상 해소 (양성 대조군)" tier_gate --range HEAD~2..HEAD
+
+# ④ 해소 선언이 **없으면** 여전히 red — 상쇄가 무조건 통과로 새지 않는지
+printf 'export const rt5 = 1;\n' | stage src/modules/paper-trading/internal/rt-still.ts
+git -C "$REPO" commit -q -m "touch money path
+
+Tier: top (adversarial=pending, blind=waived:픽스처, standards=waived:픽스처, prior-decisions=none-found)"
+expect_red "Resolves-Tier 없으면 pending 은 그대로 red" "미해소 pending" tier_gate --range HEAD^..HEAD
+
 # ── tier-gate 축 값 검증 (OF-2, 2026-07-27) ──────────────────────────────────
 # 형식 정규식은 축의 존재만 봤고 값은 무엇이든 받았다. 실측 두 건이 계기다:
 # `standards=x` 한 글자로 pending 검사가 우회됐고, 라운드별 상태를 정직하게 둘 다 적은
