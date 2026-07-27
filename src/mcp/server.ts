@@ -61,7 +61,11 @@ export function createMcpServer(catalog: OperationCatalog): McpServer {
     {
       description:
         "List every available operation with its kind (read = no state change, compute = deterministic in-memory run) and a one-line summary. Call this first: it is cheap and it is the only way to learn what exists.",
-      inputSchema: {},
+      // No `inputSchema` key at all — NOT `{}`. The SDK skips validation only
+      // when the field is absent (`validateToolInput`: `if (!tool.inputSchema)`);
+      // an empty object is truthy, normalizes to `z.object({})` and then rejects
+      // `arguments: undefined`. MCP declares `arguments` optional, so `{}` made
+      // this tool uncallable by a conforming client (blind authorship G1).
     },
     async () =>
       jsonResult({

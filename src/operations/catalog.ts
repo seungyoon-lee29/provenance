@@ -73,6 +73,9 @@ export type OperationDefinition = Readonly<{
   kind: OperationKind;
   summary: string;
   inputSchema: z.ZodType;
+  /** Receives input ALREADY parsed by `inputSchema` — see `operationCatalog.call`.
+   * Never call this directly; the parse is the operation's contract, not a step
+   * each `run` opts into. */
   run: (input: unknown) => Promise<OperationResult>;
 }>;
 
@@ -185,9 +188,7 @@ export function createOperationCatalog(deps: OperationDependencies = {}): readon
     summary: "Describe one strategy: its summary and the JSON Schema of its parameters.",
     inputSchema: z.object({ name: z.string().min(1) }).strict(),
     run: async (input) => {
-      const parsed = strategyDescribe.inputSchema.safeParse(input);
-      if (!parsed.success) return refused("invalid_input", issueMessage(parsed.error));
-      const { name } = parsed.data as { name: string };
+      const { name } = input as { name: string };
       const definition = findStrategy(name);
       if (definition === undefined) {
         return refused("unknown_strategy", `unknown strategy "${name}" (known: ${STRATEGY_CATALOG.map((e) => e.name).join(", ")})`);
@@ -207,9 +208,7 @@ export function createOperationCatalog(deps: OperationDependencies = {}): readon
       dryRun: z.boolean().optional().describe("Resolve and disclose what would run, without running it."),
     }),
     run: async (input) => {
-      const parsed = backtestRun.inputSchema.safeParse(input);
-      if (!parsed.success) return refused("invalid_input", issueMessage(parsed.error));
-      const { series, strategy: spec, cash, dryRun } = parsed.data as z.output<typeof backtestInputSchema> & { dryRun?: boolean };
+      const { series, strategy: spec, cash, dryRun } = input as z.output<typeof backtestInputSchema> & { dryRun?: boolean };
 
       const compiled = compileStrategy(spec, { currency: series.currency, instrument: series.instrument });
       if (compiled.status === "refused") return refused(compiled.reason, compiled.message);
@@ -286,7 +285,14 @@ export function operationCatalog(deps: OperationDependencies = {}): OperationCat
       if (operation === undefined) {
         return refused("unknown_operation", `unknown operation "${name}" (known: ${operations.map((o) => o.name).join(", ")})`);
       }
-      return operation.run(input);
+      // The single parse. It used to live inside each `run`, and two of four
+      // operations never wrote it — `strategy.list` and `paper.account` published
+      // `additionalProperties:false` and accepted unknown keys anyway (blind
+      // authorship D3, 2026-07-27). A schema nothing enforces is documentation.
+      // Parsing here also means `run` sees defaults applied, not raw input.
+      const parsed = operation.inputSchema.safeParse(input);
+      if (!parsed.success) return refused("invalid_input", issueMessage(parsed.error));
+      return operation.run(parsed.data);
     },
   };
 }

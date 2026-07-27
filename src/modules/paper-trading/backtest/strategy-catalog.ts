@@ -136,7 +136,8 @@ const cashFractionSchema = z
   .lte(1)
   .default(DEFAULT_CASH_FRACTION)
   .describe(
-    "Share of available cash to commit per entry (0 < f ≤ 1). Below 1 by default: a market order fills at the NEXT bar's price, so committing everything cannot absorb an up-gap and the order silently stays unfilled.",
+    "Share of available cash to commit per entry (0 < f ≤ 1). Below 1 by default: a market order fills at the NEXT bar's price, so committing everything cannot absorb an up-gap and the order silently stays unfilled. "
+      + "SIZING IS NOT floor(cash*f/close): the share count is divided by the RESERVATION price — the close lifted by the policy's slippage ceiling and rounded UP to the tick — so floor(cash*f/close) is an UPPER BOUND and can exceed the real count by one share. The ceiling is set by the report's policyVersion and is not published as a number; do not reconstruct it, treat your own figure as a bound.",
   );
 
 /** Available cash in the series currency, or 0 when the account holds none. */

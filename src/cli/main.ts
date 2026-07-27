@@ -44,8 +44,16 @@ const USAGE = `provenance — 한국 시장 백테스트 + 모의투자 엔진
   paper account [--json]
 `;
 
-function usageFailure(message: string): CliOutcome {
-  return { envelope: { ok: false, command: "usage", error: { code: "usage", message } }, exitCode: 1 };
+/**
+ * `command` is what the envelope ECHOES; the `usage` code is what went wrong.
+ * They were the same string until 2026-07-27, so an argument-shape failure on a
+ * command we had already resolved came back as `command:"usage"` — while its own
+ * message named the command. A caller correlating a batch of `--json` runs by
+ * `command` could not place those. Only pass the fallback when dispatch really
+ * did not resolve one (blind authorship, t10 S1 failure envelope).
+ */
+function usageFailure(message: string, command = "usage"): CliOutcome {
+  return { envelope: { ok: false, command, error: { code: "usage", message } }, exitCode: 1 };
 }
 
 async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome; json: boolean }> {
@@ -78,19 +86,19 @@ async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome;
     return { outcome: await strategyListCommand(), json };
   }
   if (group === "strategy" && sub === "describe") {
-    if (argument === undefined) return { outcome: usageFailure("strategy describe requires a strategy name"), json };
+    if (argument === undefined) return { outcome: usageFailure("strategy describe requires a strategy name", "strategy describe"), json };
     return { outcome: await strategyDescribeCommand(argument), json };
   }
   if (group === "backtest" && sub === "run") {
     if (values.series === undefined || values.cash === undefined) {
-      return { outcome: usageFailure("backtest run requires --series and --cash"), json };
+      return { outcome: usageFailure("backtest run requires --series and --cash", "backtest run"), json };
     }
     return {
       outcome: await runBacktestCommand({
         series: values.series,
-        strategy: values.strategy,
-        strategyModule: values["strategy-module"],
-        params: values.params,
+        ...(values.strategy !== undefined ? { strategy: values.strategy } : {}),
+        ...(values["strategy-module"] !== undefined ? { strategyModule: values["strategy-module"] } : {}),
+        ...(values.params !== undefined ? { params: values.params } : {}),
         cash: Number(values.cash),
         dryRun,
       }),
@@ -99,7 +107,7 @@ async function dispatch(argv: readonly string[]): Promise<{ outcome: CliOutcome;
   }
   if (group === "paper" && sub === "open") {
     if (values.cash === undefined || values.currency === undefined) {
-      return { outcome: usageFailure("paper open requires --cash and --currency"), json };
+      return { outcome: usageFailure("paper open requires --cash and --currency", "paper open"), json };
     }
     return { outcome: await paperOpenCommand({ seed: Number(values.cash), currency: values.currency }), json };
   }
