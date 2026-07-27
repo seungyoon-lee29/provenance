@@ -388,6 +388,37 @@ describe("라운드 5 회귀: 빈 seedCash 는 술어 수준에서 수용된다"
   });
 });
 
+describe("OF-6: 분할 결과 주식 수가 안전정수 영역을 벗어나면 거절한다", () => {
+  // `wholeShares` 는 `Number.isInteger` 였다. 3×2^52 는 정수이고 float 로 정확히
+  // 표현되지만 2^53 밖이라 그 위의 ±1 이 증발한다 — 즉 "쪼개지지 않았다"는 통과하고
+  // "더 이상 셀 수 없다"는 통과하면 안 되는데 같은 술어가 둘을 구분 못 했다.
+  // 상태 합성으로 겨누는 이유는 경계를 **정확히** 2^52/2^53 위에 놓기 위해서지,
+  // 실제 경로로 도달할 수 없어서가 아니다 — 처음에 그렇게 적었다가 blind 저자가
+  // 반증했다(`t10-blind-of6.test.ts`): `numerator` 에 상한이 없어 1천만 주 포지션에
+  // 1e9:1 분할이면 1e16 으로 실제 append 경로만으로 천장을 넘는다.
+  const split = { kind: "split" as const, numerator: 3, denominator: 1 };
+  const body: PaperEntryBody = { kind: "corporate_action_applied", action: ACTION, instrument: AAPL, adjustment: split };
+
+  it("포지션 수량이 3배 뒤 천장을 넘으면 invalid_adjustment", () => {
+    const quantity = 2 ** 52;
+    expect(Number.isInteger(quantity * 3)).toBe(true); // 옛 술어는 통과시켰다
+    expect(isExactMinor(quantity * 3)).toBe(false);
+    const positions = { [String(AAPL)]: { quantity, reserved: 0, costBasis: { minorUnits: 1, currency: "USD" } } };
+    expect(validateSystemBody(state({ positions }), body)).toBe("invalid_adjustment");
+  });
+
+  it("열린 주문 수량이 3배 뒤 천장을 넘으면 invalid_adjustment", () => {
+    const orders = { [String(ORDER)]: openSellOrder(2 ** 52) };
+    expect(validateSystemBody(state({ orders }), body)).toBe("invalid_adjustment");
+  });
+
+  it("양성 대조군: 평범한 수량의 3:1 은 통과한다 (가드가 무엇에나 거절하지 않는다)", () => {
+    const positions = { [String(AAPL)]: { quantity: 100, reserved: 0, costBasis: { minorUnits: 1, currency: "USD" } } };
+    const orders = { [String(ORDER)]: openSellOrder(10) };
+    expect(validateSystemBody(state({ positions, orders }), body)).toBe(undefined);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 4) 배선 — 진짜 저널 append 가 이 판정을 거치는가
 //    (위 셋은 순수 함수 호출이다. 함수가 옳아도 아무도 안 부르면 가드가 아니다.)

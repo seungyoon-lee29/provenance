@@ -450,6 +450,11 @@ export class PaperTradingService {
 function validPayload(payload: PaperOrderPayload): boolean {
   if (!Number.isInteger(payload.quantity) || payload.quantity <= 0) return false;
   if (payload.session !== "regular") return false;
+  // A market order carrying a limitPrice is two instructions at once: the
+  // reservation prices it off the observation while the fill guard reads the
+  // limit, so a split moves the two apart and can strand the order at a 0¢
+  // limit it can never fill (adversarial round 6, F-2).
+  if (payload.orderType !== "limit" && payload.limitPrice !== undefined) return false;
   if (payload.orderType === "limit") {
     if (payload.limitPrice === undefined) return false;
     if (!Number.isFinite(payload.limitPrice.amount) || payload.limitPrice.amount <= 0) return false;

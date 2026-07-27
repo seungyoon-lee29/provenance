@@ -52,6 +52,10 @@ function limitBuy(quantity: number, limit: number): PaperOrderPayload {
   };
 }
 
+function limitSell(quantity: number, limit: number): PaperOrderPayload {
+  return { ...limitBuy(quantity, limit), side: "sell" };
+}
+
 function observation(overrides?: Partial<PaperMarketObservation>): PaperMarketObservation {
   return {
     instrument: AAPL,
@@ -218,6 +222,79 @@ describe("journal boundary enforces the (post-split) limit on fills (codex lifec
     expect(shell.cash.find((row) => row.currency === "USD")!.balance).toBe(99_450);
     expect(shell.cash.find((row) => row.currency === "USD")!.reserved).toBe(0);
     expect(shell.positions[0]!.quantity).toBe(10);
+  });
+});
+
+describe("journal boundary bounds a split's cash reservation by the balance (OF-6)", () => {
+  async function splitFor(service: PaperTradingService, account: Parameters<typeof service.journal.appendSystem>[1], key: string, numerator: number) {
+    return service.journal.appendSystem(WORKSPACE, account, key, {
+      kind: "corporate_action_applied",
+      action: brandReference<string, "PaperCorporateActionReference">(`action:${key}`) as never,
+      instrument: AAPL,
+      adjustment: { kind: "split", numerator, denominator: 1 },
+    });
+  }
+
+  it("stops the runaway reservation at the balance: repeated 2:1 splits on a 1¢ order refuse once the hold would exceed the cash", async () => {
+    // The original OF-6 probe drove `reserved` to 2^53 with 53 of these while
+    // the balance never moved. The hold may now grow (a ceiling remainder is
+    // unavoidable when an odd cent is halved) but never past its own backing.
+    const { service } = harness();
+    const { account } = await submit(service, limitBuy(1, 0.01), "of6-runaway");
+    const usd = async () => (await shellOf(service)).cash.find((row) => row.currency === "USD")!;
+
+    let applied = 0;
+    let refusal: unknown;
+    for (let i = 0; i < 53; i += 1) {
+      const outcome = await splitFor(service, account, `of6-runaway-${i}`, 2);
+      if (outcome.status !== "applied") { refusal = outcome; break; }
+      applied += 1;
+      const cash = await usd();
+      expect(cash.reserved).toBeLessThanOrEqual(cash.balance);
+    }
+    expect(refusal).toEqual({ status: "refused", reason: "reservation_exceeds_balance" });
+    expect(applied).toBeLessThan(53);
+    const cash = await usd();
+    expect(cash.reserved).toBeLessThanOrEqual(cash.balance);
+  });
+
+  it("accepts an ordinary split at an ODD cent — exact conservation would have refused half of all prices", async () => {
+    // 100 @ $101.03 → 200 @ $50.52 (ceil of 50.515). The hold moves 1010300¢ →
+    // 1010400¢: one minor unit per share of ceiling remainder, the account's own
+    // cash, still backed by the balance.
+    const { service } = harness();
+    const { account } = await submit(service, limitBuy(100, 101.03), "of6-odd");
+    expect((await shellOf(service)).cash.find((row) => row.currency === "USD")!.reserved).toBe(10_103);
+
+    expect((await splitFor(service, account, "of6-odd-split", 2)).status).toBe("applied");
+    const shell = await shellOf(service);
+    expect(shell.orders[0]!.payload.quantity).toBe(200);
+    expect(shell.cash.find((row) => row.currency === "USD")!.reserved).toBe(10_104);
+  });
+
+  it("refuses a 3:1 split that would leave a 1¢ limit BUY unfillable at 0¢ (the cash ceiling does not imply this)", async () => {
+    const { service } = harness();
+    const { account } = await submit(service, limitBuy(3, 0.01), "of6-zero");
+    expect(await splitFor(service, account, "of6-zero-split", 3)).toEqual({
+      status: "refused",
+      reason: "fractional_result",
+    });
+  });
+
+  it("refuses a 3:1 split that would leave a 1¢ limit SELL unfillable (its reservation is shares, so the cash ceiling cannot see it)", async () => {
+    const { service, simulator } = harness();
+    const { account } = await submit(service, limitBuy(10, 110), "of6-sell-seed");
+    await simulator.ingest(WORKSPACE, account, observation());
+    await submit(service, limitSell(1, 0.01), "of6-sell");
+
+    const outcome = await service.journal.appendSystem(WORKSPACE, account, "of6-sell-split", {
+      kind: "corporate_action_applied",
+      action: brandReference<string, "PaperCorporateActionReference">("action:of6-sell") as never,
+      instrument: AAPL,
+      adjustment: { kind: "split", numerator: 3, denominator: 1 },
+    });
+    expect(outcome).toEqual({ status: "refused", reason: "fractional_result" });
+    expect((await shellOf(service)).positions[0]!.quantity).toBe(10);
   });
 });
 

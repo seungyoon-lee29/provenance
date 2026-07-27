@@ -249,6 +249,48 @@ export class MemoryPaperJournalStore implements PaperJournalStore {
   }
 }
 
+/**
+ * The ONE definition of what a split does to a live order — the fold applies
+ * it, `validateSystemBody` judges it. Two definitions would let the boundary
+ * accept a shape the fold then produces differently, which is exactly how
+ * OF-6 got in: the boundary looked at `payload.limitPrice` while the fold
+ * rewrote `reservation.unitPrice`.
+ *
+ * The two prices quantize DIFFERENTLY on purpose:
+ * - `limitPrice` rounds. It is a trading instruction, and the nearest tick is
+ *   the honest split-adjusted instruction.
+ * - the reservation unit price CEILS. A reservation is a cash hold, and a hold
+ *   that rounded down would stop covering the order it exists for. Ceiling can
+ *   only over-hold, by under one minor unit per share — the account's own cash,
+ *   still visible in the public `reserved` number, never someone else's.
+ *
+ * Exact conservation is NOT available here: a split divides the unit price, and
+ * an odd cent does not halve. Requiring it refused 50% of ordinary 2:1 splits
+ * (67% at 3:1) — the ledger would routinely refuse a market fact. The boundary
+ * bounds the hold instead (see `reservation_exceeds_balance`).
+ */
+export function applySplitToOrder(
+  order: PaperOrderState,
+  numerator: number,
+  denominator: number,
+): Readonly<{
+  quantity: number;
+  filledQuantity: number;
+  limitPrice: PaperMoney | undefined;
+  reservation: PaperReservationSpec;
+}> {
+  const split = (price: PaperMoney, quantize: (value: number) => number): PaperMoney =>
+    fromMinorUnits(quantize((toMinorUnits(price) * denominator) / numerator), price.currency);
+  return {
+    quantity: (order.payload.quantity * numerator) / denominator,
+    filledQuantity: (order.filledQuantity * numerator) / denominator,
+    limitPrice: order.payload.limitPrice === undefined ? undefined : split(order.payload.limitPrice, Math.round),
+    reservation: order.reservation.kind === "cash"
+      ? { kind: "cash", unitPrice: split(order.reservation.unitPrice, Math.ceil) }
+      : order.reservation,
+  };
+}
+
 export type SystemRefusalReason =
   | "command_only"
   | "already_opened"
@@ -260,6 +302,7 @@ export type SystemRefusalReason =
   | "order_not_expirable"
   | "invalid_adjustment"
   | "fractional_result"
+  | "reservation_exceeds_balance"
   | "invalid_seed_cash";
 
 export type SystemAppendOutcome =
@@ -325,26 +368,60 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       if (!Number.isInteger(numerator) || !Number.isInteger(denominator) || numerator <= 0 || denominator <= 0) {
         return "invalid_adjustment";
       }
-      const wholeShares = (quantity: number) => Number.isInteger((quantity * numerator) / denominator);
+      const scaled = (quantity: number) => (quantity * numerator) / denominator;
       const position = state.positions.get(String(body.instrument));
-      if (position !== undefined && !wholeShares(position.quantity)) return "fractional_result";
+      if (position !== undefined) {
+        if (!Number.isInteger(scaled(position.quantity))) return "fractional_result";
+        // Number.isInteger is true for 1e300 — whole, but no longer countable.
+        // Beyond 2^53 share counts stop being exact and every later fill/split
+        // reads a lie, so the boundary refuses to produce one.
+        if (!isExactMinor(scaled(position.quantity))) return "invalid_adjustment";
+      }
+      // Post-split cash held per currency — every reserving order, whether or
+      // not this split touches it, because the ceiling below is an account-wide
+      // fact and an untouched order's hold is part of it.
+      const reservedAfter = new Map<string, number>();
       for (const order of state.orders.values()) {
-        if (String(order.payload.instrument) !== String(body.instrument)) continue;
-        if (order.execution !== "open" && order.execution !== "partially_filled") continue;
         // Mirror the fold's reserving() predicate: a confirmed-cancelled order
         // is not adjusted by the split, so it must not veto it either (codex
         // T2-b finding: a cancelled odd-lot order blocked a legitimate split).
-        if (order.cancellation === "confirmed") continue;
-        if (!wholeShares(order.payload.quantity) || !wholeShares(order.filledQuantity)) return "fractional_result";
-        // A split that would drive a live limit price below one minor unit (a
-        // $0.01 limit through a 3:1 split → $0.0033 → 0¢) is unrepresentable in the
-        // cents ledger: it would zero the order's reservation, free cash that must
-        // stay held, and leave an order no positive fill can ever satisfy. Refuse
-        // it — fail closed, same as the fractional-share veto (codex Stage 2-c HIGH).
-        if (order.payload.limitPrice !== undefined
-            && Math.round((toMinorUnits(order.payload.limitPrice) * denominator) / numerator) < 1) {
-          return "fractional_result";
+        if (!reserving(order)) continue;
+        const touched = String(order.payload.instrument) === String(body.instrument);
+        const adjusted = touched ? applySplitToOrder(order, numerator, denominator) : undefined;
+        if (adjusted !== undefined) {
+          if (!Number.isInteger(adjusted.quantity) || !Number.isInteger(adjusted.filledQuantity)) {
+            return "fractional_result";
+          }
+          if (!isExactMinor(adjusted.quantity) || !isExactMinor(adjusted.filledQuantity)) {
+            return "invalid_adjustment";
+          }
+          // An order whose split-adjusted limit quantizes to 0¢ can never be
+          // filled by any positive price — it would sit open forever holding a
+          // reservation. Both sides: a BUY's limit and its reservation unit
+          // price are the same number at submit but quantize differently here
+          // (round vs ceil), so the cash ceiling below does not imply this.
+          if (adjusted.limitPrice !== undefined && toMinorUnits(adjusted.limitPrice) < 1) {
+            return "fractional_result";
+          }
         }
+        const reservation = adjusted?.reservation ?? order.reservation;
+        if (reservation.kind !== "cash") continue;
+        const remaining = (adjusted?.quantity ?? order.payload.quantity)
+          - (adjusted?.filledQuantity ?? order.filledQuantity);
+        const currency = reservation.unitPrice.currency;
+        const gross = grossMinorOf(remaining, reservation.unitPrice);
+        if (!isExactMinor(gross)) return "invalid_adjustment";
+        reservedAfter.set(currency, (reservedAfter.get(currency) ?? 0) + gross);
+      }
+      // OF-6: the split rewrites live cash reservations and submit's
+      // affordability check (`required ≤ balance − reserved`) does NOT run
+      // again. Exact conservation is impossible (an odd cent does not halve),
+      // so the reservation is allowed to grow by the ceiling remainder — but
+      // never past the cash that backs it. This is the condition the original
+      // attack broke: 53 splits of a 1¢ order drove `reserved` to 2^53 while
+      // the balance stayed at $1,000.
+      for (const [currency, reserved] of reservedAfter) {
+        if (reserved > (state.cash.get(currency)?.balance ?? 0)) return "reservation_exceeds_balance";
       }
       return undefined;
     }
@@ -974,28 +1051,17 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
         for (const [key, order] of orders) {
           if (String(order.payload.instrument) !== instrumentKey) continue;
           if (!reserving(order)) continue;
-          const payload = order.payload;
-          const adjustedQuantity = (payload.quantity * numerator) / denominator;
-          // The split inverts the price by its ratio, then quantizes to the minor
-          // unit — a split-adjusted price is exact-representable, never a float like
-          // $3.3333. Cash derived from it is re-read through toMinorUnits, so it
-          // stays exact. (The ratio divide is inherent to a split; the money value
-          // it produces is an integer minor amount.)
-          const splitPrice = (price: PaperMoney): PaperMoney =>
-            fromMinorUnits(Math.round((toMinorUnits(price) * denominator) / numerator), price.currency);
-          const adjustedLimit = payload.limitPrice === undefined ? undefined : splitPrice(payload.limitPrice);
-          const adjustedReservation: PaperReservationSpec = order.reservation.kind === "cash"
-            ? { kind: "cash", unitPrice: splitPrice(order.reservation.unitPrice) }
-            : order.reservation;
+          // One definition, two callers — the boundary judged this exact shape.
+          const adjusted = applySplitToOrder(order, numerator, denominator);
           orders.set(key, {
             ...order,
             payload: {
-              ...payload,
-              quantity: adjustedQuantity,
-              ...(adjustedLimit !== undefined ? { limitPrice: adjustedLimit } : {}),
+              ...order.payload,
+              quantity: adjusted.quantity,
+              ...(adjusted.limitPrice !== undefined ? { limitPrice: adjusted.limitPrice } : {}),
             },
-            filledQuantity: (order.filledQuantity * numerator) / denominator,
-            reservation: adjustedReservation,
+            filledQuantity: adjusted.filledQuantity,
+            reservation: adjusted.reservation,
           });
         }
         break;
