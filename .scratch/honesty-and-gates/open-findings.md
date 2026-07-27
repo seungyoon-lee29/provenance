@@ -46,6 +46,17 @@
 
 ---
 
+## OF-5. staged-tree-check 에 CI 대응물이 없다
+
+- **출처**: 이 게이트를 넣으면서 스스로 신고 (2026-07-27)
+- **문제**: `scripts/gates/staged-tree-check.sh` 는 `.husky/pre-commit` 에만 있다. 훅은 로컬
+  산물이므로 `--no-verify`·`prepare` 를 안 돈 클론·웹 UI 커밋은 무검사로 통과한다.
+  tier-gate 가 2026-07-27 에 받은 `--range` 대응물과 정확히 같은 결함이다.
+- **다음**: PR 범위의 각 커밋을 체크아웃해 typecheck·lint 를 도는 CI 스텝.
+  비용이 커밋 수에 비례하므로 범위 상한을 함께 정해야 한다.
+
+---
+
 ## OF-4. `main...origin/main [ahead N]` — push 안 된 커밋은 CI 를 안 거쳤다
 
 - **출처**: stage-3

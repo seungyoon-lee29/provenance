@@ -242,6 +242,37 @@ else
   FAILED=$((FAILED + 1))
 fi
 
+# ── staged-tree-check ────────────────────────────────────────────────────────
+# 이 게이트가 잡아야 하는 것은 "훅이 초록인데 커밋될 트리는 빨강"이다. 그 상황을 실제
+# 트리로 만들어 먹인다 — 저장소 설정(tsconfig·eslint.config)을 그대로 쓰되 파일 하나만
+# 어긋내므로, red 가 나오면 그것은 이 게이트가 트리를 정말로 컴파일했다는 뜻이다.
+STC_BAD="$WORK/stc-bad"
+mkdir -p "$STC_BAD/src"
+cp "$ROOT/tsconfig.json" "$ROOT/eslint.config.mjs" "$ROOT/package.json" "$STC_BAD/"
+# exactOptionalPropertyTypes 위반 — 2026-07-27 에 실제로 놓친 것과 같은 형태다.
+cat > "$STC_BAD/src/stc-negative-control.ts" <<'STCEOF'
+type Slot = { readonly key?: string };
+// 파라미터여야 한다 — `const` 는 초기화값으로 CFA 좁힘이 걸려 union 이 유지되지 않는다.
+export function put(maybe: string | undefined): Slot {
+  return { key: maybe };
+}
+STCEOF
+expect_red "staged-tree-check 타입 위반" "typecheck 를 통과하지 못한다" \
+  sh "$ROOT/scripts/gates/staged-tree-check.sh" --tree-dir "$STC_BAD"
+
+# 양성 대조군 — 같은 트리에서 위반만 걷어내면 통과해야 한다. 무엇에나 red 를 내면 여기서 잡힌다.
+STC_OK="$WORK/stc-ok"
+mkdir -p "$STC_OK/src"
+cp "$ROOT/tsconfig.json" "$ROOT/eslint.config.mjs" "$ROOT/package.json" "$STC_OK/"
+cat > "$STC_OK/src/stc-negative-control.ts" <<'STCEOF'
+type Slot = { readonly key?: string | undefined };
+export function put(maybe: string | undefined): Slot {
+  return { key: maybe };
+}
+STCEOF
+expect_green "staged-tree-check 정상 트리" \
+  sh "$ROOT/scripts/gates/staged-tree-check.sh" --tree-dir "$STC_OK"
+
 # ── 집계 ─────────────────────────────────────────────────────────────────────
 printf '\nnegative-control: %s ok / %s fail\n' "$PASSED" "$FAILED"
 [ "$FAILED" -eq 0 ] || {

@@ -13,3 +13,7 @@ sh scripts/gates/gate-liveness.sh || exit 1
 #  는 규율로 이름을 피해 적었다. 2026-07-27 부터 3b 가 주석 줄을 제외하고 `npm run <이름>`
 #  호출 형태만 보므로 그 규율은 필요 없다 — 기계가 본다.)
 npm run check
+
+# 위 `npm run check` 는 워크트리를 본다. 부분 stage(= 이 저장소의 표준 절차)면 그 초록은
+# 이 커밋의 트리에 대한 진술이 아니다. 인덱스가 워크트리와 다를 때만 따로 검사한다.
+sh scripts/gates/staged-tree-check.sh || exit 1
