@@ -22,7 +22,7 @@ const POLICY: ObservationExpiryPolicy = { kind: "residual", declaredDelayMs: 900
 
 // Thin real transport — the IO boundary the network-off suite injects a stub for.
 const realHttp: KisHttp = async (req) => {
-  const res = await fetch(req.url, { method: req.method, headers: { ...req.headers }, body: req.body });
+  const res = await fetch(req.url, { method: req.method, headers: { ...req.headers }, ...(req.body !== undefined ? { body: req.body } : {}) });
   return { status: res.status, json: await res.json().catch(() => ({})) };
 };
 

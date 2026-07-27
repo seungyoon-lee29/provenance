@@ -238,10 +238,13 @@ describe("stage 2-c blind refutation — exact cash conservation (SPEC 1)", () =
     expect(cashRow!.balance).toBeGreaterThanOrEqual(0);
   });
 
-  it("property: seed + N buy fills stays exactly conserved and non-negative across random fill sizes", () => {
+  it("property: seed + N buy fills stays exactly conserved and non-negative across random fill sizes", async () => {
     // seed is sized to cover the worst case (4 fills * 5 qty * 50 cents = 1000)
     // so every generated sequence is affordable end-to-end — no skip-and-pass.
-    fc.assert(
+    // `await` 필수: fc.assert 는 asyncProperty 에 대해 Promise 를 돌려주므로 안 받으면
+    // it 이 즉시 끝나고 이 property 는 **무엇을 위반해도 초록**이 된다 (2026-07-27,
+    // @typescript-eslint/no-floating-promises 도입이 잡은 건. 돈 보존 property 였다).
+    await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 1_000, max: 5_000 }), // seed cents
         fc.array(fc.tuple(fc.integer({ min: 1, max: 5 }), fc.integer({ min: 1, max: 50 })), { minLength: 1, maxLength: 4 }),

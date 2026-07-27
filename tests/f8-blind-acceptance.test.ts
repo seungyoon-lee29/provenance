@@ -222,7 +222,7 @@ describe("SEC-01: guest viewer is denied with zero side effects", () => {
   it("open with guest viewer returns denied", async () => {
     const service = mkService();
     const guest = { kind: "guest" as const, requestId: "req:g3" };
-    const result = await (await service.open({ requestRevision: "0" }, guest)).initial;
+    const result = await service.open({ requestRevision: "0" }, guest).initial;
     expect(result.status).toBe("denied");
   });
 });
@@ -385,7 +385,7 @@ describe("Three-axis state independence (submission / execution / cancellation)"
     expect(["refused", "rejected"]).toContain(r2.status);
     // spec: rejected/draft order has execution=not_started (the second attempt made no order)
     // Verify via open that only one order exists with submission=acknowledged
-    const openR = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openR = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openR.status !== "ready") throw new Error("open failed");
     // The refused attempt created no additional order — exactly 1 order
     expect(openR.orders.length).toBe(1);
@@ -402,7 +402,7 @@ describe("Three-axis state independence (submission / execution / cancellation)"
     // r1.revision is the current account revision after submit
     const currentRev = String(r1.revision);
 
-    const openB = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openB = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openB.status !== "ready") throw new Error("open failed");
     const order = openB.orders[0]!;
     // Cancellation — use the revision from the applied submit result
@@ -413,7 +413,7 @@ describe("Three-axis state independence (submission / execution / cancellation)"
     );
     expect(cancelR.status).toBe("applied");
 
-    const openC = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openC = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openC.status !== "ready") throw new Error("open after cancel failed");
     const cancelled = openC.orders[0]!;
     // Submission axis unchanged (still acknowledged)
@@ -463,7 +463,7 @@ describe("Reservation CAS boundary — exact values (spec §9)", () => {
     if (r1.status !== "applied") throw new Error("submit failed");
     const revAfterSubmit = String(r1.revision);
 
-    const openB = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openB = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openB.status !== "ready") throw new Error("open failed");
     const order = openB.orders[0]!;
 
@@ -705,7 +705,7 @@ describe("2:1 corporate split (spec §9 lifecycle)", () => {
     expect(splitResult.status).toBe("applied");
 
     // Verify post-split state via open
-    const openR = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openR = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openR.status !== "ready") throw new Error("open failed");
 
     // Cash reservation must remain $550 (invariant)
@@ -776,7 +776,7 @@ describe("Dividend (spec §9 lifecycle)", () => {
     expect(filledQty).toBe(3);
 
     // Check cash before dividend
-    const openBefore = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openBefore = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openBefore.status !== "ready") throw new Error("open failed");
     const cashBefore = openBefore.cash.find((c) => c.currency === "USD")!;
 
@@ -789,7 +789,7 @@ describe("Dividend (spec §9 lifecycle)", () => {
     });
     expect(divResult.status).toBe("applied");
 
-    const openAfter = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openAfter = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openAfter.status !== "ready") throw new Error("open after dividend failed");
     const cashAfter = openAfter.cash.find((c) => c.currency === "USD")!;
 
@@ -917,7 +917,7 @@ describe("Paper open state accuracy", () => {
     const { result, intent } = await prepareAndSubmit(service, payload, viewer, "key-open-state");
     expect(result.status).toBe("applied");
 
-    const openBefore = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openBefore = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openBefore.status !== "ready") throw new Error("open failed before fill");
     const cashBefore = openBefore.cash[0]!.balance;
 
@@ -928,7 +928,7 @@ describe("Paper open state accuracy", () => {
     const obs = mkObs({ price: 100, volume: 100, eventTime: "2026-07-18T02:01:00.000Z" });
     await simulator.ingest(WORKSPACE, intent.account, obs);
 
-    const openAfter = await (await service.open({ requestRevision: "0" }, viewer)).initial;
+    const openAfter = await service.open({ requestRevision: "0" }, viewer).initial;
     if (openAfter.status !== "ready") throw new Error("open failed after fill");
 
     // Position should exist

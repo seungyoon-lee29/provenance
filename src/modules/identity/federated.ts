@@ -84,8 +84,8 @@ function verifyOidcAssertion(idToken: string, config: OidcProviderConfig, nonce:
   let header: { alg?: unknown };
   let payload: { iss?: unknown; sub?: unknown; aud?: unknown; azp?: unknown; nonce?: unknown; exp?: unknown; iat?: unknown };
   try {
-    header = JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8"));
-    payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8"));
+    header = JSON.parse(Buffer.from(headerPart, "base64url").toString("utf8")) as typeof header;
+    payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString("utf8")) as typeof payload;
   } catch {
     return null;
   }

@@ -6,7 +6,7 @@ import type { Pool } from "pg";
 
 import { CLI_WORKSPACE, cliViewer, createDurablePaperTrading } from "../composition/paper-assembly";
 import { runBacktest } from "../modules/paper-trading/backtest/backtest-runner";
-import type { BacktestStrategy } from "../modules/paper-trading/backtest/backtest-runner";
+import type { BacktestSeries, BacktestStrategy } from "../modules/paper-trading/backtest/backtest-runner";
 import { operationCatalog, seriesSchema } from "../operations/catalog";
 import type { OperationDependencies, OperationRefusalReason, OperationResult } from "../operations/catalog";
 import { getDatabasePool } from "../platform/runtime/dependencies";
@@ -212,10 +212,18 @@ async function runModuleStrategy(command: string, args: BacktestArgs, rawSeries:
   if (args.dryRun === true) {
     return ok(command, { dryRun: true, strategy: { module: args.strategyModule }, series: { barCount: parsed.data.bars.length } });
   }
+  // zod 는 선택 키를 `T | undefined` 로 내보내므로 그대로 넘기면 "키 없음"이
+  // "undefined 를 든 키"가 된다. 경계에서 한 번 벗겨 도메인 타입의 정확성을 지킨다.
+  const { priceBasis, taxClass, ...seriesBase } = parsed.data;
+  const series: BacktestSeries = {
+    ...seriesBase,
+    ...(priceBasis !== undefined ? { priceBasis } : {}),
+    ...(taxClass !== undefined ? { taxClass } : {}),
+  };
   const outcome = await runBacktest({
     runId: "cli",
     seedCash: [{ amount: args.cash, currency: parsed.data.currency }],
-    series: parsed.data,
+    series,
     strategy,
   });
   return withBacktestExitCode(command, { status: "ok", value: { strategy: { module: args.strategyModule }, outcome } });

@@ -377,7 +377,11 @@ export async function runBacktest(config: BacktestConfig): Promise<BacktestOutco
     // A strategy that forgets to return an array (a common one: an `async`
     // strategy returns a Promise) would silently produce a zero-order
     // "successful" run — refuse it as a typed fact (codex gate).
-    if (!Array.isArray(actions)) return { status: "refused", reason: "invalid_strategy_result" };
+    // `Array.isArray` 는 `readonly T[]` 를 `any[]` 로 좁힌다(TS 알려진 동작). 그 좁힘이
+    // 이 바인딩에 걸리면 아래 Act 루프 전체가 `any` 위에서 돌아 타입 검사가 조용히
+    // 무력화된다 — 게이트가 아니라 게이트처럼 보이는 것이 된다. 판정만 받고 좁히지 않는다.
+    const returnedAnArray: boolean = Array.isArray(actions);
+    if (!returnedAnArray) return { status: "refused", reason: "invalid_strategy_result" };
 
     // 3) Act — accepted at this close; fillable from the next bar on.
     for (let actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {

@@ -4,10 +4,13 @@ import { createClient, type RedisClientType } from "redis";
 
 import { DEFAULT_DATABASE_URL, DEFAULT_REDIS_URL } from "./defaults";
 
+// `?: T | undefined` 는 `exactOptionalPropertyTypes` 아래에서 의도적이다. 이 슬롯들은
+// "없음"과 "비워짐"을 같게 취급하는 프로세스 전역 캐시라, 해제가 `= undefined` 대입이다
+// (delete 는 hidden class 를 깨고 `??=` 재획득 경로와도 안 맞는다).
 type RuntimeGlobals = typeof globalThis & {
-  __provenancePool?: Pool;
-  __provenanceRedis?: RedisClientType;
-  __provenanceRedisConnect?: Promise<RedisClientType>;
+  __provenancePool?: Pool | undefined;
+  __provenanceRedis?: RedisClientType | undefined;
+  __provenanceRedisConnect?: Promise<RedisClientType> | undefined;
 };
 
 const runtimeGlobals = globalThis as RuntimeGlobals;

@@ -12,7 +12,9 @@ export function GuestPanel({
 }: Readonly<{
   title: string;
   state: GuestPanelState;
-  className?: string;
+  // `| undefined` 는 의도적이다 — CSS 모듈 조회(`styles.x`)가 `string | undefined` 라
+  // 호출부가 `className={styles.x}` 로 넘긴다. 여기서 존재/부재는 의미 차이가 없다.
+  className?: string | undefined;
   children?: ReactNode;
 }>) {
   const view = presentGuestPanel(state);

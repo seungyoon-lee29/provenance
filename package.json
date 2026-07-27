@@ -25,6 +25,7 @@
     "verify:network-off": "tsx scripts/verify-network-off.ts",
     "verify:migrations": "tsx scripts/verify-migrations.ts",
     "test:persistence-pg": "vitest run tests/persistence/personal-cache.pg.test.ts tests/persistence/identity-store.pg.test.ts tests/persistence/erase-atomicity.pg.test.ts tests/persistence/identity-composition.pg.test.ts tests/persistence/paper-journal.pg.test.ts tests/persistence/paper-cli.pg.test.ts tests/property/money-conservation.property.test.ts",
+    "test:contract": "sh scripts/run-contract-tests.sh",
     "verify:backup-drill": "tsx scripts/backup-drill.ts",
     "package:release": "tsx scripts/package-release.ts",
     "check:release-docs": "tsx scripts/check-release-docs.ts",
@@ -64,6 +65,7 @@
     "fast-check": "^4.9.0",
     "husky": "^9.1.7",
     "typescript": "5.9.3",
+    "typescript-eslint": "^8.65.0",
     "vitest": "4.1.10"
   },
   "overrides": {

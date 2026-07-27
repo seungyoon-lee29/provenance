@@ -63,7 +63,10 @@ export type RuntimeConfig = Readonly<{
   identityProviders: readonly ("google" | "github")[];
 }>;
 
-function isConfigured(value: string | undefined): boolean {
+// 타입 술어인 이유: 호출부가 `...(isConfigured(x) ? { k: x } : {})` 형태로 선택 속성을
+// 채운다. boolean 을 돌려주면 참 가지에서도 x 가 `string | undefined` 라서
+// exactOptionalPropertyTypes 아래에서 "없는 키"와 "undefined 를 든 키"가 섞인다.
+function isConfigured(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
 }
 

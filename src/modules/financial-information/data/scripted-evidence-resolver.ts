@@ -88,7 +88,8 @@ function buildEvidenceOutcome(entry: EvidenceCase, licenseScope: EvidenceCatalog
   if (scenario.type === "failure") {
     return classifyProviderFailure({
       failure: scenario.failure, provider: "synthetic", feed: scenario.feed, occurredAt,
-      source: scenario.source, purpose: scenario.purpose,
+      ...(scenario.source !== undefined ? { source: scenario.source } : {}),
+      ...(scenario.purpose !== undefined ? { purpose: scenario.purpose } : {}),
     });
   }
   const reference = brandReference<string, "EvidenceReference">(entry.reference);

@@ -122,7 +122,8 @@ export type GuestFixtureCase = Readonly<{
   id: string;
   panelKey: PublicPanelKey;
   cache: "hit" | "miss";
-  settleAfterMs?: number | null;
+  // `| undefined`: JSON 픽스처를 zod 로 파싱해 오므로 키 부재와 undefined 가 둘 다 온다.
+  settleAfterMs?: number | null | undefined;
   outcome: InformationOutcome<GuestPanelValue>;
 }>;
 

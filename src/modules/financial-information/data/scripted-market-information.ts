@@ -139,8 +139,8 @@ function buildOutcome(
       provider: "synthetic",
       feed: scenario.feed,
       occurredAt,
-      source: scenario.source,
-      purpose: scenario.purpose,
+      ...(scenario.source !== undefined ? { source: scenario.source } : {}),
+      ...(scenario.purpose !== undefined ? { purpose: scenario.purpose } : {}),
     });
   }
   const reference = evidenceRef(symbol, scenario.feed);

@@ -47,14 +47,14 @@ function fetchKisHttp(): KisHttp {
     const res = await fetch(req.url, {
       method: req.method,
       headers: { ...req.headers },
-      body: req.body,
+      ...(req.body !== undefined ? { body: req.body } : {}),
       signal: AbortSignal.timeout(DATA_DEADLINE_MS),
     });
     const declaredLength = Number(res.headers.get("content-length") ?? "0");
     if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) {
       return { status: 502, json: {} };
     }
-    const json = await res.json().catch(() => ({}));
+    const json: unknown = await res.json().catch(() => ({}));
     return { status: res.status, json };
   };
 }

@@ -13,7 +13,9 @@ export type NewsHeadline = Readonly<{
   source: string;
   publishedAt: string;
   link: string;
-  snippet?: string;
+  // `| undefined` 는 의도적이다 — 이 값은 JSON 픽스처/제공자 응답을 zod 로 파싱해 오므로
+  // "키 없음"과 "키가 undefined" 가 실제로 둘 다 발생하고 의미 차이가 없다.
+  snippet?: string | undefined;
   evidenceReference: EvidenceReference;
 }>;
 

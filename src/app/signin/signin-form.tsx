@@ -72,7 +72,7 @@ export function SignInForm({ initialError = false, providers = [] }: Readonly<{ 
       <h1 style={{ fontSize: "1.4rem", marginBottom: "16px" }}>로그인</h1>
 
       {stage === "request" ? (
-        <form onSubmit={submitRequest} data-role="signin-request">
+        <form onSubmit={(event) => void submitRequest(event)} data-role="signin-request">
           <label htmlFor={purposeId} style={{ display: "block", marginBottom: "4px" }}>
             목적
           </label>
@@ -105,7 +105,7 @@ export function SignInForm({ initialError = false, providers = [] }: Readonly<{ 
           </button>
         </form>
       ) : (
-        <form onSubmit={submitCode} data-role="signin-code">
+        <form onSubmit={(event) => void submitCode(event)} data-role="signin-code">
           <label htmlFor={codeId} style={{ display: "block", marginBottom: "4px" }}>
             인증 코드
           </label>

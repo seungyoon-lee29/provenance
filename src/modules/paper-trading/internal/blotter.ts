@@ -35,7 +35,7 @@ export function presentBlotter(entries: readonly PaperJournalEntry[]): readonly 
           kind: "submit",
           order: entry.order,
           quantity: entry.payload.quantity,
-          price: entry.payload.limitPrice,
+          ...(entry.payload.limitPrice !== undefined ? { price: entry.payload.limitPrice } : {}),
           detail: `${entry.payload.side} ${entry.payload.quantity} ${String(entry.payload.instrument)} ${entry.payload.orderType} ${entry.payload.timeInForce}`,
         });
         break;

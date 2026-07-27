@@ -43,7 +43,7 @@ export function useGuestPanelUpdates(
     source.onmessage = (event) => {
       let parsed: unknown;
       try {
-        parsed = JSON.parse(event.data) as unknown;
+        parsed = JSON.parse(String(event.data)) as unknown;
       } catch {
         return;
       }
