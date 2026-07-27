@@ -21,16 +21,24 @@
 
 ### Issue tracker
 
-작업은 `.scratch/<feature>/`의 로컬 Markdown 파일로 관리한다. 자세한 규칙은 `docs/agents/issue-tracker.md`를 참고한다.
+작업은 `.scratch/<feature>/`의 로컬 Markdown 파일로 관리한다. 자세한 규칙은 아래 전문이 정본이다.
+
+@docs/agents/issue-tracker.md
 
 ### Triage labels
 
-기본 트리아지 역할명을 그대로 사용한다. 자세한 매핑은 `docs/agents/triage-labels.md`를 참고한다.
+기본 트리아지 역할명을 그대로 사용한다. 매핑 정본은 아래 전문이다.
+
+@docs/agents/triage-labels.md
 
 ### Domain docs
 
-단일 컨텍스트 구조를 사용한다. 도메인 문서 규칙은 `docs/agents/domain.md`를 참고한다.
+단일 컨텍스트 구조를 사용한다. 도메인 문서 규칙 정본은 아래 전문이다.
+
+@docs/agents/domain.md
 
 ### Agent collaboration
 
-메인 에이전트가 최종 판단과 결과에 책임을 지며, 독립적으로 수행할 수 있는 작업은 서브에이전트에게 위임한다. 추론 강도, 역할 분담, 보고, 검수, 비밀·외부 실행 가드와 재작업 규칙은 `docs/agents/collaboration.md`를 참고한다.
+메인 에이전트가 최종 판단과 결과에 책임을 지며, 독립적으로 수행할 수 있는 작업은 서브에이전트에게 위임한다. 추론 강도, 역할 분담, 보고, 검수, 비밀·외부 실행 가드, 재작업 규칙, **tier 표** 정본은 아래 전문이다.
+
+@docs/agents/collaboration.md
