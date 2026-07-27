@@ -299,6 +299,13 @@ STCEOF
 expect_red "staged-tree-check 타입 위반" "typecheck 를 통과하지 못한다" \
   sh "$ROOT/scripts/gates/staged-tree-check.sh" --tree-dir "$STC_BAD"
 
+# --range 는 나쁜 입력에 fail-open 하지 않는다. tier-gate 가 codex #4 로 배운 규율이며,
+# 범위를 못 읽고 exit 0 하면 "커밋별 트리를 전부 봤다"가 거짓이 된다.
+expect_red "staged-tree-check --range 해석 불가" "해석할 수 없다" \
+  sh "$ROOT/scripts/gates/staged-tree-check.sh" --range definitely-not-a-ref..HEAD
+expect_red "staged-tree-check --range 인자 없음" "커밋 범위가 필요하다" \
+  sh "$ROOT/scripts/gates/staged-tree-check.sh" --range
+
 # 양성 대조군 — 같은 트리에서 위반만 걷어내면 통과해야 한다. 무엇에나 red 를 내면 여기서 잡힌다.
 STC_OK="$WORK/stc-ok"
 mkdir -p "$STC_OK/src"

@@ -50,6 +50,18 @@ jobs:
           fi
           [ -n "$BASE" ] || exit 0 # 루트 커밋 하나뿐이면 볼 범위가 없다
           sh scripts/gates/tier-gate.sh --range "${BASE}..HEAD"
+      # 훅의 staged-tree-check 대응물 (OF-5). 훅은 로컬 산물이라 --no-verify·훅 미설치
+      # 클론·웹 UI 커밋이 지나친다. 여기서는 들어오는 각 커밋의 트리를 따로 세운다 —
+      # "브랜치 끝이 초록"과 "모든 커밋이 초록"은 다르고, bisect·revert 는 후자를 가정한다.
+      - name: 커밋별 트리 검증 (staged-tree-check — pre-commit 훅과 한 소스)
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          [ -n "$BASE" ] || BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            BASE="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          [ -n "$BASE" ] || exit 0
+          sh scripts/gates/staged-tree-check.sh --range "${BASE}..HEAD"
       # 위 게이트들이 "실패할 수 있는지"를 매 실행마다 실증한다. 초록이 정상 상태인 곳에서
       # 작동하는 게이트와 영원히 통과하는 게이트는 출력이 완전히 동일하다 — 유일한 구분은
       # 알려진 나쁜 입력에 red 가 나오는지다 (2026-07-27, arch-2 B).

@@ -19,12 +19,79 @@
 # 종류였다. 필요해지면 그때 늘린다.
 # ponytail: 인덱스가 워크트리와 같으면 통째로 건너뛴다 — 그 경우 npm run check 가 이미 정답이다.
 #
+# CI 대응물 (2026-07-27, OF-5): 훅은 로컬 산물이라 `--no-verify`·훅 미설치 클론·웹 UI
+# 커밋은 이 게이트를 통째로 지나친다. tier-gate 가 같은 이유로 `--range` 를 받은 것과
+# 같은 결함이고 같은 방식으로 닫는다 — 범위의 **각 커밋**을 꺼내 typecheck·lint 를 돈다.
+# 로컬 모드가 "이 커밋의 트리"를 보는 것을 원격에서는 "들어오는 모든 커밋의 트리"로 넓힌다.
+#
 # 사용:
 #   sh scripts/gates/staged-tree-check.sh                 # 인덱스를 꺼내 검사
+#   sh scripts/gates/staged-tree-check.sh --range A..B    # 범위의 각 커밋 트리를 검사 (CI)
 #   sh scripts/gates/staged-tree-check.sh --tree-dir DIR  # 준비된 트리를 검사 (음성 대조군용 seam)
 set -eu
 
 REPO=$(git rev-parse --show-toplevel)
+
+# 트리 하나를 검사한다. 이 함수가 이 게이트의 전부이며 세 모드가 전부 이것을 부른다.
+check_tree() { # check_tree <디렉터리> <라벨>
+  _dir=$1
+  _label=$2
+  [ -e "$_dir/node_modules" ] || ln -s "$REPO/node_modules" "$_dir/node_modules"
+  _rc=0
+  if ! (cd "$_dir" && npx tsc --noEmit); then
+    echo "staged-tree-check: $_label 이 typecheck 를 통과하지 못한다" >&2
+    _rc=1
+  fi
+  if ! (cd "$_dir" && npx eslint .); then
+    echo "staged-tree-check: $_label 이 lint 를 통과하지 못한다" >&2
+    _rc=1
+  fi
+  return "$_rc"
+}
+
+if [ "${1:-}" = "--range" ]; then
+  RANGE="${2:-}"
+  if [ -z "$RANGE" ]; then
+    echo "staged-tree-check: --range 에 커밋 범위가 필요하다" >&2
+    exit 1
+  fi
+  # 나쁜 입력에 fail-open 하지 않는다 — tier-gate 가 codex #4 로 배운 것과 같은 규율.
+  if ! SHAS=$(git rev-list --reverse "$RANGE" 2>&1); then
+    echo "staged-tree-check: --range '$RANGE' 를 해석할 수 없다 — 범위를 못 읽으면 통과시키지 않는다" >&2
+    echo "$SHAS" >&2
+    exit 1
+  fi
+  WORK=$(mktemp -d)
+  trap 'rm -rf "$WORK"' EXIT INT TERM
+  RC=0
+  CHECKED=0
+  MAX=20
+  for sha in $SHAS; do
+    # 정적 층에 영향을 줄 수 없는 커밋은 건너뛴다. 문서·셸 스크립트만 바꾼 커밋의 트리는
+    # 앞 커밋의 트리와 typecheck·lint 관점에서 동일하다. 무엇을 건너뛰었는지는 찍는다 —
+    # 조용한 축소는 "전부 검사했다"로 읽힌다.
+    touched=$(git diff-tree --no-commit-id --name-only -r "$sha" \
+      | grep -E '\.(ts|tsx|mjs|cjs|js|json)$|^tsconfig|^eslint\.config' || true)
+    if [ -z "$touched" ]; then
+      echo "staged-tree-check: $sha — 정적 층에 영향 없는 변경(건너뜀)"
+      continue
+    fi
+    CHECKED=$((CHECKED + 1))
+    if [ "$CHECKED" -gt "$MAX" ]; then
+      echo "staged-tree-check: 검사 대상 커밋이 $MAX 개를 넘었다 — 범위를 좁혀서 다시 돌려라." >&2
+      echo "  조용히 자르지 않는다: 자르면 '전부 검사했다'로 읽힌다." >&2
+      exit 1
+    fi
+    dir="$WORK/$sha"
+    mkdir -p "$dir"
+    git archive "$sha" | tar -x -C "$dir"
+    if ! check_tree "$dir" "$sha"; then RC=1; fi
+    rm -rf "$dir"
+  done
+  echo "staged-tree-check: $CHECKED 개 커밋 트리 검사 (범위 $RANGE)"
+  exit "$RC"
+fi
+
 TREE_DIR=""
 if [ "${1:-}" = "--tree-dir" ]; then
   TREE_DIR="${2:-}"
@@ -52,17 +119,8 @@ fi
 
 # node_modules 는 설치본을 빌려 쓴다(수십 초를 아낀다). 의존성 자체의 변경은 이 게이트의
 # 대상이 아니다 — package.json 변경은 워크트리 쪽 `npm run check` 가 이미 본다.
-[ -e "$TREE_DIR/node_modules" ] || ln -s "$REPO/node_modules" "$TREE_DIR/node_modules"
-
 RC=0
-if ! (cd "$TREE_DIR" && npx tsc --noEmit); then
-  echo "staged-tree-check: 스테이지된 트리가 typecheck 를 통과하지 못한다 — 워크트리는 초록이어도 이 커밋은 아니다" >&2
-  RC=1
-fi
-if ! (cd "$TREE_DIR" && npx eslint .); then
-  echo "staged-tree-check: 스테이지된 트리가 lint 를 통과하지 못한다 — 워크트리는 초록이어도 이 커밋은 아니다" >&2
-  RC=1
-fi
+check_tree "$TREE_DIR" "스테이지된 트리" || RC=1
 
 if [ "$RC" -ne 0 ]; then
   echo "" >&2
