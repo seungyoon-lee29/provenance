@@ -44,7 +44,27 @@ export function minorUnitsOf(majorAmount: number, currency: string): number {
   // ponytail: minor units are JS `number` (safe-integer, ≤ 2^53 ≈ $90T in cents).
   // The paper sim never approaches that; move to bigint only if an institutional
   // book ever needs it (codex Stage 2-c noted the theoretical ceiling).
+  // That ceiling is a real precondition, not a footnote — `isExactMinor` below
+  // is how the journal boundary ENFORCES it, on genesis seeds, the fill product,
+  // the dividend credit and the resulting cash balance. A documented limit
+  // nothing checks is a comment, not a limit — which is what it was until
+  // round 2: the round-1 version of this line said seed cash "already" enforced
+  // the ceiling, and no such check existed on this path (it was in
+  // `backtest-runner.ts:243`, another module). Naming an enforcer you have not
+  // grepped for is the same defect one level up.
   return Math.round(majorAmount * currencyMinorUnitScale(currency));
+}
+
+/**
+ * Does this minor-unit figure still live in the exact integer domain the fold
+ * assumes? Past 2^53 the nearest representable double is no longer the true
+ * product, so `Math.round` returns a neighbouring integer and cash conservation
+ * silently stops being exact — the one premise the whole integer ledger rests on.
+ * The refusal itself lives at the journal boundary, where a refusal channel
+ * already exists; the arithmetic here stays a plain total.
+ */
+export function isExactMinor(minorUnits: number): boolean {
+  return Number.isSafeInteger(minorUnits);
 }
 
 export function toMinorUnits(money: PaperMoney): number {
@@ -52,9 +72,13 @@ export function toMinorUnits(money: PaperMoney): number {
 }
 
 /** Gross proceeds/cost of a fill in integer minor units — aggregate-rounded
- * ONCE (never per share). The single definition the simulator, the fold and the
- * fill validator all share, so a sub-tick price rounds identically at every
- * site (they previously reimplemented this and had to comment "must match"). */
+ * ONCE (never per share). The single definition the simulator, the fold, the
+ * fill validator, the reservation bound, the dividend credit and the backtest
+ * equity mark all share, so a sub-tick price rounds identically at every site.
+ * That sharing is the point: the claim was here before the call sites were,
+ * and SEVEN of them still spelled the same product out by hand — which is
+ * exactly how "must match" drifts back in without anyone editing this line.
+ * (Counted by diff, not by memory: journal ×4, simulator ×2, service ×1.) */
 export function grossMinorOf(quantity: number, price: PaperMoney): number {
   return minorUnitsOf(quantity * price.amount, price.currency);
 }

@@ -3,7 +3,7 @@ import type { InternalPaperAccountReference, PaperOrderReference } from "../../.
 
 import { FencedKeyedStore } from "../../../platform/persistence/fenced-store";
 import type { Executor } from "../../../platform/persistence/pg";
-import { fromMinorUnits, grossMinorOf, minorUnitsOf, toMinorUnits } from "./contracts";
+import { fromMinorUnits, grossMinorOf, isExactMinor, toMinorUnits } from "./contracts";
 import type { PaperMinorMoney } from "./contracts";
 import type {
   PaperCommandOutcome,
@@ -259,7 +259,8 @@ export type SystemRefusalReason =
   | "insufficient_position"
   | "order_not_expirable"
   | "invalid_adjustment"
-  | "fractional_result";
+  | "fractional_result"
+  | "invalid_seed_cash";
 
 export type SystemAppendOutcome =
   | Readonly<{ status: "applied"; revision: number }>
@@ -277,9 +278,26 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
     case "order_submitted":
     case "cancellation_resolved":
       return "command_only";
-    case "account_opened":
+    case "account_opened": {
       // Genesis happens exactly once per account.
-      return state.cash.size > 0 || state.orders.size > 0 ? "already_opened" : undefined;
+      if (state.cash.size > 0 || state.orders.size > 0) return "already_opened";
+      // Genesis is where the FIRST number enters the exact-integer domain, so it
+      // is where the domain's precondition has to be met. `backtest-runner.ts:243`
+      // refuses an unsafe seed on its own path; this path — the durable one —
+      // never did. The comment below at the fill guard claimed seed cash was
+      // "already enforced"; that was false, the check lived only in the other
+      // module (found in round 2, 2026-07-27, by grepping for the enforcement
+      // the comment asserted). Summing per currency mirrors the fold (:777-779):
+      // two seeds in one currency can each be safe and their total not be.
+      // A non-finite amount rounds to NaN and fails the same check.
+      const seeded = new Map<string, number>();
+      for (const seed of body.seedCash) {
+        const total = (seeded.get(seed.currency) ?? 0) + toMinorUnits(seed);
+        if (!isExactMinor(total)) return "invalid_seed_cash";
+        seeded.set(seed.currency, total);
+      }
+      return undefined;
+    }
     case "order_expired": {
       const order = state.orders.get(String(body.order));
       if (order === undefined) return "unknown_order";
@@ -324,6 +342,20 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       // the dividend branch did not — S4b cross-currency parity).
       const position = state.positions.get(String(body.instrument));
       if (position !== undefined && position.costBasis.currency !== body.perShare.currency) return "invalid_adjustment";
+      // Both the credit the fold will compute (:913) and the balance it lands in
+      // must stay exact. Guarding only the product is not enough and guarding
+      // only the total is not either — an inexact product is a fabricated number
+      // whether or not the sum it joins happens to be representable. Reproduced
+      // (round 2): quantity 2^53-1 × 3 stores …972 where the exact credit is
+      // …973, and once a balance sits at 2^53 a 1-unit credit leaves it
+      // unchanged. The condition mirrors the fold's — it credits only a held,
+      // positive position, so nothing else can be refused here.
+      if (position !== undefined && position.quantity > 0) {
+        const creditMinor = grossMinorOf(position.quantity, body.perShare);
+        if (!isExactMinor(creditMinor)) return "invalid_adjustment";
+        const balance = state.cash.get(body.perShare.currency)?.balance ?? 0;
+        if (!isExactMinor(balance + creditMinor)) return "invalid_adjustment";
+      }
       return undefined;
     }
     case "fill_applied": {
@@ -361,11 +393,37 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
       // domain-generic: it refuses a fill whose stored cost could FABRICATE or
       // over-destroy cash — a negative/non-integer tax, a tax exceeding the
       // sale proceeds, or a tax on a buy (Korean tax is sell-only).
+      const grossMinor = grossMinorOf(fill.quantity, fill.price);
+      // The ledger's 2^53 ceiling is DOCUMENTED (stage2c-ledger-hardening.md:74,93)
+      // but was enforced on NOTHING that reaches this journal — the earlier version
+      // of this comment said "already enforced on seed cash and on the tax sum",
+      // and that was false: the seed check lived in `backtest-runner.ts:243`, a
+      // different module on a different path. Round 2 (2026-07-27) grepped for the
+      // enforcement this comment asserted and did not find it; `account_opened`
+      // above now carries it. Do not restore the claim without the grep.
+      // Past the ceiling the rounded product is a NEIGHBOURING integer, so "cash
+      // conservation is exact, no epsilon" quietly stops holding. Enforced here
+      // because this boundary already owns a refusal channel; the arithmetic
+      // stays a plain total. A non-finite quantity/price fails the same check.
+      if (!isExactMinor(grossMinor)) return "invalid_fill";
       if (fill.costs !== undefined) {
         const tax = fill.costs.sellTransactionTaxMinor;
         if (order.payload.side !== "sell") return "invalid_fill";
         if (!Number.isInteger(tax) || tax < 0) return "invalid_fill";
-        if (tax > grossMinorOf(fill.quantity, fill.price)) return "invalid_fill";
+        if (tax > grossMinor) return "invalid_fill";
+      }
+      if (order.payload.side === "sell") {
+        // An exact product can still land in an inexact BALANCE (:842). That is
+        // not cosmetic: once the total passes 2^53 a later 1-unit credit vanishes
+        // into an unchanged balance, and `balance - reserved` starts rounding —
+        // which is how an affordability check approves more than the account
+        // holds. Both reproduced in round 2 (balance 2^54, reserved 1 reads as
+        // …984 available where …983 is exact, and the …984 request is approved).
+        // Buys need no such guard: the affordability check bounds the debit by
+        // the balance, so the result stays inside [0, balance].
+        const taxMinor = fill.costs?.sellTransactionTaxMinor ?? 0;
+        const balanceMinor = state.cash.get(fill.price.currency)?.balance ?? 0;
+        if (!isExactMinor(balanceMinor + grossMinor - taxMinor)) return "invalid_fill";
       }
       // A fill in a different currency than the instrument's existing basis
       // would mix units in the fold — relief and realized P&L subtract across
@@ -381,10 +439,10 @@ export function validateSystemBody(state: PaperAccountState, body: PaperEntryBod
         if (cash === undefined) return "insufficient_cash";
         // All minor units — cash conservation is exact, so no epsilon slack.
         const ownReservationMinor = reservingNow && order.reservation.kind === "cash"
-          ? minorUnitsOf((order.payload.quantity - order.filledQuantity) * order.reservation.unitPrice.amount, order.reservation.unitPrice.currency)
+          ? grossMinorOf(order.payload.quantity - order.filledQuantity, order.reservation.unitPrice)
           : 0;
         const availableMinor = cash.balance - cash.reserved + ownReservationMinor;
-        if (minorUnitsOf(fill.quantity * fill.price.amount, fill.price.currency) > availableMinor) return "insufficient_cash";
+        if (grossMinor > availableMinor) return "insufficient_cash";
         return undefined;
       }
       if (held === undefined) return "insufficient_position";
@@ -636,7 +694,7 @@ export class PaperJournal {
     const accountKey = `${workspace}|${String(account)}`;
     const revision = (this.#revisions.get(accountKey) ?? 0) + 1;
     const entry = this.#buildEntry(account, body, revision);
-    const committed = await this.#commit(() => this.#store.appendSystem({ workspace, entry, atEpoch, scopedKey, owner: options?.owner }));
+    const committed = await this.#commit(() => this.#store.appendSystem({ workspace, entry, atEpoch, scopedKey, ...(options?.owner !== undefined ? { owner: options.owner } : {}) }));
     if (committed.status === "duplicate") {
       // The cache said absent, the store says present: the store advanced past
       // the cache (e.g. a lost COMMIT ack on the previous try) — rehydrate
@@ -792,7 +850,11 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
           orders.set(String(entry.order), {
             ...order,
             cancellation: entry.resolution,
-            cancelledAt: entry.resolution === "confirmed" ? entry.recordedAt : order.cancelledAt,
+            // 키의 유무를 보존한다 — `cancelledAt: undefined` 로 덮으면 "확정 시각 없음"이
+            // 없던 키에서 undefined 를 든 키로 바뀐다 (exactOptionalPropertyTypes).
+            ...(entry.resolution === "confirmed"
+              ? { cancelledAt: entry.recordedAt }
+              : order.cancelledAt !== undefined ? { cancelledAt: order.cancelledAt } : {}),
           });
         }
         break;
@@ -882,7 +944,11 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
             : order.reservation;
           orders.set(key, {
             ...order,
-            payload: { ...payload, quantity: adjustedQuantity, limitPrice: adjustedLimit },
+            payload: {
+              ...payload,
+              quantity: adjustedQuantity,
+              ...(adjustedLimit !== undefined ? { limitPrice: adjustedLimit } : {}),
+            },
             filledQuantity: (order.filledQuantity * numerator) / denominator,
             reservation: adjustedReservation,
           });
@@ -893,7 +959,7 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
         const position = positions.get(String(entry.instrument));
         if (position !== undefined && position.quantity > 0) {
           const currency = entry.perShare.currency;
-          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + minorUnitsOf(position.quantity * entry.perShare.amount, currency));
+          cashBalance.set(currency, (cashBalance.get(currency) ?? 0) + grossMinorOf(position.quantity, entry.perShare));
         }
         break;
       }
@@ -908,7 +974,7 @@ export function foldAccountState(entries: readonly PaperJournalEntry[]): PaperAc
     const remaining = order.payload.quantity - order.filledQuantity;
     if (order.reservation.kind === "cash") {
       const currency = order.reservation.unitPrice.currency;
-      cashReserved.set(currency, (cashReserved.get(currency) ?? 0) + minorUnitsOf(remaining * order.reservation.unitPrice.amount, currency));
+      cashReserved.set(currency, (cashReserved.get(currency) ?? 0) + grossMinorOf(remaining, order.reservation.unitPrice));
     } else {
       const key = String(order.payload.instrument);
       quantityReserved.set(key, (quantityReserved.get(key) ?? 0) + remaining);

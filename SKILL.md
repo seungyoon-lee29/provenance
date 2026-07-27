@@ -141,7 +141,7 @@ MCP 의 `call_operation` 은 **오퍼레이션 이름**(점 표기)을 받고, C
    | `fillCount` | **0 이면 황금원칙 3** — `orders` 의 열린 주문·묶인 현금을 확인해 보고 |
    | `performance.timeWeightedReturn` | `{status:"covered", ratio}` — `ratio` 만 있으면 곱하기 100 이 수익률(%) |
    | `performance.moneyWeightedReturn` | 같은 모양. 입출금 시점 가중 |
-   | `performance.maxDrawdown` | 숫자(비율). 최대낙폭 |
+   | `performance.maxDrawdown` | `{status:"covered", ratio}` — 최대낙폭. `unavailable` 이면 **0% 라고 말하지 마라**: `insufficient_curve` 는 봉이 2개 미만이라 잴 것이 없다는 뜻이다 |
    | `performance.winRate` | `{status:"unavailable","reason":"no_sells"}` 일 수 있다 — 그대로 전달 |
    | `performance.tax` | `taxPaid`·`grossTimeWeightedReturn`·`taxDrag`. 세전/세후를 함께 말하라 |
    | `performance.fillConfidence` | `maxParticipation` 이 크면 체결 가정이 낙관적이라는 뜻 |

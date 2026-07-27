@@ -111,7 +111,9 @@ describe("T8 performance report — blind acceptance", () => {
       // interface adaptation, the asserted numbers are unchanged.
       expect(perf.seedValue).toEqual({ status: "covered", value: seedValue });
       expect(perf.finalValue).toEqual({ status: "covered", value: finalValue });
-      expect(perf.maxDrawdown).toBeCloseTo(mdd, 9);
+      // maxDrawdown became coverage-typed (2026-07-27) — interface adaptation,
+      // the independently derived number is unchanged.
+      expect(perf.maxDrawdown).toMatchObject({ status: "covered", ratio: expect.closeTo(mdd, 9) });
 
       expect(perf.timeWeightedReturn.status).toBe("covered");
       if (perf.timeWeightedReturn.status === "covered") {
@@ -147,7 +149,10 @@ describe("T8 performance report — blind acceptance", () => {
 
       expect(perf.seedValue).toEqual({ status: "covered", value: seedCash });
       expect(perf.finalValue).toEqual({ status: "covered", value: seedCash });
-      expect(perf.maxDrawdown).toBe(0); // <2 equity points
+      // <2 equity points. The blind author recorded the observed value (0) here;
+      // that 0 was the fabrication this contract change removes — a single-bar
+      // run has no measurable drawdown, so it now says so (2026-07-27).
+      expect(perf.maxDrawdown).toEqual({ status: "unavailable", reason: "insufficient_curve" });
       expect(perf.timeWeightedReturn.status).toBe("unavailable");
       expect(perf.moneyWeightedReturn.status).toBe("unavailable");
       expect(perf.fillConfidence.fills).toBe(0);
@@ -170,7 +175,7 @@ describe("T8 performance report — blind acceptance", () => {
 
       expect(perf.timeWeightedReturn.status).toBe("unavailable");
       expect(perf.moneyWeightedReturn.status).toBe("unavailable");
-      expect(perf.maxDrawdown).toBe(0);
+      expect(perf.maxDrawdown).toEqual({ status: "unavailable", reason: "insufficient_curve" });
       expect(perf.fillConfidence.fills).toBe(0);
     });
   });
@@ -198,7 +203,8 @@ describe("T8 performance report — blind acceptance", () => {
 
       expect(perf.seedValue).toEqual({ status: "covered", value: seedCash });
       expect(perf.finalValue).toEqual({ status: "covered", value: seedCash });
-      expect(perf.maxDrawdown).toBe(0);
+      // Four flat marks ARE a measurable curve — a covered 0, not an unavailable.
+      expect(perf.maxDrawdown).toEqual({ status: "covered", ratio: 0 });
 
       expect(perf.timeWeightedReturn.status).toBe("covered");
       if (perf.timeWeightedReturn.status === "covered") {
@@ -217,24 +223,24 @@ describe("T8 performance report — blind acceptance", () => {
   });
 
   describe("(4a) maxDrawdown — pure function", () => {
-    it("degenerate series (<2 points) -> 0", () => {
-      expect(maxDrawdown([])).toBe(0);
-      expect(maxDrawdown([100])).toBe(0);
+    it("degenerate series (<2 points) -> unmeasurable, not 0", () => {
+      expect(maxDrawdown([])).toEqual({ status: "unavailable", reason: "insufficient_curve" });
+      expect(maxDrawdown([100])).toEqual({ status: "unavailable", reason: "insufficient_curve" });
     });
 
-    it("monotonic up -> 0", () => {
-      expect(maxDrawdown([100, 110, 120, 130])).toBe(0);
+    it("monotonic up -> covered 0", () => {
+      expect(maxDrawdown([100, 110, 120, 130])).toEqual({ status: "covered", ratio: 0 });
     });
 
     it("monotonic down -> largest decline off the initial peak", () => {
       // peak stays 100 throughout; worst trough is 80 -> (100-80)/100
-      expect(maxDrawdown([100, 90, 80])).toBeCloseTo(0.2, 9);
+      expect(maxDrawdown([100, 90, 80])).toMatchObject({ status: "covered", ratio: expect.closeTo(0.2, 9) });
     });
 
     it("drawdown then recovery then a second, smaller drawdown", () => {
       // peak=100 -> trough=50: dd 0.5 (the max)
       // new peak=120 -> trough=72: dd 0.4 (smaller, must not overwrite the max)
-      expect(maxDrawdown([100, 50, 90, 120, 72])).toBeCloseTo(0.5, 9);
+      expect(maxDrawdown([100, 50, 90, 120, 72])).toMatchObject({ status: "covered", ratio: expect.closeTo(0.5, 9) });
     });
   });
 

@@ -152,7 +152,7 @@ function series2026(taxClass?: KrxTaxClass): BacktestSeries {
     instrument: "005930",
     venue: "KRX",
     currency: "KRW",
-    taxClass,
+    ...(taxClass !== undefined ? { taxClass } : {}),
     bars: [
       bar("2026-03-02T00:00:00.000Z", 20_000),
       bar("2026-03-03T00:00:00.000Z", 20_500),

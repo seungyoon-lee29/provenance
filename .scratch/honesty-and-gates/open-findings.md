@@ -34,15 +34,29 @@
 - **출처**: stage-3 자기 신고 (`progress/stage-3.md`)
 - **재현**: `Tier: top (adversarial=x, blind=x, standards=x, prior-decisions=x)` → rc=0. 빈 값도 rc=0.
 - **영향**: stage-3 이 넣은 pending 검사가 한 글자로 우회된다.
-- **다음**: 축 값을 ① 실재 경로 ② `waived:<비공백 사유>` ③ `none-found`(prior-decisions 전용)
-  셋으로 제한.
+- **같은 병의 두 번째 얼굴 (2026-07-27 실측)**: pending 검사는 `grep -oE '(축)=pending'`
+  즉 **리터럴 매칭**이라 축 값에 뭐라도 앞에 붙이면 안 걸린다. 실측:
+  `adversarial=progress/stage-1.md (라운드 1) / pending (라운드 2)` → rc=0.
+  숨길 의도 없이 "둘 다 적자"고 쓴 형태가 게이트를 통과했다 — 악의 없는 서술이
+  우회가 되는 것이 이 결함의 성질이다. 축을 `pending` 하나로 낮춰 커밋을 고쳤다.
+- **다음**: 축 값을 ① 실재 경로 ② `waived:<비공백 사유>` ③ `pending` ④ `none-found`
+  (prior-decisions 전용) 넷 중 **하나만** 오도록 제한(전체 anchor). 그 하나가 garbage·
+  빈값·pending 우회·허위 위치를 동시에 닫는다.
 
 ---
 
-## OF-3. fold 의 현금 잔고 "합" 은 2^53 미집행 (라운드 1 시점 기록)
+## OF-3. fold 의 현금 잔고 "합" 은 2^53 미집행 — **닫힘 (2026-07-27, 라운드 2)**
 
 - **출처**: stage-1 실측
-- **상태**: **라운드 2 가 다루는 중** (`journal.ts` 워크트리 변경분). 닫히면 이 항목 삭제.
+- **어떻게 닫았나**: fold 안이 아니라 **append 경계**에서 닫았다
+  (`validateSystemBody` 의 `account_opened`·`dividend_applied`·`fill_applied`).
+  fold 가 의도적으로 재검증하지 않는다는 2026-07-25 결정을 되살리지 않기 위해서다.
+  불변식은 "현금 총액이 안전정수 영역을 벗어나지 않는다" 하나로 정리됐고,
+  그 영역 안에서는 fold 의 덧셈·뺄셈이 전부 정확하다.
+- **남는 정확한 서술**: fold 자신은 여전히 검사하지 않는다. 원장에 이미 적힌 엔트리는
+  재해석되지 않으므로, **이 커밋 이전에 기록된** 안전영역 밖 잔고가 있다면 그것은
+  이 가드가 잡지 않는다. 마이그레이션은 없다(저장 포맷 무변경).
+- **회귀 오라클**: `tests/t10-round2-money-ceiling.test.ts` 15케이스.
 
 ---
 

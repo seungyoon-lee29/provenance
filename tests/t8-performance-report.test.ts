@@ -35,13 +35,15 @@ function config(s: BacktestSeries, strategy: BacktestConfig["strategy"]): Backte
 }
 
 describe("T8 S4 performance report — pure functions", () => {
-  it("maxDrawdown: peak-to-trough ratio, 0 for monotonic/degenerate", () => {
-    expect(maxDrawdown([100, 120, 90, 110])).toBe(0.25); // (120−90)/120
-    expect(maxDrawdown([100, 110, 130])).toBe(0); // monotonic up
-    expect(maxDrawdown([])).toBe(0);
-    expect(maxDrawdown([100])).toBe(0);
+  it("maxDrawdown: peak-to-trough ratio, and `unavailable` for a curve it cannot measure", () => {
+    expect(maxDrawdown([100, 120, 90, 110])).toEqual({ status: "covered", ratio: 0.25 }); // (120−90)/120
+    expect(maxDrawdown([100, 110, 130])).toEqual({ status: "covered", ratio: 0 }); // monotonic up — a MEASURED 0
+    // A curve with nothing to measure is not a 0: "0% drawdown" reads as
+    // "this strategy never lost money", which is a fabrication, not a fact.
+    expect(maxDrawdown([])).toEqual({ status: "unavailable", reason: "insufficient_curve" });
+    expect(maxDrawdown([100])).toEqual({ status: "unavailable", reason: "insufficient_curve" });
     // Deepest trough wins even after a partial recovery.
-    expect(maxDrawdown([100, 50, 80, 40, 90])).toBe(0.6); // (100−40)/100
+    expect(maxDrawdown([100, 50, 80, 40, 90])).toEqual({ status: "covered", ratio: 0.6 }); // (100−40)/100
   });
 
   it("fillConfidence: max/mean participation over fills, zero when none", () => {
@@ -64,7 +66,7 @@ describe("T8 S4 performance report — pure functions", () => {
     });
     expect(perf.timeWeightedReturn).toMatchObject({ status: "covered", ratio: expect.closeTo(0.21, 10) });
     expect(perf.moneyWeightedReturn).toMatchObject({ status: "covered", ratio: expect.closeTo(0.21, 10) });
-    expect(perf.maxDrawdown).toBeCloseTo(0.2, 10); // 1.0M → 0.8M
+    expect(perf.maxDrawdown).toMatchObject({ status: "covered", ratio: expect.closeTo(0.2, 10) }); // 1.0M → 0.8M
   });
 
   it("stays honest on a zero-width window: TWR and XIRR are unavailable, not a fabricated 0%", () => {
@@ -81,7 +83,9 @@ describe("T8 S4 performance report — pure functions", () => {
     });
     expect(perf.timeWeightedReturn.status).toBe("unavailable");
     expect(perf.moneyWeightedReturn.status).toBe("unavailable");
-    expect(perf.maxDrawdown).toBe(0);
+    // The same single mark that makes the window zero-width leaves no curve to
+    // measure — MDD joins the other two instead of reporting a fabricated 0%.
+    expect(perf.maxDrawdown).toEqual({ status: "unavailable", reason: "insufficient_curve" });
   });
 });
 
@@ -102,7 +106,7 @@ describe("T8 S4 performance report — end to end", () => {
     expect(perf.moneyWeightedReturn.status).toBe("covered"); // day-count-sensitive; sign/coverage is the invariant
     if (perf.moneyWeightedReturn.status === "covered") expect(perf.moneyWeightedReturn.ratio).toBeGreaterThan(0);
     // Peak 1,000,000 → trough 999,940 → recovery. MDD = 60/1,000,000.
-    expect(perf.maxDrawdown).toBeCloseTo(0.00006, 10);
+    expect(perf.maxDrawdown).toMatchObject({ status: "covered", ratio: expect.closeTo(0.00006, 10) });
     // One fill of 10 shares against a 100,000-volume bar.
     expect(perf.fillConfidence).toEqual({ fills: 1, maxParticipation: 0.0001, meanParticipation: 0.0001 });
     // S4b: buy-and-hold never sells — a win rate would be fabricated.
@@ -306,7 +310,7 @@ describe("T9 tax disclosure — pure boundaries", () => {
     expect(outcome).toEqual({ status: "refused", reason: "invalid_seed_cash" });
   });
 
-  it("a tax SUM past 2^53 refuses the block instead of publishing a float-drifted covered total (codex gate)", async () => {
+  it("a fill whose gross leaves the exact integer domain is refused at the ledger boundary (upstream of the tax-sum guard)", async () => {
     // Safe seed; alternating 10k/20k closes. Fills land on the NEXT bar, so a
     // buy accepted at a 20k close fills at 10k (cheap) and a sell accepted at a
     // 10k close fills at 20k (dear) — 18 compounding cycles push the cumulative
@@ -335,20 +339,37 @@ describe("T9 tax disclosure — pure boundaries", () => {
       strategy: churn,
     });
     if (outcome.status !== "complete") throw new Error(outcome.status);
-    // Scenario sanity: the exact (BigInt) sum of the stored per-fill taxes is
-    // unsafe AND differs from the float sum — the drift this guard exists for.
+    // This fixture used to demonstrate a DOWNSTREAM symptom: the compounding
+    // churn produced fills whose gross was past 2^53 — so the stored product
+    // was already a neighbouring integer — and the drift was only noticed once
+    // the cumulative tax itself went unsafe (`invalid_total`). The ceiling is
+    // now enforced on the product where it is created (contracts.isExactMinor,
+    // checked at the journal's fill boundary), so the offending fill never
+    // lands and the drifted state is no longer reachable through the runner.
+    // Measured here: the run's last sell would have grossed ~1.99e16, 2.2× the
+    // safe-integer ceiling. The downstream `invalid_total` guard keeps its own
+    // standing regression at the pure level ("a negative or non-finite tax
+    // total refuses the WHOLE block" above) — it is defence in depth, not dead.
     let floatSum = 0;
     let exactSum = 0n;
+    let fills = 0;
     for (const order of outcome.orders) {
       for (const fill of order.fills) {
+        fills += 1;
+        // Every fill that LANDED carries an exactly representable product.
+        expect(Number.isSafeInteger(fill.quantity * fill.price.amount)).toBe(true);
         const tax = fill.costs?.sellTransactionTaxMinor ?? 0;
         floatSum += tax;
         exactSum += BigInt(tax);
       }
     }
-    expect(Number.isSafeInteger(floatSum)).toBe(false);
-    expect(BigInt(floatSum)).not.toBe(exactSum);
-    expect(outcome.performance.tax).toEqual({ status: "unavailable", reason: "invalid_total" });
+    // With no mis-rounded product in the book there is no drift left to report.
+    expect(Number.isSafeInteger(floatSum)).toBe(true);
+    expect(BigInt(floatSum)).toBe(exactSum);
+    expect(outcome.performance.tax.status).toBe("covered");
+    // Fail-closed, same direction as before: the order that would have needed an
+    // unrepresentable fill stays OPEN rather than folding a mis-rounded one.
+    expect(outcome.orders.length).toBeGreaterThan(fills);
   });
 });
 
@@ -370,12 +391,20 @@ describe("adversarial re-gate 2026-07-25 — serialization honesty (no field →
     expect(ok.finalValue).toEqual({ status: "covered", value: 1_100_000 });
   });
 
-  it("B-B: maxDrawdown skips a non-finite mark and stays a finite in-range number", () => {
-    expect(Number.isFinite(maxDrawdown([100, Number.NEGATIVE_INFINITY]))).toBe(true);
-    expect(Number.isFinite(maxDrawdown([100, Number.NaN, 90]))).toBe(true);
+  it("B-B: maxDrawdown refuses a poisoned mark outright — still never a null, and no longer a silent 0", () => {
+    // Supersedes the 2026-07-25 form of this gate, which asserted the mark was
+    // SKIPPED and the result stayed finite. Skipping is fillConfidence's rule,
+    // and it is right there because a dropped sample stays visible in its own
+    // `fills` count. Drawdown is a headline ratio with no such counter, so a
+    // dropped mark silently moves it — winRate's rule applies instead.
+    expect(maxDrawdown([100, Number.NEGATIVE_INFINITY])).toEqual({ status: "unavailable", reason: "invalid_sample" });
+    expect(maxDrawdown([100, Number.NaN, 90])).toEqual({ status: "unavailable", reason: "invalid_sample" });
+    // A negative mark would push the ratio past 1 — refused rather than owed to
+    // the caller (the old contract made equity ≥ 0 the caller's obligation).
+    expect(maxDrawdown([100, -1])).toEqual({ status: "unavailable", reason: "invalid_sample" });
     // A finite curve is unaffected: 120 → 90 is a 25% drawdown.
-    expect(maxDrawdown([100, 120, 90, 110])).toBe(0.25);
-    // The report's maxDrawdown never serializes to null even with a poisoned mark.
+    expect(maxDrawdown([100, 120, 90, 110])).toEqual({ status: "covered", ratio: 0.25 });
+    // The property B-B protects is unchanged and now holds by construction.
     const poisoned = buildPerformance({ ...base, ...year, seedValue: 100, finalValue: 100, equity: [100, Number.NaN, 90] });
     expect(JSON.stringify(poisoned).includes("null")).toBe(false);
   });

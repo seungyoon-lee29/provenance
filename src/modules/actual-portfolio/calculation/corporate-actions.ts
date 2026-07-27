@@ -32,7 +32,12 @@ export type AccountingSeriesResult =
   | Readonly<{ status: "covered"; points: readonly SeriesPoint[]; delistedAt?: string }>
   | Readonly<{
       status: "unavailable";
-      reason: "total_return_basis_rejected" | "duplicate_action" | "incomplete_corporate_action_basis" | "post_delisting_price";
+      reason:
+        | "total_return_basis_rejected"
+        | "duplicate_action"
+        | "incomplete_corporate_action_basis"
+        | "post_delisting_price"
+        | "invalid_timestamp";
     }>;
 
 /**
@@ -40,11 +45,20 @@ export type AccountingSeriesResult =
  * the product of the ratios of splits effective after `at` (10 shares before
  * a 2:1 split are 20 after). Prices divide by the same factor, which is what
  * makes raw + adjustment equal an already-restated series exactly (AT-06).
+ *
+ * Instants are normalized through `Date.parse` before comparison, matching the
+ * TWR engine. ISO strings do NOT sort chronologically across offsets — KRX's
+ * "2024-03-05T00:00:00+09:00" is a full nine hours BEFORE "2024-03-04T16:00:01Z"
+ * yet sorts after it lexicographically — so a raw string compare applies a
+ * split on the wrong side of `at` and silently mis-restates every price from
+ * there on. An unparseable instant yields a false comparison here; the module
+ * boundary (`resolveAccountingSeries`) refuses it outright instead.
  */
 export function splitQuantityFactor(actions: readonly CorporateAction[], at: string): number {
+  const atMs = Date.parse(at);
   let factor = 1;
   for (const action of actions) {
-    if (action.kind === "split" && action.effectiveAt > at) factor *= action.ratio;
+    if (action.kind === "split" && Date.parse(action.effectiveAt) > atMs) factor *= action.ratio;
   }
   return factor;
 }
@@ -60,6 +74,21 @@ export function resolveAccountingSeries(input: AccountingSeriesInput): Accountin
     return { status: "unavailable", reason: "total_return_basis_rejected" };
   }
 
+  // Every instant this function orders must at least PARSE, which is what lets
+  // the comparisons below be plain numeric ones.
+  // Scope of this check, stated exactly (it is weaker than it looks): `Date.parse`
+  // silently normalizes an impossible calendar date (2026-02-30 → 2026-03-02) and
+  // reads a timezone-less string in the machine's LOCAL zone, so neither is caught
+  // here. `backtest-runner.ts` already refuses both via private `isCalendarDate`
+  // and `hasTimezone` helpers (earlier codex gates) — this module, on the return
+  // path, never got them. Hardening that is a follow-up; do not read this guard
+  // as "the instant is real".
+  const instants = [
+    ...input.actions.map((action) => Date.parse(action.effectiveAt)),
+    ...input.points.map((point) => Date.parse(point.at)),
+  ];
+  if (instants.some(Number.isNaN)) return { status: "unavailable", reason: "invalid_timestamp" };
+
   const seen = new Set<string>();
   for (const action of input.actions) {
     if (seen.has(action.actionReference)) return { status: "unavailable", reason: "duplicate_action" };
@@ -69,13 +98,16 @@ export function resolveAccountingSeries(input: AccountingSeriesInput): Accountin
     }
   }
 
-  let delistedAt: string | undefined;
+  // EARLIEST delisting wins, ordered by instant — the string minimum picked the
+  // wrong action across mixed offsets and then let post-delisting prices through.
+  let delisted: Readonly<{ at: string; ms: number }> | undefined;
   for (const action of input.actions) {
-    if (action.kind === "delisting" && (delistedAt === undefined || action.effectiveAt < delistedAt)) {
-      delistedAt = action.effectiveAt;
-    }
+    if (action.kind !== "delisting") continue;
+    const ms = Date.parse(action.effectiveAt);
+    if (delisted === undefined || ms < delisted.ms) delisted = { at: action.effectiveAt, ms };
   }
-  if (delistedAt !== undefined && input.points.some((point) => point.at >= (delistedAt ?? ""))) {
+  const delistedMs = delisted?.ms;
+  if (delistedMs !== undefined && input.points.some((point) => Date.parse(point.at) >= delistedMs)) {
     return { status: "unavailable", reason: "post_delisting_price" };
   }
 
@@ -83,7 +115,7 @@ export function resolveAccountingSeries(input: AccountingSeriesInput): Accountin
     ? input.points.map((point) => ({ at: point.at, price: point.price / splitQuantityFactor(input.actions, point.at) }))
     : [...input.points];
 
-  return delistedAt === undefined
+  return delisted === undefined
     ? { status: "covered", points }
-    : { status: "covered", points, delistedAt };
+    : { status: "covered", points, delistedAt: delisted.at };
 }

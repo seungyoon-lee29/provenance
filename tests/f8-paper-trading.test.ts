@@ -37,6 +37,13 @@ const GUEST: ViewerContext = { kind: "guest", requestId: "req-guest" };
 
 const AAPL = brandReference<string, "PaperInstrumentReference">("instr:AAPL") as PaperInstrumentReference;
 
+/** 한도 없음을 `limitPrice: undefined` 가 아니라 **키 부재**로 표현한다 —
+ *  exactOptionalPropertyTypes 아래에서 둘은 다른 값이고, 계약이 뜻하는 것은 부재다. */
+function withoutLimitPrice(payload: PaperOrderPayload): PaperOrderPayload {
+  const { limitPrice, ...rest } = payload;
+  return limitPrice === undefined ? payload : rest;
+}
+
 function limitBuy(quantity: number, limit: number): PaperOrderPayload {
   return {
     instrument: AAPL,
@@ -118,7 +125,7 @@ describe("prepare", () => {
   it("refuses a limit order without a limit price and a non-integer quantity", async () => {
     const service = makeService();
     const noLimit = await service.prepare(
-      { payload: { ...limitBuy(1, 10), limitPrice: undefined } },
+      { payload: withoutLimitPrice(limitBuy(1, 10)) },
       viewer(),
     );
     expect(noLimit.status).toBe("refused");
@@ -342,7 +349,7 @@ describe("reservation CAS (§9: overspend/oversell 0)", () => {
 
   it("refuses a market buy when no valid observation can bound the spend (fail closed)", async () => {
     const service = makeService();
-    const market: PaperOrderPayload = { ...limitBuy(1, 10), orderType: "market", limitPrice: undefined };
+    const market: PaperOrderPayload = { ...withoutLimitPrice(limitBuy(1, 10)), orderType: "market" };
     const prepared = await service.prepare({ payload: market }, viewer());
     if (prepared.status !== "issued") throw new Error("prepare failed");
     const outcome = await service.change(

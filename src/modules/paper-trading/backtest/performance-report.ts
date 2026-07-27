@@ -122,6 +122,33 @@ export type TaxDisclosure =
    * become JSON null and contradict the declared type (codex T9 MED/HIGH). */
   | Readonly<{ status: "unavailable"; reason: "invalid_total" }>;
 
+/**
+ * Max peak-to-trough decline, coverage-typed like every sibling headline figure.
+ *
+ * It was the ONE metric on this report that still returned a bare number, and
+ * the value it returned when it could not measure anything was `0` — which an
+ * agent reads as "this strategy never lost money", the exact fabrication the
+ * header forbids. A curve with fewer than two marks has no peak-to-trough to
+ * measure at all (`insufficient_curve`).
+ *
+ * A non-finite or negative mark refuses the whole figure (`invalid_sample`)
+ * rather than being skipped. This narrows the earlier decision recorded in
+ * `t8-backtest-engine.md:403` (B-B: skip non-finite marks, matching
+ * fillConfidence) on ONE axis, and the reason is that file's own stated line
+ * (`t8:352`): a diagnostic may drop a sample because the drop stays visible in
+ * its own count, but a HEADLINE ratio may not, because a dropped mark silently
+ * shifts it. Drawdown is a headline ratio, so it belongs on winRate's side of
+ * that line, not fillConfidence's. The property B-B was protecting — no field
+ * ever serializes as a `null` masquerading as a declared number — is upheld
+ * strictly better here: `unavailable` says so in the type instead of
+ * coincidentally landing on a finite value. The negative-mark case also
+ * retires the "callers off the runner boundary owe equity ≥ 0" clause: a
+ * negative mark would push the ratio past 1, so it is refused rather than owed.
+ */
+export type MaxDrawdown =
+  | Readonly<{ status: "covered"; ratio: number }>
+  | Readonly<{ status: "unavailable"; reason: "insufficient_curve" | "invalid_sample" }>;
+
 export type BacktestPerformance = Readonly<{
   currency: string;
   /** Portfolio value at the first and last bar, MAJOR units (display),
@@ -132,8 +159,8 @@ export type BacktestPerformance = Readonly<{
   timeWeightedReturn: BacktestReturn;
   /** Money-weighted (XIRR) ANNUALIZED return: seed outflow → terminal inflow. */
   moneyWeightedReturn: BacktestReturn;
-  /** Max peak-to-trough decline over the equity curve, ratio in [0, 1]. */
-  maxDrawdown: number;
+  /** Max peak-to-trough decline over the equity curve. See {@link MaxDrawdown}. */
+  maxDrawdown: MaxDrawdown;
   fillConfidence: FillConfidence;
   /** Win rate over sell fills (net of tax, average-cost). See {@link WinRate}. */
   winRate: WinRate;
@@ -143,28 +170,27 @@ export type BacktestPerformance = Readonly<{
 
 /**
  * Max peak-to-trough decline over an equity curve. The ratio is unit-invariant,
- * so minor or major units both work. Returns 0 for fewer than two points or a
- * monotonically non-decreasing curve. A non-positive peak (bankruptcy — the
- * affordability guards forbid it in this engine) contributes no drawdown rather
- * than a meaningless division. A non-finite mark is skipped (matching
- * fillConfidence; the runner never emits one) so the result is always a finite
- * number, never a NaN/Infinity that would serialize to `null`. The [0, 1] range
- * assumes equity ≥ 0 — which the runner enforces (`invalid_bar_price`, and cash
- * never folds negative); a negative mark would push a >1 ratio, so callers off
- * the runner boundary owe that guarantee.
+ * so minor or major units both work. A monotonically non-decreasing curve is a
+ * covered 0 — a measured fact. Fewer than two marks is `insufficient_curve` and
+ * any non-finite or negative mark is `invalid_sample`; neither is a measured 0.
+ * A non-positive peak (bankruptcy — the affordability guards forbid it in this
+ * engine) contributes no drawdown rather than a meaningless division.
  */
-export function maxDrawdown(equity: readonly number[]): number {
+export function maxDrawdown(equity: readonly number[]): MaxDrawdown {
+  if (equity.length < 2) return { status: "unavailable", reason: "insufficient_curve" };
+  if (equity.some((value) => !Number.isFinite(value) || value < 0)) {
+    return { status: "unavailable", reason: "invalid_sample" };
+  }
   let peak = -Infinity;
-  let mdd = 0;
+  let ratio = 0;
   for (const value of equity) {
-    if (!Number.isFinite(value)) continue;
     if (value > peak) peak = value;
     if (peak > 0) {
       const drawdown = (peak - value) / peak;
-      if (drawdown > mdd) mdd = drawdown;
+      if (drawdown > ratio) ratio = drawdown;
     }
   }
-  return mdd;
+  return { status: "covered", ratio };
 }
 
 export function fillConfidence(participations: readonly number[]): FillConfidence {
@@ -284,11 +310,26 @@ function demo(): void {
     if (!cond) throw new Error(`performance-report demo: ${msg}`);
   };
   // MDD: peak 120 then trough 90 → (120−90)/120 = 0.25.
-  assert(maxDrawdown([100, 120, 90, 110]) === 0.25, "mdd 25%");
-  assert(maxDrawdown([100, 110, 130]) === 0, "monotonic up → 0");
-  assert(maxDrawdown([]) === 0 && maxDrawdown([100]) === 0, "degenerate → 0");
-  // A non-finite mark is skipped, so the result is always a finite number.
-  assert(Number.isFinite(maxDrawdown([100, -Infinity])) && Number.isFinite(maxDrawdown([100, NaN, 90])), "non-finite mark → finite mdd");
+  const mdd = (equity: readonly number[]): MaxDrawdown => maxDrawdown(equity);
+  const covered = (equity: readonly number[]): number => {
+    const result = mdd(equity);
+    if (result.status !== "covered") throw new Error(`performance-report demo: expected covered mdd, got ${result.reason}`);
+    return result.ratio;
+  };
+  assert(covered([100, 120, 90, 110]) === 0.25, "mdd 25%");
+  assert(covered([100, 110, 130]) === 0, "monotonic up → covered 0 (measured)");
+  // A curve that cannot be measured is NOT a 0 — that would read as "never lost".
+  const empty = mdd([]);
+  const single = mdd([100]);
+  assert(empty.status === "unavailable" && empty.reason === "insufficient_curve", "empty curve → insufficient_curve");
+  assert(single.status === "unavailable" && single.reason === "insufficient_curve", "single mark → insufficient_curve");
+  // A headline ratio refuses a bad sample instead of dropping it (winRate's side
+  // of the line, not fillConfidence's) — and still never serializes as null.
+  for (const bad of [[100, -Infinity], [100, Number.NaN, 90], [100, -1]]) {
+    const result = mdd(bad);
+    assert(result.status === "unavailable" && result.reason === "invalid_sample", `bad mark → invalid_sample: ${JSON.stringify(bad)}`);
+    assert(!JSON.stringify(result).includes("null"), "bad mark never serializes as null");
+  }
   // Confidence.
   const c = fillConfidence([0.05, 0.1, 0.03]);
   assert(c.fills === 3 && c.maxParticipation === 0.1 && Math.abs(c.meanParticipation - 0.06) < 1e-9, "confidence agg");
@@ -310,7 +351,14 @@ function demo(): void {
     && Math.abs(perf.timeWeightedReturn.ratio - 0.21) < 1e-9, "twr 21%");
   assert(perf.moneyWeightedReturn.status === "covered"
     && Math.abs(perf.moneyWeightedReturn.ratio - 0.21) < 1e-9, "xirr 21%/yr over 365d");
-  assert(Math.abs(perf.maxDrawdown - 0.2) < 1e-9, "mdd 20% (1.0M→0.8M)");
+  assert(perf.maxDrawdown.status === "covered" && Math.abs(perf.maxDrawdown.ratio - 0.2) < 1e-9, "mdd 20% (1.0M→0.8M)");
+  // The single-bar report's drawdown is unavailable, not a fabricated 0 — the
+  // same window that makes TWR `zero_window` makes the curve unmeasurable.
+  const oneBar = buildPerformance({
+    currency: "KRW", from: "2024-01-01T00:00:00.000Z", to: "2024-01-02T00:00:00.000Z",
+    seedValue: 1_000_000, finalValue: 1_000_000, equity: [1_000_000], participations: [], realizedSellsMinor: [], taxPaidValue: 0,
+  });
+  assert(oneBar.maxDrawdown.status === "unavailable" && oneBar.maxDrawdown.reason === "insufficient_curve", "single-bar run → mdd unavailable");
   // Boundary values are coverage-typed and covered for a finite run.
   assert(perf.seedValue.status === "covered" && perf.seedValue.value === 1_000_000
     && perf.finalValue.status === "covered" && perf.finalValue.value === 1_210_000, "boundary values covered");

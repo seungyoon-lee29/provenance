@@ -40,6 +40,13 @@ function viewer(): WorkspaceViewerContext {
 const AAPL = brandReference<string, "PaperInstrumentReference">("instr:AAPL") as PaperInstrumentReference;
 const WORKSPACE = "workspace:a";
 
+/** 한도 없음을 `limitPrice: undefined` 가 아니라 **키 부재**로 표현한다 —
+ *  exactOptionalPropertyTypes 아래에서 둘은 다른 값이고, 계약이 뜻하는 것은 부재다. */
+function withoutLimitPrice(payload: PaperOrderPayload): PaperOrderPayload {
+  const { limitPrice, ...rest } = payload;
+  return limitPrice === undefined ? payload : rest;
+}
+
 function limitBuy(quantity: number, limit: number): PaperOrderPayload {
   return {
     instrument: AAPL,
@@ -359,7 +366,7 @@ describe("market order (§9)", () => {
       updateId: () => `update:${updateCounter += 1}`,
     });
     const simulator = new InternalPaperSimulator({ journal: service.journal, policy: SIMULATION_V1 });
-    const market: PaperOrderPayload = { ...limitBuy(10, 1), orderType: "market", limitPrice: undefined };
+    const market: PaperOrderPayload = { ...withoutLimitPrice(limitBuy(10, 1)), orderType: "market" };
     const prepared = await service.prepare({ payload: market }, viewer());
     if (prepared.status !== "issued") throw new Error("prepare failed");
     const submitted = await service.change(

@@ -54,25 +54,41 @@ export function computeScopeAwareReturn(
   const fromMs = Date.parse(input.window.from);
   const toMs = Date.parse(input.window.to);
   const changeInstants = changes.map((change) => Date.parse(change.at));
-  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || changeInstants.some(Number.isNaN)) {
+  const flows = input.externalFlows.map((flow) => ({ flow, at: Date.parse(flow.at) }));
+  if (Number.isNaN(fromMs) || Number.isNaN(toMs) || changeInstants.some(Number.isNaN) || flows.some(({ at }) => Number.isNaN(at))) {
     return { status: "unavailable", reason: "invalid_timestamp" };
   }
   // Instants are compared in normalized ms, matching the TWR engine — a break
   // written with different ISO precision still collides with an equal flow.
   const breaks = [...new Set(changeInstants.filter((at) => at > fromMs && at < toMs))].sort((left, right) => left - right);
   if (breaks.length === 0) return computePortfolioReturn(input);
-  if (input.externalFlows.some((flow) => breaks.includes(Date.parse(flow.at)))) {
+  if (flows.some(({ at }) => breaks.includes(at))) {
     return { status: "unavailable", reason: "flow_at_scope_break" };
   }
+  // Segmenting must not turn a fatal input into a passing one: the unsegmented
+  // path refuses a flow at/outside the window boundary (`flow_outside_window`),
+  // so the segmented path refuses it too instead of dropping it into no segment.
+  if (flows.some(({ at }) => at <= fromMs || at >= toMs)) {
+    return { status: "unavailable", reason: "flow_outside_window" };
+  }
 
-  const cuts = [input.window.from, ...breaks.map((at) => new Date(at).toISOString()), input.window.to];
+  // Cut INSTANTS drive segment assignment so it uses the same normalized
+  // comparison as the break detection above — the echoed window keeps the
+  // caller's original boundary strings (an offset form comes back unchanged).
+  // Comparing the raw strings here was the bug: `cuts` mixes caller-supplied
+  // precision with `toISOString()`, and lexicographic order is not time order
+  // across offsets ("…T00:00+09:00" sorts after "…T15:00Z", the same instant).
+  const cutInstants = [fromMs, ...breaks, toMs];
+  const cutLabels = [input.window.from, ...breaks.map((at) => new Date(at).toISOString()), input.window.to];
   const segments: Array<Readonly<{ window: PerformanceWindow; result: PortfolioReturnResult }>> = [];
-  for (let index = 0; index < cuts.length - 1; index += 1) {
-    const from = cuts[index];
-    const to = cuts[index + 1];
-    if (from === undefined || to === undefined) continue;
+  for (let index = 0; index < cutInstants.length - 1; index += 1) {
+    const fromCut = cutInstants[index];
+    const toCut = cutInstants[index + 1];
+    const from = cutLabels[index];
+    const to = cutLabels[index + 1];
+    if (fromCut === undefined || toCut === undefined || from === undefined || to === undefined) continue;
     const window = { from, to };
-    const externalFlows = input.externalFlows.filter((flow) => flow.at > from && flow.at < to);
+    const externalFlows = flows.filter(({ at }) => at > fromCut && at < toCut).map(({ flow }) => flow);
     segments.push({ window, result: computePortfolioReturn({ window, valuations: input.valuations, externalFlows }) });
   }
   return { status: "scope_break", segments };

@@ -18,7 +18,7 @@ import type {
   PaperPrepareRequest,
   PaperTradingCommand,
 } from "./contracts";
-import { fromMinorUnits, minorUnitsOf } from "./contracts";
+import { fromMinorUnits, grossMinorOf } from "./contracts";
 import { deepFreeze, PaperJournal } from "./journal";
 import type { CommandDecision, PaperAccountState, PaperJournalStore } from "./journal";
 
@@ -373,7 +373,7 @@ export class PaperTradingService {
     if (payload.side === "buy") {
       const unitPrice = this.#reservationUnitPrice(payload);
       if (unitPrice === undefined) return { refuse: "no_valid_observation" };
-      const requiredMinor = minorUnitsOf(payload.quantity * unitPrice.amount, unitPrice.currency);
+      const requiredMinor = grossMinorOf(payload.quantity, unitPrice);
       const cash = context.state.cash.get(unitPrice.currency);
       const availableMinor = (cash?.balance ?? 0) - (cash?.reserved ?? 0);
       // CAS: the overspend guard runs against the folded state inside the same
