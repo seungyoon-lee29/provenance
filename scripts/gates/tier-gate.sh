@@ -187,8 +187,13 @@ if [ "${1:-}" = "--range" ]; then
       # 로컬 커밋에서는 계속 허용한다: pending 의 원래 목적(의무 인지를 기록)은 옳고,
       # 작업 중에 축이 아직 안 끝나는 것은 정상이다. 강제하는 시점은 PR 범위다.
       # `waived:사유` 는 통과시킨다 — 사유가 붙은 의도적 면제는 미룸이 아니다.
+      # **트레일러 줄만** 본다. 메시지 전체를 grep 하면 본문이 `adversarial=pending` 을
+      # 설명으로 언급하는 커밋이 거짓 red 가 된다 — 2026-07-27 에 실제로 그랬다(OF-10 을
+      # 설명하는 커밋이 자기 설명 때문에 red). 게이트가 자기 문서화를 벌하면 사람들은
+      # 문서화를 그만두므로, 이 종류의 거짓 red 는 단순 불편이 아니다.
+      pending_line=$(git log -1 --format=%B "$sha" | grep -E "$TRAILER" | head -1)
       unresolved=""
-      for axis in $(git log -1 --format=%B "$sha" \
+      for axis in $(printf '%s' "$pending_line" \
         | grep -oE '(adversarial|blind|standards|prior-decisions)=pending' \
         | sed 's/=pending$//'); do
         if grep -q "^OK $sha $axis " "$RESOLVED" 2>/dev/null; then

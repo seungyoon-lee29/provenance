@@ -268,6 +268,17 @@ git -C "$REPO" commit -q -m "touch money path
 Tier: top (adversarial=pending, blind=waived:픽스처, standards=waived:픽스처, prior-decisions=none-found)"
 expect_red "Resolves-Tier 없으면 pending 은 그대로 red" "미해소 pending" tier_gate --range HEAD^..HEAD
 
+# 본문이 pending 을 **설명으로** 언급하는 커밋은 거짓 red 가 되면 안 된다. 2026-07-27 에
+# 실제로 그랬다 — OF-10 을 설명하는 커밋이 자기 설명 때문에 red 였다. 게이트가 자기 문서화를
+# 벌하면 사람들은 문서화를 그만둔다.
+printf 'export const rt6 = 1;\n' | stage src/modules/paper-trading/internal/rt-mention.ts
+git -C "$REPO" commit -q -m "touch money path
+
+본문에서 adversarial=pending 이라는 형태를 설명한다. blind=pending 도 마찬가지다.
+
+Tier: top (adversarial=progress/x.md, blind=tests/x.test.ts, standards=waived:픽스처, prior-decisions=none-found)"
+expect_green "tier-gate 본문의 pending 언급은 무시한다 (양성 대조군)" tier_gate --range HEAD^..HEAD
+
 # ── tier-gate 축 값 검증 (OF-2, 2026-07-27) ──────────────────────────────────
 # 형식 정규식은 축의 존재만 봤고 값은 무엇이든 받았다. 실측 두 건이 계기다:
 # `standards=x` 한 글자로 pending 검사가 우회됐고, 라운드별 상태를 정직하게 둘 다 적은
